@@ -47,6 +47,10 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
 - `auto-bmad/scripts/render-agents.py` — dependency-free agent generator (`--self-test`).
 - `auto-bmad/scripts/merge-config.py` + `merge-help-csv.py` — config/CSV merge (from the BMAD
   standalone-module template; use PyYAML via the BMAD installer's environment).
+- `CHANGELOG.md` — hand-maintained ([Keep a Changelog](https://keepachangelog.com/)); version
+  history + source for release notes. `scripts/bump-version.py` — repo-maintenance release helper.
+  Both are **repo-root** tooling that does **not** ship inside the skill (unlike `auto-bmad/scripts/`,
+  which is copied to users). See "Releasing".
 
 ## Where behavior lives
 - **Pipeline** → `references/pipeline.md`. **What a step tells an agent** → `references/delegation.md`.
@@ -67,7 +71,32 @@ python3 -m json.tool .claude-plugin/marketplace.json >/dev/null
 python3 .claude/skills/bmad-module-builder/scripts/validate-module.py .
 # Live: add this repo as a local marketplace (Claude) or BMAD module source, install, run
 # /auto-bmad in a BMAD project. `/auto-bmad reprovision` re-renders agents after editing profiles.
+# Release helper:
+python3 scripts/bump-version.py --self-test
 ```
+
+## Releasing
+The version lives in **three** tracked files that must stay in lockstep —
+`.claude-plugin/marketplace.json` (`version`), `auto-bmad/assets/module.yaml` (`module_version`),
+and the README shields badge — and "publishing" is just **pushing a `vX.Y.Z` git tag** (the BMAD
+installer keys its upgrade detection off stable tags; the Claude plugin marketplace reads the
+manifest `version`). There is no npm/build/publish step.
+
+Cut a release from a clean `main`:
+1. Ensure this release's notes are under `## [Unreleased]` in `CHANGELOG.md`, grouped under
+   Keep-a-Changelog headings (Added/Changed/Fixed/Security/…). Write them by hand as changes land —
+   never auto-generate from commits. Keeping `[Unreleased]` current makes release time just a relabel.
+2. `python3 scripts/bump-version.py <patch|minor|major>` (or an explicit `X.Y.Z`; `--dry-run` to
+   preview). It refuses an empty `[Unreleased]`, guards against version drift across the three files,
+   promotes the changelog (date + compare links), rewrites all three version strings, then commits
+   `chore(release): vX.Y.Z` and tags it.
+3. `git push --follow-tags`.
+
+Pushing the tag is the release. `.github/workflows/release.yml` then fires on the `v*` tag and
+creates the GitHub Release from the tag's `## [X.Y.Z]` CHANGELOG section (idempotent; it first
+verifies the tag matches all three version files and that the changelog has a matching section).
+That's the only CI — there is no build/publish step (no npm/GHCR artifact). Delegate agents are a
+runtime concern (`/auto-bmad reprovision`), not a release artifact, so nothing re-renders on bump.
 
 ## Conventions
 - Conventional Commits (`feat:`/`fix:`/`docs:`/`test:`/`chore:`/`refactor:`).
@@ -77,6 +106,9 @@ python3 .claude/skills/bmad-module-builder/scripts/validate-module.py .
 - Markdown reference files are read by the orchestrator at runtime; keep them concise and
   unambiguous (they are instructions, not prose). Helper scripts stay dependency-free with a
   `--self-test`.
+- Don't land a user-facing change without a `CHANGELOG.md` note under `## [Unreleased]` (right
+  Keep-a-Changelog heading) in the same commit/PR. Never bump the version files by hand — use
+  `scripts/bump-version.py` so all three stay in sync (see "Releasing").
 
 ## Known platform facts (verified)
 - **Claude Code:** sub-agents take `model:` + `effort:` frontmatter (effort is settable ONLY

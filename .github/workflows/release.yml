@@ -1,0 +1,99 @@
+name: release
+
+# Tag-driven GitHub Release. Pushing a `vX.Y.Z` tag (via
+# `scripts/bump-version.py` + `git push --follow-tags`) creates the GitHub
+# Release from that version's CHANGELOG.md section.
+#
+# auto-bmad is a BMAD module distributed by git tag (the installer's upgrade
+# detection) and the Claude plugin marketplace manifest — there is NO npm/GHCR
+# artifact to build or publish. So this workflow only mints the Release (notes +
+# a Releases page). The tag itself is what consumers actually pull.
+
+on:
+  push:
+    tags: ['v*']
+  # Manual re-run against an existing tag ref (Run workflow -> pick a tag). The
+  # tag-guard step rejects branch dispatches.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize per tag; never cancel a release mid-flight.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      # Route event-controlled refs through env (never inline into run: blocks).
+      REF: ${{ github.ref }}
+      REF_NAME: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject non-tag refs
+        run: |
+          case "$REF" in
+            refs/tags/v*) ;;
+            *) echo "release.yml must run against a v* tag ref, got: $REF"; exit 1 ;;
+          esac
+
+      - name: Verify the tag matches the version files
+        run: |
+          ver="${REF_NAME#v}"
+          esc="${ver//./\\.}"
+          fail=0
+          grep -qE "\"version\": \"${esc}\"" .claude-plugin/marketplace.json \
+            || { echo "marketplace.json version != $ver"; fail=1; }
+          grep -qE "^module_version: ${esc}$" auto-bmad/assets/module.yaml \
+            || { echo "module.yaml module_version != $ver"; fail=1; }
+          grep -qE "badge/version-${esc}-blue" README.md \
+            || { echo "README version badge != $ver"; fail=1; }
+          [ "$fail" = 0 ] \
+            || { echo "tag v$ver disagrees with the version files; use scripts/bump-version.py"; exit 1; }
+
+      - name: Verify CHANGELOG.md has an entry for this version
+        run: |
+          ver="${REF_NAME#v}"
+          if ! grep -qE "^## \[${ver//./\\.}\]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no '## [$ver]' section — refusing to release."
+            exit 1
+          fi
+
+      - name: Extract this version's CHANGELOG section
+        run: |
+          ver="${REF_NAME#v}"
+          # Print lines under "## [ver]" up to the next "## " heading or the
+          # trailing "[link]: url" reference block.
+          awk -v v="$ver" '
+            index($0, "## [" v "]") == 1 { flag = 1; next }
+            /^## / { flag = 0 }
+            /^\[[^]]+\]:[[:space:]]/ { flag = 0 }
+            flag { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md || true
+          if [ -s RELEASE_NOTES.md ] && grep -q '[^[:space:]]' RELEASE_NOTES.md; then
+            echo "found=1" >> "$GITHUB_ENV"
+          else
+            echo "found=0" >> "$GITHUB_ENV"
+            echo "No CHANGELOG section body for $ver; will use auto-generated notes."
+          fi
+
+      - name: Create GitHub Release (idempotent)
+        run: |
+          if gh release view "$REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $REF_NAME already exists; skipping."
+            exit 0
+          fi
+          if [ "$found" = "1" ]; then
+            gh release create "$REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "$REF_NAME" --verify-tag --latest --notes-file RELEASE_NOTES.md
+          else
+            gh release create "$REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "$REF_NAME" --verify-tag --latest --generate-notes
+          fi

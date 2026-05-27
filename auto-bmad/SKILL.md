@@ -117,6 +117,7 @@ confirmation. The report contains:
 - **Story:** key, final status, branch.
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps) — omit if none.
 - **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why.
+- **CI:** link to the CI run the PR/push triggered + its status, if the repo has workflows (omit if none).
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.
 - **Open questions** surfaced by any step.
 - **Deferred work** (anything intentionally postponed).

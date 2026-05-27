@@ -112,9 +112,11 @@ tea_selected: [atdd, automate]   # from triage; [] if trivial or TEA off
 tea_rationale: "touches auth -> High risk"
 completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md
 code_review_iterations: 1
+convergence_unverified: false  # true if the review cap was hit while Critical/High were still being found+fixed and the user chose to ship anyway (Phase 7) -> Phase 9 opens the PR as a draft
 commits: [a1b2c3d, e4f5g6h]
 gate_decision: null          # PASS|CONCERNS|FAIL|WAIVED (last story only)
 pr_url: null
+ci_run_url: null             # link to the CI run the PR/push triggered, if the repo has workflows
 open_questions: []
 deferred_work: []
 blockers: []                 # each: short human-action description

@@ -68,23 +68,31 @@ For iteration `i` (1-based):
    Delegate `/bmad-code-review` targeting the branch diff for `<story_file>`. The skill writes a
    review section + `[AI-Review]` follow-up tasks into the story file.
 2. Read the verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low counts.
-   - **Approve / no Critical or High findings** → commit `chore(story-{e}-{s}): code review
-     passed (iter {i})` and exit the loop.
-   - **Findings remain** → delegate the fix to `ab-max`: `/bmad-dev-story <story_file>` focused
-     on the `[AI-Review]` follow-up tasks. Commit `fix(story-{e}-{s}): address code review
-     (iter {i})`. Continue to iteration `i+1`.
-3. **Cap reached with unresolved Critical/High findings → ASK the user** (AskUserQuestion); do
-   not silently proceed. (This is mid-pipeline — the PR doesn't happen until Phase 9, after the
-   epic-end Phase 8.) Summarize the remaining findings, then offer:
+   Each pass **always fixes what it finds**: when findings are present, delegate the fix to
+   `ab-max` (`/bmad-dev-story <story_file>` focused on the `[AI-Review]` follow-up tasks) and
+   commit `fix(story-{e}-{s}): address code review (iter {i})`. What happens next depends on the
+   **severity this pass found** (the findings it just fixed):
+   - **No findings** → commit `chore(story-{e}-{s}): code review passed (iter {i})` and exit.
+   - **Only Med/Low (no Critical or High)** → the fixes are in and nothing high-risk surfaced;
+     exit the loop and continue the pipeline (no need to ask).
+   - **Any Critical or High** → they were fixed, but the fix is unverified and such findings can
+     recur, so re-review: if `i < cap`, continue to iteration `i+1`; if `i == cap`, go to step 3.
+3. **Cap reached while the last pass was still finding (and fixing) Critical/High → ASK the user**
+   (AskUserQuestion); do not silently proceed. Nothing is left unresolved — each pass fixed its
+   findings — but because the final pass was still surfacing Critical/High, convergence is
+   unverified. (This is mid-pipeline — the PR doesn't happen until Phase 9, after the epic-end
+   Phase 8.) Summarize the Critical/High the last pass fixed, then offer:
    - **Run another review+fix iteration** *(recommended)* — continue beyond the cap with the
-     **opus** reviewer (`ab-xhigh`) + `ab-max` fix, to drive the remaining Critical/High to zero.
-     Repeat this ask after each extra iteration until clean or the user stops.
-   - **Accept the findings and continue the pipeline** — record them as `needs-human` blockers in
-     state, then proceed normally to Phase 8 (if last story) and Phase 9. Because a blocker is
-     recorded, Phase 9 will open the PR as a **draft** (or, in local mode, just note them).
+     **opus** reviewer (`ab-xhigh`) + `ab-max` fix, to verify the fixes and drive any remaining
+     Critical/High to zero. Repeat this ask after each extra iteration until a pass comes back
+     clean or Med/Low-only, or the user stops.
+   - **Accept the fixes and continue the pipeline** — trust the fixes already applied; set
+     `convergence_unverified: true` in state, then proceed normally to Phase 8 (if last story) and
+     Phase 9. Because that flag is set, Phase 9 opens the PR as a **draft** (or, in local mode,
+     just notes it).
    - **Stop the pipeline now** — skip the remaining phases, go straight to the report (Step 3);
-     commits stay on the branch, nothing is pushed and no PR is opened. Findings are reported as
-     `needs-human`.
+     commits stay on the branch, nothing is pushed and no PR is opened. The last pass's findings
+     are reported as `needs-human`.
    Record the user's choice and any extra iterations in state (`code_review_iterations`).
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*
@@ -101,11 +109,14 @@ Run these in order; commit once at the end: `docs(epic-{e}): gate, project conte
 ## Phase 9 — Finalize  → `ab-fast`
 - Ensure everything is committed (no dirty tree).
 - **git mode `remote`:** push the branch and open a PR via `gh pr create` (see `git-and-pr.md`).
-  Make it a **draft** if any blocker was recorded (including unresolved review findings the user
-  chose to ship as draft in Phase 7). PR body = conventional summary + link to the story file +
-  a checklist of open questions / deferred work / human-action items.
+  Make it a **draft** if any blocker was recorded, or `convergence_unverified` is `true` (the
+  user chose to accept the fixes and ship in Phase 7 despite the cap being hit while Critical/High
+  were still surfacing). PR body = conventional summary + link to the story file +
+  a checklist of open questions / deferred work / human-action items. If the repo has CI
+  workflows, also capture the triggered CI run link into `ci_run_url` (see `git-and-pr.md`) — do
+  not wait for it to finish.
 - **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the PR; leave the
   branch in place and note it in the report.
-- Mark the state file `done` (record `pr_url`, final `branch`, any `blockers`).
+- Mark the state file `done` (record `pr_url`, `ci_run_url`, final `branch`, any `blockers`).
 - Hand control back to the SKILL's Step 3, which **writes the report to
   `_bmad-output/auto-bmad/reports/{key}.md`** and prints it.

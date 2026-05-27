@@ -23,7 +23,7 @@ standalone files present (`module-setup.md`, `module.yaml`, `module-help.csv`,
 | Menu codes | ✅ `AB`/`AC` intuitive, shared `A` (auto-bmad) prefix. |
 | Ordering & relationships | ✅ Empty before/after + `required: false` correct for a standalone orchestrator. |
 | Cross-file consistency | ✅ `module.yaml`, `module_greeting`, `SKILL.md`, and CSV descriptions all agree. |
-| Agent roster | n/a — `module.yaml` has no `agents:` block (delegate agents are rendered into the host agent dir, not a BMad roster). |
+| Agent roster | n/a — `module.yaml` has no `agents:` block (delegate agents are rendered into the host agent dir, not a BMAD roster). |
 
 ## Changes made this session
 

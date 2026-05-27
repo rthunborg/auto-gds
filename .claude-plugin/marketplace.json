@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "auto-bmad",
-  "description": "BMad module that drives the full BMAD story workflow end-to-end, one story at a time, on Claude Code or Codex.",
+  "description": "BMAD module that drives the full BMAD story workflow end-to-end, one story at a time, on Claude Code or Codex.",
   "owner": {
     "name": "Stefano Ginella",
     "email": "stefano@stefanoginella.com"

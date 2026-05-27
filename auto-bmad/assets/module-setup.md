@@ -22,7 +22,7 @@ Both config scripts use an anti-zombie pattern — existing entries for this mod
 1. Read `./assets/module.yaml` for module metadata and variable definitions (the `code` field is the module identifier)
 2. Check if `{project-root}/_bmad/config.yaml` exists — if a section matching the module's code is already present, inform the user this is an update (reconfiguration)
 
-If the user provides arguments (e.g. `accept all defaults`, `--headless`, or inline values like `user name is BMad, I speak Swahili`), map any provided values to config keys, use defaults for the rest, and skip interactive prompting. Still display the full confirmation summary at the end.
+If the user provides arguments (e.g. `accept all defaults`, `--headless`, or inline values like `user name is BMAD, I speak Swahili`), map any provided values to config keys, use defaults for the rest, and skip interactive prompting. Still display the full confirmation summary at the end.
 
 ## Collect Configuration
 
@@ -34,7 +34,7 @@ Ask the user for values. Show defaults in brackets. Present all values together 
 
 Only collect if no core keys exist yet in `config.yaml` or `config.user.yaml`:
 
-- `user_name` (default: BMad) — written exclusively to `config.user.yaml`
+- `user_name` (default: BMAD) — written exclusively to `config.user.yaml`
 - `communication_language` and `document_output_language` (default: English — ask as a single language question, both keys get the same answer) — `communication_language` written exclusively to `config.user.yaml`
 - `output_folder` (default: `{project-root}/_bmad-output`) — written to `config.yaml` at root, shared across all modules
 

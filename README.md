@@ -2,7 +2,7 @@
 
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-A **BMad module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**.
+A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**.
 
 `auto-bmad` chains the core BMM skills (`create-story` → `dev-story` → `code-review`) and the optional TEA (Test Architect) skills into a single resumable pipeline. It detects the next story from `sprint-status.yaml` (or takes one as an argument), runs every step in an isolated git branch with conventional-commit checkpoints, opens a PR, and finishes with a report of the PR link, open questions, deferred work, and anything that needs your attention — then stops so **you** decide when to start the next story.
 
@@ -14,7 +14,7 @@ The orchestrator **only delegates and reports.** Every BMAD step runs inside a s
 
 ## Install
 
-auto-bmad is a BMad module, so the official way to install it — for **any** supported tool, Claude Code included — is the **BMAD installer**. Requires **Node.js 20.12+** and Git.
+auto-bmad is a BMAD module, so the official way to install it — for **any** supported tool, Claude Code included — is the **BMAD installer**. Requires **Node.js 20.12+** and Git.
 
 From your project directory, run the installer and add this repo as a custom source:
 
@@ -55,6 +55,29 @@ If you exclusively use Claude Code, you can instead add this repo as a Claude pl
 /plugin install auto-bmad@auto-bmad
 ```
 </details>
+
+## Updating
+
+auto-bmad is a BMAD module, so you update it the way you installed it — **re-run the BMAD installer**, which re-fetches this repo from its Git source. Requires Node.js 20.12+.
+
+```bash
+# Interactive: detects your existing install and prompts for any newer version
+npx bmad-method install
+
+# Non-interactive: refresh every module from its source (re-fetches Git modules)
+npx bmad-method install --action quick-update
+```
+
+The interactive flow classifies the change and defaults accordingly — **patch** and **minor** upgrades are auto-accepted, **major** upgrades ask first. `quick-update` is the fast path: it re-pulls auto-bmad (and your other modules) from their original sources without prompting, applying patch/minor upgrades and refusing majors. To track development versions ahead of a tagged release, use the prerelease channel: `npx bmad-method@next install`.
+
+> 💡 **After updating, re-render the delegate agents.** auto-bmad generates its tuned subagents from `profiles`/templates, so once the module files refresh, run `/auto-bmad reprovision` to regenerate `.claude/agents` / `.codex/agents`. Nothing else needs reconfiguring — the running tool is auto-detected every run.
+
+If you installed via the Claude plugin marketplace (the alternative above) rather than the BMAD installer, update through Claude Code instead:
+
+```text
+/plugin marketplace update auto-bmad
+/plugin install auto-bmad@auto-bmad
+```
 
 ## Usage
 

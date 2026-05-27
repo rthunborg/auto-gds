@@ -1,6 +1,6 @@
 # CLAUDE.md — working in the auto-bmad repo
 
-This repo is a **BMad standalone module** (distributed as a single skill + a Claude
+This repo is a **BMAD standalone module** (distributed as a single skill + a Claude
 `marketplace.json`). The skill (`auto-bmad`) is an orchestrator that runs the full BMAD story
 workflow one story at a time, on **Claude Code or Codex**. This file is guidance for working
 **on the module**, not for using it.
@@ -17,7 +17,7 @@ does step work itself is the `inline` delegation tier (hosts with no subagent su
 discipline. When editing, preserve this separation.
 
 ## Delegation is tiered (the heart of the module)
-BMad abstracts neither sub-agent delegation nor per-agent model/effort, so we supply those with
+BMAD abstracts neither sub-agent delegation nor per-agent model/effort, so we supply those with
 tool-native files and degrade gracefully:
 - **Tier 1 `custom-subagents`** (Claude Code, Codex) — each step runs in an isolated delegate at
   the profile's tuned model + effort. Claude: `.claude/agents/ab-*.md` (`model:`/`effort:`).
@@ -41,12 +41,12 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
   `tea-policy.md` (risk rubric), `git-and-pr.md`, `state-and-resume.md` (config/state/first-run).
 - `auto-bmad/assets/agents/profiles.yaml` — default per-tool model+effort. `claude/*.md.tmpl` and
   `codex/*.toml.tmpl` — delegate templates with `@@MODEL@@`/`@@EFFORT@@`/`@@REASONING_EFFORT@@`.
-- `auto-bmad/assets/module.yaml` + `module-help.csv` + `module-setup.md` — BMad module
+- `auto-bmad/assets/module.yaml` + `module-help.csv` + `module-setup.md` — BMAD module
   identity, capability registry, and self-registration/provisioning flow.
 - `auto-bmad/scripts/story_plan.py` — dependency-free sprint-status reader (`--self-test`).
 - `auto-bmad/scripts/render-agents.py` — dependency-free agent generator (`--self-test`).
-- `auto-bmad/scripts/merge-config.py` + `merge-help-csv.py` — config/CSV merge (from the BMad
-  standalone-module template; use PyYAML via the BMad installer's environment).
+- `auto-bmad/scripts/merge-config.py` + `merge-help-csv.py` — config/CSV merge (from the BMAD
+  standalone-module template; use PyYAML via the BMAD installer's environment).
 
 ## Where behavior lives
 - **Pipeline** → `references/pipeline.md`. **What a step tells an agent** → `references/delegation.md`.
@@ -63,9 +63,9 @@ python3 auto-bmad/scripts/story_plan.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
 # Marketplace manifest is valid JSON:
 python3 -m json.tool .claude-plugin/marketplace.json >/dev/null
-# Module structure passes the BMad validator (run from the repo root, which holds the one skill):
+# Module structure passes the BMAD validator (run from the repo root, which holds the one skill):
 python3 .claude/skills/bmad-module-builder/scripts/validate-module.py .
-# Live: add this repo as a local marketplace (Claude) or BMad module source, install, run
+# Live: add this repo as a local marketplace (Claude) or BMAD module source, install, run
 # /auto-bmad in a BMAD project. `/auto-bmad reprovision` re-renders agents after editing profiles.
 ```
 
@@ -86,6 +86,6 @@ python3 .claude/skills/bmad-module-builder/scripts/validate-module.py .
   `model` + `model_reasoning_effort` (effort: minimal|low|medium|high); invoked by naming the
   agent in natural language — Codex spawns/collects them. Model names are environment-specific
   (confirmed at setup), so they're config, not hardcoded.
-- **BMad** has no portable abstraction for delegation or model/effort; modules are skills copied
+- **BMAD** has no portable abstraction for delegation or model/effort; modules are skills copied
   into a tool's skills dir (`.claude/skills/`, `.codex/skills/`). Hence the tiered design.
 - `/bmad-create-story` has no `validate` mode; it self-validates against its checklist.

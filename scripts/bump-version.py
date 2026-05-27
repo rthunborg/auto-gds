@@ -25,7 +25,8 @@ What a real (non --dry-run) run does, in order:
      hand; this only relabels them. See CLAUDE.md -> "Releasing".)
   3. Rewrites the version in all three files above.
   4. Requires a clean working tree, then commits `chore(release): vX.Y.Z` and
-     tags `vX.Y.Z`. Push with: git push --follow-tags
+     creates the annotated tag `vX.Y.Z`. Push with: git push --follow-tags
+     (annotated so --follow-tags actually pushes it).
 
 Zero dependencies on purpose (matches the repo's other helper scripts).
 """
@@ -240,8 +241,11 @@ def run(part: str, dry_run: bool) -> int:
         write(root, rel, text)
     git(root, "add", *[rel for rel, _ in edits])
     git(root, "commit", "-m", f"chore(release): v{new}")
-    git(root, "tag", f"v{new}")
-    print(f"\ncommitted and tagged v{new}. Push with:\n  git push --follow-tags")
+    # Annotated (not lightweight): `git push --follow-tags` only pushes annotated
+    # tags, so a lightweight tag would silently never reach the remote and the
+    # release workflow would never fire.
+    git(root, "tag", "-a", f"v{new}", "-m", f"auto-bmad v{new}")
+    print(f"\ncommitted and tagged v{new} (annotated). Push with:\n  git push --follow-tags")
     return 0
 
 

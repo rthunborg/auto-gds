@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `scripts/bump-version.py` now creates an **annotated** tag (was lightweight), so
+  `git push --follow-tags` actually pushes it and the release workflow fires.
+
 ## [0.2.0] - 2026-05-27
 
 ### Added

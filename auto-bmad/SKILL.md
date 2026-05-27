@@ -8,30 +8,51 @@ description: "Run the FULL BMAD story implementation workflow end-to-end for one
 You drive the **entire BMAD implementation workflow for ONE story**, then stop and report so
 the user manually triggers the next one.
 
+## On activation — register & provision first
+
+Before the procedure, handle module registration and delegate provisioning:
+- If invoked with `setup`, `configure`, `install`, or `reprovision`, **or** if
+  `{project-root}/_bmad/config.yaml` has no `abm` section → load
+  `{skill-root}/assets/module-setup.md` and complete it first. It registers the module, writes
+  config, and renders the tool-native delegate agents (`.claude/agents/ab-*.md` and/or
+  `.codex/agents/ab-*.toml`) for the selected `target_tools`. `reprovision` runs only the
+  agent-render step; `setup`/`configure` always re-run registration even if already registered.
+- This requires a BMAD project; if `_bmad/` is absent, the Step 0.1 hard-stop applies.
+- If the user's only intent was `setup`/`configure`/`reprovision`, stop after reporting what was
+  written/rendered — do **not** start a pipeline run. Otherwise continue to the Procedure.
+
 ## The one rule
 
 **You only orchestrate. You never do story work yourself.** Every BMAD step — create-story,
 dev-story, code-review, every TEA skill, retrospective — runs inside a delegated sub-agent
-(the bundled `ab-*` profiles). You also delegate the mechanical git/PR work. Your own actions
+(the `ab-*` profiles). You also delegate the mechanical git/PR work. Your own actions
 are limited to: reading config/state, running `scripts/story_plan.py`, deciding what to
 delegate, committing checkpoints (or delegating that), writing the state file, and producing
 the final report. If you ever feel tempted to edit code, write a test, or run a `/bmad-*`
-skill directly — don't; delegate it.
+skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
+host with no subagent support — see `references/delegation-runtime.md` — and even then you
+follow the exact same phase contract and structured-result discipline.)
 
-`${CLAUDE_PLUGIN_ROOT}` is this plugin's root. Reference files live under
-`${CLAUDE_PLUGIN_ROOT}/skills/auto-bmad/references/` and the helper script under
-`.../scripts/story_plan.py`. Read a reference file at the moment its step calls for it.
+`{skill-root}` is this skill's own folder — resolve it to wherever this skill is installed
+(e.g. `.claude/skills/auto-bmad/` or `.codex/skills/auto-bmad/`). Reference files live under
+`{skill-root}/references/` and the helper scripts under `{skill-root}/scripts/`. Read a
+reference file at the moment its step calls for it.
 
 ## Delegation mechanics
 
-- Delegate with the Agent/Task tool, setting `subagent_type` to the profile name: `ab-max`,
-  `ab-xhigh`, `ab-high`, or `ab-sonnet` (each bakes in its model + thinking effort). If a bare
-  name doesn't resolve, try the namespaced form `auto-bmad:ab-max`.
-- The agent prompt must be the **exact** content from `references/delegation.md` for that step,
-  with placeholders filled (story id, absolute file paths). Pass absolute paths — the sub-agent
-  resolves BMAD's `{project-root}` from its cwd, but explicit paths remove ambiguity.
-- After each delegated step, read the agent's structured result. Append its **retro notes** to
-  the epic retro-notes file. Then checkpoint (commit) and update state.
+- **Pick the spawn method by host/tier — read `references/delegation-runtime.md`.** It uses
+  `delegation.host` + `delegation.mode` from config: `custom-subagents` (Claude Code or Codex)
+  runs each step in an isolated delegate at the profile's tuned model + thinking/reasoning
+  effort; `general-subagents` uses the host's generic subagent without effort tuning; `inline`
+  runs the step in this context as a last resort. `phase_profiles` maps each phase to a profile
+  (`ab-max`/`ab-xhigh`/`ab-high`/`ab-fast`); `profiles` holds each profile's per-tool model +
+  effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`)
+  are rendered at setup by `scripts/render-agents.py` from those profiles.
+- The delegate prompt is always the **exact** content from `references/delegation.md` for that
+  step, with placeholders filled (story id, absolute file paths). Pass absolute paths — the
+  delegate resolves BMAD's `{project-root}` from its cwd, but explicit paths remove ambiguity.
+- After each delegated step, read the structured result. Append its **retro notes** to the epic
+  retro-notes file. Then checkpoint (commit) and update state. This is identical across tiers.
 
 ## Procedure
 
@@ -46,7 +67,12 @@ skill directly — don't; delegate it.
    when code review fails to converge within the iteration cap — see Phase 7.)
 
 ### Step 1 — Preflight
-Read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0), then:
+Read `references/state-and-resume.md`, `references/pipeline.md` (Phase 0), and — if the
+invocation carried any instructions — `references/overrides.md`, then:
+0. **Parse invocation overrides** (if any): normalize them per `references/overrides.md`,
+   **echo the interpretation plus the resolved phase window/skips to the user**, and record them
+   in state under `overrides`. If `dry_run`, print the plan and stop here. (`skip tea` flips
+   `tea.enabled` off for this run, affecting sub-steps 1 and 4 below.)
 1. **Skill availability:** verify the BMAD skills required for the selected path exist
    (core always; TEA set only if `tea.enabled`; epic-end skills if this is a last story). Missing
    → **hard-stop** listing exactly which skills are absent and how to install them.
@@ -56,7 +82,7 @@ Read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0), th
       should be at most one given "one story at a time"; if several, take the most recently
       modified and note the others in the report).
    b. Otherwise run
-      `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auto-bmad/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>`
+      `python3 {skill-root}/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>`
       to pick the next actionable story. Its precedence is `in-progress → review →
       ready-for-dev → backlog → retrospective`, so it **resumes BMAD-level unfinished work
       before pulling a fresh backlog item** — it does not jump straight to backlog.
@@ -65,17 +91,21 @@ Read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0), th
 3. **Resume check:** if a non-`done` state file exists for the chosen `story_key`, resume from
    the first phase not in `completed_phases` (and continue the review loop from
    `code_review_iterations`). Otherwise initialize a fresh state file in Phase 1.
-4. **Git preflight & triage:** delegate to `ab-sonnet` per Phase 0 of the pipeline (detect repo,
+4. **Git preflight & triage:** delegate to `ab-fast` per Phase 0 of the pipeline (detect repo,
    clean tree, git mode, base branch; and — only if TEA enabled — classify story risk to pick
    per-story TEA skills). Record the decisions in state.
 
 ### Step 2 — Run the pipeline
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases
 whose conditions don't apply (epic-start only if `is_first_in_epic`; TEA phases per triage and
-`tea.enabled`; epic-end only if `is_last_in_epic`). For each phase:
-- delegate to the profile named in the pipeline using the prompt from `references/delegation.md`;
+`tea.enabled`; epic-end only if `is_last_in_epic`). **Also honor this run's overrides
+(`references/overrides.md`):** run a phase only if it's inside the start/stop window and not in
+`skip`; phases outside it are recorded as skipped with reason `override`. For each phase that runs:
+- delegate to the profile named in the pipeline using the prompt from `references/delegation.md`
+  (spawn it per `references/delegation-runtime.md`);
 - on a `blocked` / `needs-human` outcome, **stop the pipeline** and jump to the report;
-- otherwise checkpoint (commit per `references/git-and-pr.md`), append retro notes, update state.
+- otherwise checkpoint (commit per `references/git-and-pr.md` — **unless `skip git-commits` is in
+  effect**), append retro notes, update state.
 
 ### Step 3 — Final report
 Always produce a single report (even on hard-stop). **Append it** as a new timestamped section
@@ -85,6 +115,7 @@ resume — earlier runs' reports carry context we must not lose. The ONLY time y
 file is a deliberate full re-run of an already-`done` story, and only after explicit user
 confirmation. The report contains:
 - **Story:** key, final status, branch.
+- **Overrides:** any invocation overrides applied this run (phase window, skips, caps) — omit if none.
 - **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.
 - **Open questions** surfaced by any step.

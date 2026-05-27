@@ -5,6 +5,9 @@ _bmad/
 _bmad-output/
 .agents/
 .claude/
+# Generated tool-native delegate agents (rendered by scripts/render-agents.py).
+# .claude/ already covers .claude/agents/; .codex/ is the Codex equivalent.
+.codex/
 
 # --- OS / editor noise ---
 .DS_Store

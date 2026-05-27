@@ -1,6 +1,6 @@
 # Git & PR conventions
 
-All git work is delegated to `ab-sonnet` with concrete instructions. Nothing ever lands on the
+All git work is delegated to `ab-fast` with concrete instructions. Nothing ever lands on the
 base branch; every phase is its own commit so the pipeline is resumable and reviewable.
 
 ## Mode detection (Phase 0)

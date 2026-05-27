@@ -31,7 +31,7 @@ Implement the story to completion: all tasks/subtasks done, tests written and pa
 moved to `review`. Do not commit or branch — the orchestrator handles git.
 ```
 
-### code-review  → `ab-xhigh` (odd iters) / `ab-sonnet` (even iters)
+### code-review  → `ab-xhigh` (odd iters) / `ab-fast` (even iters)
 ```
 Run `/bmad-code-review` in {project_root}, reviewing the changes on the current branch for
 story <story_file> (review the branch diff against the base branch).
@@ -51,13 +51,13 @@ Run `/bmad-testarch-test-design` in {project_root}. Choose EPIC-LEVEL mode for e
 (epic + its stories). Produce the epic test plan / risk matrix.
 ```
 
-### testarch-atdd  → `ab-sonnet`
+### testarch-atdd  → `ab-fast`
 ```
 Run `/bmad-testarch-atdd` in {project_root} for story file <story_file>.
 Generate the red-phase acceptance test scaffolds + checklist for this story.
 ```
 
-### testarch-automate  → `ab-sonnet`
+### testarch-automate  → `ab-fast`
 ```
 Run `/bmad-testarch-automate` in {project_root} for story file <story_file>.
 Expand automated test coverage for the code implemented in this story.
@@ -81,7 +81,7 @@ Run `/bmad-testarch-test-review` in {project_root} with suite scope (the tests a
 epic {e}). Report quality findings + score.
 ```
 
-### generate-project-context  → `ab-sonnet`
+### generate-project-context  → `ab-fast`
 ```
 Run `/bmad-generate-project-context` in {project_root}. Update project-context.md to reflect the
 current stack, patterns, and conventions after epic {e}. Use sensible defaults for any prompt.
@@ -95,7 +95,7 @@ the accumulated notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md plus the
 sprint-status. Produce the full retrospective document and mark the epic retrospective `done`.
 ```
 
-### git ops (preflight / branch / finalize / PR)  → `ab-sonnet`
+### git ops (preflight / branch / finalize / PR)  → `ab-fast`
 The orchestrator sends concrete instructions (no `/bmad-*`); see `git-and-pr.md` for exact
 commands. Examples: "detect git mode and base branch and report", "create+checkout branch
 `story/{e}-{s}-{slug}`", "stage all and commit with message `<msg>`", "push and open a (draft?)

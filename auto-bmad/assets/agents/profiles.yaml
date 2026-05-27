@@ -1,0 +1,45 @@
+# Default delegate profiles for auto-bmad.
+#
+# Each profile maps to a model + effort PER TOOL. `scripts/render-agents.py` reads
+# this file (or the `profiles:` block of the runtime config) and writes the
+# tool-native delegate definitions:
+#   - Claude Code -> .claude/agents/<name>.md    (frontmatter `model:` / `effort:`)
+#   - Codex       -> .codex/agents/<name>.toml   (`model` / `model_reasoning_effort`)
+#
+# To retune: copy this block into {output_folder}/auto-bmad/config.yaml, edit it,
+# and run `/auto-bmad reprovision`. Keep the BLOCK style shown here (two-space
+# nesting) — the renderer's dependency-free parser expects it.
+#
+# NOTE: Codex model names below are PLACEHOLDERS. Confirm the models available in
+# your Codex install during setup. Codex reasoning effort is one of:
+# minimal | low | medium | high. Claude effort is one of: low | medium | high |
+# xhigh | max (set via the sub-agent `effort:` frontmatter).
+profiles:
+  ab-max:
+    claude:
+      model: opus
+      effort: max
+    codex:
+      model: gpt-5.5
+      reasoning_effort: high
+  ab-xhigh:
+    claude:
+      model: opus
+      effort: xhigh
+    codex:
+      model: gpt-5.5
+      reasoning_effort: high
+  ab-high:
+    claude:
+      model: opus
+      effort: high
+    codex:
+      model: gpt-5.5
+      reasoning_effort: high
+  ab-fast:
+    claude:
+      model: sonnet
+      effort: high
+    codex:
+      model: gpt-5.4
+      reasoning_effort: high

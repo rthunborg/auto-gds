@@ -1,10 +1,15 @@
 # Delegation prompts
 
-One template per BMAD step. The orchestrator fills the placeholders and sends the result as the
-Agent prompt to the profile that `phase_profiles` assigns to the step's phase (see `pipeline.md`
-for the phase→key mapping and `state-and-resume.md` for the config). Keep prompts **minimal** —
-the exact `/bmad-*` command + the inputs the skill needs. Every prompt ends with the shared
-autonomy directive (the delegate profiles already carry it, so the short form below is enough).
+**This file is the single source of truth for what each BMAD step runs** — its exact `/bmad-*`
+command, prompt body, and the placeholders below. One entry per step, named by its heading (e.g.
+`create-story`, `dev-story`, `code-review`). `pipeline.md` references each step **by that heading
+name** and never repeats the command, so changing a command means editing here and nowhere else.
+
+The orchestrator fills the placeholders and sends the result as the Agent prompt to the profile
+that `phase_profiles` assigns to the step's phase (see `pipeline.md` for the phase→profile-key
+mapping and `state-and-resume.md` for the config). Keep prompts **minimal** — the exact `/bmad-*`
+command + the inputs the skill needs. Every prompt ends with the shared autonomy directive (the
+delegate profiles already carry it, so the short form below is enough).
 
 **Shared autonomy directive (append to every prompt):**
 > Run fully autonomously — answer any interactive BMAD menu/checkpoint with the sensible default
@@ -13,11 +18,16 @@ autonomy directive (the delegate profiles already carry it, so the short form be
 > as `needs-human`. Return the structured result: Outcome, Files changed, Status, Open questions,
 > Deferred work, Blockers, Retro notes.
 
-**Placeholders.** `<...>` = a filesystem path the orchestrator resolves; `{...}` = a non-path
-value it fills in (identity/config scalar, or an injected block). Specifically: `{e}`/`{s}`
-(epic/story number), `{key}`, `{slug}`, `{decisions}` (the human-chosen fix directions from
-Phase 7); `<project_root>` (absolute cwd), `<story_file>` (absolute, `<impl>/{key}.md`),
-`<impl>`/`<planning>` dirs.
+**Placeholders (canonical glossary — `pipeline.md` references this list, not its own copy).**
+`<...>` = a filesystem path the orchestrator resolves; `{...}` = a non-path value it fills in
+(identity/config scalar, or an injected block).
+- `{e}` / `{s}` — epic / story number.
+- `{key}` — full story key (e.g. `1-2-user-auth`).
+- `{slug}` — the title part of the key.
+- `{decisions}` — the human-chosen fix directions from Phase 7.
+- `<project_root>` — absolute cwd.
+- `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
+- `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
 
 ---
 

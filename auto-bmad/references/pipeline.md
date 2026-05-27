@@ -1,21 +1,26 @@
 # Per-story pipeline
 
 The orchestrator runs these phases **in order** for a single story. Each phase: check its
-condition → delegate to the profile `phase_profiles` assigns to the phase (each phase below names
+condition → delegate the named **`delegation.md` entry** (shown in backticks below, e.g.
+`create-story`) to the profile `phase_profiles` assigns to the phase (each phase below also names
 its `phase_profiles` **key**, e.g. `→ create_story`; resolve key → profile → model+effort via
-config — the mapping lives only in config, never hardcode a profile name here) with the prompt
-from `delegation.md` (spawn it for the current host/tier per `delegation-runtime.md`) → read the
-result → if `blocked`/`needs-human`, stop and report → else append retro notes, **commit** (see
-`git-and-pr.md`), and update the state file (see `state-and-resume.md`).
+config — the mapping lives only in config, never hardcode a profile name here). `delegation.md`
+owns the exact `/bmad-*` command + prompt; spawn it for the current host/tier per
+`delegation-runtime.md` → read the result → if `blocked`/`needs-human`, stop and report → else
+append retro notes, **commit** (see `git-and-pr.md`), and update the state file (see
+`state-and-resume.md`).
+
+Note the two near-identical-but-distinct tokens per phase: the **entry name** (hyphenated, e.g.
+`create-story`) names the `delegation.md` prompt; the **profile key** (underscored, e.g.
+`create_story`) names the `phase_profiles` entry. Bold backticks below mark the entry name.
 
 **Git/PR work is never delegated** — the orchestrator runs it directly (preflight, branch,
 commits, push, PR; see `git-and-pr.md`). The git-only phases below (0 preflight, 1 branch,
 9 finalize) carry no `phase_profiles` key; only their non-git parts (e.g. Phase 0's TEA triage) are
 delegated.
 
-Placeholders: `{e}`/`{s}` = epic/story number, `{key}` = full story key (e.g.
-`1-2-user-auth`), `{slug}` = the title part, `<impl>` = `implementation_artifacts` dir,
-`<story_file>` = `<impl>/{key}.md` (from `story_plan.py`).
+Placeholders (`{e}`/`{s}`, `{key}`, `{slug}`, `<impl>`, `<story_file>`, …) are defined once in
+`delegation.md` — the canonical glossary.
 
 ---
 
@@ -41,31 +46,31 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   `chore(story-{e}-{s}): start auto-bmad pipeline`.
 
 ## Phase 2 — Epic start  *(only if `is_first_in_epic` AND `tea.enabled`)*  → `tea_epic`
-- Delegate `/bmad-testarch-test-design` at **epic level** for epic `{e}`.
+- Delegate the **`testarch-test-design`** entry (epic level) for epic `{e}`.
 - Commit: `test(epic-{e}): epic-level test design`.
 - (If `tea.enabled` is false, skip. Non-TEA epic-start work is already handled by
   sprint-planning having been run; nothing else is needed here.)
 
 ## Phase 3 — Create story  → `create_story`
-- Delegate `/bmad-create-story {e}-{s}`. The skill self-validates against its checklist and
-  auto-fixes; do NOT add a separate validate pass.
+- Delegate the **`create-story`** entry for story {e}-{s}. The skill self-validates against its
+  checklist and auto-fixes; do NOT add a separate validate pass.
 - Capture any open questions the skill saved → retro notes + report.
 - Commit: `docs(story-{e}-{s}): create story context file`.
 
 ## Phase 4 — Pre-dev TEA  *(only if `tea.enabled` AND `atdd ∈ tea_selected`)*  → `tea_per_story`
-- Delegate `/bmad-testarch-atdd` with `<story_file>`.
+- Delegate the **`testarch-atdd`** entry with `<story_file>`.
 - Commit: `test(story-{e}-{s}): ATDD acceptance scaffolds (red)`.
 
 ## Phase 5 — Dev story  → `dev_story`
-- Delegate `/bmad-dev-story <story_file>`. Fully autonomous; it runs tests and moves the story
-  to `review`.
+- Delegate the **`dev-story`** entry with `<story_file>`. Fully autonomous; it runs tests and
+  moves the story to `review`.
 - Capture deviations / deferred work / decisions → retro notes.
 - Commit: `feat(story-{e}-{s}): <one-line summary from the agent>`.
   (If the dev agent reports it cannot complete — missing secret, external service, manual
   step — that is `needs-human`: stop and report.)
 
 ## Phase 6 — Post-dev TEA  *(only if `tea.enabled` AND `automate ∈ tea_selected`)*  → `tea_per_story`
-- Delegate `/bmad-testarch-automate` with `<story_file>`.
+- Delegate the **`testarch-automate`** entry with `<story_file>`.
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
 ## Phase 7 — Code-review loop  (≤ `code_review.max_iterations`, default 3)
@@ -76,8 +81,8 @@ For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with the primary reviewer.** When
    `code_review.alternate_models` is true: odd `i` → `code_review_review` (primary), even `i` →
    `code_review_review_secondary` — so iter 1 = primary, iter 2 = secondary, iter 3 = primary.
-   When alternation is off, every iteration is `code_review_review`. Delegate `/bmad-code-review`
-   targeting the branch diff for `<story_file>`. The skill writes findings into the story file's
+   When alternation is off, every iteration is `code_review_review`. Delegate the **`code-review`**
+   entry to that reviewer profile. The skill writes findings into the story file's
    `### Review Findings` section as `[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]` items.
 2. **Resolve `[Review][Decision]` items first — ASK the user.** These are the calls the reviewer
    flagged as needing a human (the fix is ambiguous), so never auto-guess them. If this pass wrote
@@ -89,9 +94,9 @@ For iteration `i` (1-based):
    `[Review][Defer]` and log to `deferred_work`; dismiss → check it off as won't-fix).
 3. Read the verdict (Approve / Changes Requested / Blocked) and the Critical/High/Med/Low counts.
    When there is fixable work — `[Review][Patch]` items, or `[Review][Decision]` items the user just
-   resolved — delegate the fix to `code_review_fix` (`/bmad-dev-story <story_file>` focused on those
-   items, implementing each resolved decision in its chosen direction and checking it off) and commit
-   `fix(story-{e}-{s}): address code review (iter {i})`. What happens next depends on the **severity
+   resolved — delegate the fix via the **`code-review fix`** entry (profile `code_review_fix`),
+   focused on those items, implementing each resolved decision in its chosen direction and checking
+   it off, then commit `fix(story-{e}-{s}): address code review (iter {i})`. What happens next depends on the **severity
    this pass found** (the findings it just fixed, decision items included):
    - **No findings** → commit `chore(story-{e}-{s}): code review passed (iter {i})` and exit.
    - **Only Med/Low (no Critical or High)** → the fixes are in and nothing high-risk surfaced;
@@ -120,8 +125,8 @@ For iteration `i` (1-based):
 Run these in order. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project
 context, retrospective`. (Trace-gate remediation, if any, commits separately as it runs — step 1.)
 1. **TEA gates (only if `tea.enabled`; epic-level skills are always on here):** delegate via
-   `tea_epic`, in order: `/bmad-testarch-trace`, then `/bmad-testarch-nfr`, then
-   `/bmad-testarch-test-review`. Capture each verdict; record the gate decision in state
+   `tea_epic`, in order, the **`testarch-trace`**, then **`testarch-nfr`**, then
+   **`testarch-test-review`** entries. Capture each verdict; record the gate decision in state
    (`gate_decision`) + report. Handle the **trace** verdict before running nfr/test-review:
    - `PASS` → continue.
    - `WAIVED` (emitted by the skill itself) → continue; it ships as a **draft** PR in Phase 9
@@ -131,10 +136,10 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
    - `FAIL` → **ASK the user** (AskUserQuestion; mirrors the Phase 7 cap prompt — this is not a
      silent hard-stop). Summarize the uncovered requirements/ACs the trace flagged, then offer:
      - **Remediate & re-gate** *(recommended; offered only while `gate_iterations <
-       tea.gate_max_iterations`, default 2)* — delegate `/bmad-testarch-automate` at **epic scope**
-       via `tea_epic` to close the flagged coverage gaps, commit `test(epic-{e}): close trace
-       coverage gaps (gate iter {i})`, increment `gate_iterations`, then re-run
-       `/bmad-testarch-trace` and re-apply this same handling to the new verdict. (If the gaps are
+       tea.gate_max_iterations`, default 2)* — delegate the **`testarch-automate`** entry at **epic
+       scope** via `tea_epic` to close the flagged coverage gaps, commit `test(epic-{e}): close trace
+       coverage gaps (gate iter {i})`, increment `gate_iterations`, then re-run the
+       **`testarch-trace`** entry and re-apply this same handling to the new verdict. (If the gaps are
        scope/spec drift rather than missing tests, the right heavier step is `/bmad-correct-course`
        — tell the user; do **not** auto-run it, as it changes story scope.)
      - **Waive & continue** — set `gate_decision: WAIVED`, record the user's rationale + the
@@ -146,9 +151,10 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
        and report the gaps as `needs-human`.
      Once `gate_iterations` reaches the cap and trace is still `FAIL`, drop the Remediate option and
      re-ask with only Waive / Stop. Run nfr + test-review on every path except **Stop**.
-2. **Project context:** delegate `/bmad-generate-project-context` via `project_context`.
-3. **Retrospective:** delegate `/bmad-retrospective` via `retrospective`, handing it the accumulated
-   `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
+2. **Project context:** delegate the **`generate-project-context`** entry via the `project_context`
+   profile.
+3. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
+   it the accumulated `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
    writes the retro doc + flips the retrospective status to `done`.
 
 ## Phase 9 — Finalize  *(orchestrator)*

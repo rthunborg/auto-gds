@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The per-step `/bmad-*` command + prompt now live **only** in `delegation.md`:
+  `pipeline.md` references each step by its `delegation.md` entry name (e.g.
+  `create-story`, `code-review fix`) instead of re-printing the command, and the
+  placeholder glossary (`{e}`/`{s}`, `{key}`, `<story_file>`, …) is defined once in
+  `delegation.md` rather than in both files. Renaming a BMAD command or editing a
+  prompt is now a single-file change. (`/bmad-correct-course` stays a literal in
+  `pipeline.md` — it's a *suggestion to the user*, not a delegated step.)
 - Codex delegate defaults (`gpt-5.5`/`gpt-5.4`) are now treated as **real model
   names**, not placeholders. Setup no longer emits the "⚠️ Codex models are
   placeholders — confirm them" warning / "needs human" action; retuning the

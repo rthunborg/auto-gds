@@ -68,6 +68,38 @@ After writing config, create any output directories that were configured. For fi
 
 If `./assets/module.yaml` contains a `directories` array, also create each listed directory (resolving any `{field_name}` variables from the collected config values).
 
+## Provision Delegate Agents (auto-bmad)
+
+auto-bmad delegates each pipeline step to a model/effort-tuned subagent. Those subagents are
+tool-native files that must be generated into the host's agent directory. Do this here so the
+module is ready to run immediately after setup.
+
+1. **Read `target_tools`** from the collected config (the `abm` section). Default `[claude-code]`
+   if unset.
+2. **Detect the current host** (for the run-time `delegation.mode`, recorded later by the skill's
+   first-run): Claude Code if `${CLAUDE_PLUGIN_ROOT}` is set or a `.claude/` dir exists; Codex if
+   a `.codex/` dir exists or the `codex` CLI is on PATH; otherwise `other`. Claude Code and Codex
+   support `custom-subagents`; an `other` host with a generic subagent mechanism uses
+   `general-subagents`, and one with none uses `inline` (see `references/delegation-runtime.md`).
+3. **Render the delegate files** for the selected tools (resolve `{project-root}` to the real
+   path; defaults come from `./assets/agents/profiles.yaml`):
+
+   ```bash
+   python3 ./scripts/render-agents.py --project-root "{project-root}" --tools "<comma-joined target_tools>"
+   ```
+
+   This writes `.claude/agents/ab-*.md` and/or `.codex/agents/ab-*.toml`. Surface the JSON
+   result; if it exits non-zero or reports warnings, show them.
+4. **If `codex` is among `target_tools`:** the Codex model names in `profiles.yaml` are
+   placeholders. Tell the user to confirm the models available in their Codex install by editing
+   the `profiles` block in `{output_folder}/auto-bmad/config.yaml`, then run `/auto-bmad
+   reprovision`. (Claude Code profiles use real defaults — opus/sonnet — and need no change.)
+
+**Reprovision-only path:** if the user invoked with `reprovision` (or asked only to regenerate
+agents after editing profiles), skip config collection entirely and run just step 3 above,
+reading the live profiles with `--profiles "{output_folder}/auto-bmad/config.yaml"` (fall back to
+the shipped defaults if that file doesn't exist yet).
+
 ## Confirm
 
 Use the script JSON output to display what was written — config values set (written to `config.yaml` at root for core, module section for module values), user settings written to `config.user.yaml` (`user_keys` in result), help entries added, fresh install vs update.

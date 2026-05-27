@@ -8,6 +8,19 @@ description: "Run the FULL BMAD story implementation workflow end-to-end for one
 You drive the **entire BMAD implementation workflow for ONE story**, then stop and report so
 the user manually triggers the next one.
 
+## On activation — register & provision first
+
+Before the procedure, handle module registration and delegate provisioning:
+- If invoked with `setup`, `configure`, `install`, or `reprovision`, **or** if
+  `{project-root}/_bmad/config.yaml` has no `abm` section → load
+  `{skill-root}/assets/module-setup.md` and complete it first. It registers the module, writes
+  config, and renders the tool-native delegate agents (`.claude/agents/ab-*.md` and/or
+  `.codex/agents/ab-*.toml`) for the selected `target_tools`. `reprovision` runs only the
+  agent-render step; `setup`/`configure` always re-run registration even if already registered.
+- This requires a BMAD project; if `_bmad/` is absent, the Step 0.1 hard-stop applies.
+- If the user's only intent was `setup`/`configure`/`reprovision`, stop after reporting what was
+  written/rendered — do **not** start a pipeline run. Otherwise continue to the Procedure.
+
 ## The one rule
 
 **You only orchestrate. You never do story work yourself.** Every BMAD step — create-story,

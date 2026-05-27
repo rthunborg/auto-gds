@@ -16,9 +16,9 @@ version: 1
 delegation:                # spawn mechanism — host/mode auto-detected each run
   host: auto               # auto (detect each run) | claude-code | codex | other
   mode: auto               # auto (derive from host) | custom-subagents | general-subagents | inline
-  target_tools:            # tools to provision agents for; defaults at setup to the AIs the BMAD
-    - claude-code          # install targets (.claude/skills=>claude-code, .agents/skills=>codex).
-    - codex                # Listing more than one = run in either tool with no reconfig.
+  target_tools:            # tools to provision agents for; detected from installed skill dirs and
+    - claude-code          # confirmed at first run (.claude/skills=>claude-code, .agents/skills=>
+    - codex                # codex). Listing more than one = run in either tool with no reconfig.
 tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
@@ -77,32 +77,48 @@ each run**, so the same config runs in Claude Code or Codex with no reconfigurat
 Codex model names are placeholders confirmed at setup.
 
 ## First-run flow (only when config.yaml is absent)
-This is the single interactive moment in normal operation. Use AskUserQuestion:
+The single interactive episode in normal operation. Always confirm `target_tools`, then offer
+**quick vs full** setup. Use AskUserQuestion.
+
 0. **Seed delegation & profiles (non-interactive):** set `delegation.host`/`mode` to `auto`
-   (re-detected each run — see `delegation-runtime.md`); set `target_tools` from the `abm` section
-   of `{project-root}/_bmad/config.yaml` (set at setup from the AIs the BMAD install targets —
-   `.claude/skills` ⇒ claude-code, `.agents/skills` ⇒ codex). Copy the `profiles` and
-   `phase_profiles` defaults from `{skill-root}/assets/agents/profiles.yaml`. Detect the live host;
-   if it needs `custom-subagents` but its agent files are missing, run the `reprovision` action
+   (re-detected each run — see `delegation-runtime.md`). Copy the `profiles` and `phase_profiles`
+   defaults from `{skill-root}/assets/agents/profiles.yaml` — these are file-editable, never
+   interviewed (point the user to `config.yaml` + `/auto-bmad reprovision` to retune). Detect the
+   live host; if it needs `custom-subagents` but its agent files are missing, run `reprovision`
    (`scripts/render-agents.py`) before the pipeline starts.
-1. **Detect TEA availability:** check that the TEA skills (`bmad-testarch-*`) are installed.
-2. **Ask `tea.enabled`** — default to "yes" if TEA skills are present, "no" if absent (and if
-   absent, don't offer yes).
-3. **If TEA enabled, resolve `framework_ci`:** detect whether a test framework config exists
-   (e.g. `playwright.config.*`, `cypress.config.*`, `pytest`/`jest`/`vitest` config) and a CI
-   workflow (`.github/workflows/*`, `.gitlab-ci.yml`, etc.).
-   - If both look present → set `framework_ci: done` silently.
-   - If missing → **ask**: run one-time `/bmad-testarch-framework` + `/bmad-testarch-ci` now
-     (delegate to `ab-high`), or skip and let the user handle it (`skip`). Heavy, infra-choosing
-     setup — never auto-run without asking.
-4. Write `config.yaml` with the seeded delegation/profiles, the answers, and detected
-   `git`/`base_branch` values. **Then stop — do not start the pipeline this session.** This
-   first-run write (plus any module registration done earlier this session) is the one-time setup;
-   report what was configured and tell the user to open a **new session with fresh context** and
-   run `/auto-bmad` to begin the first story. Running the pipeline on the same context that just
-   did setup wastes the window — a fresh session re-detects host/mode and starts the story clean.
-   (On later runs `config.yaml` already exists, so this flow is skipped and the pipeline proceeds
-   normally.)
+1. **Confirm `target_tools` (always):** if `module-setup.md` already ran *this session* (fresh
+   registration), it already confirmed `target_tools` — reuse the `abm` value, don't re-ask.
+   Otherwise (the common case — BMAD pre-registered the module, so setup was skipped, and the
+   `abm` value is unconfirmed) **re-detect from the installed skill dirs on disk, not just the
+   `abm` section**: `claude-code` if `.claude/skills/auto-bmad/` exists; `codex` if
+   `.agents/skills/auto-bmad/` (BMAD installs Codex skills under `.agents/`) or
+   `.codex/skills/auto-bmad/` / `~/.codex/skills/auto-bmad/` exists. Present that set (unioned with
+   the `abm` value, preferring on-disk detection and noting any mismatch) as the default and **ask
+   the user to confirm** — they may drop one or add a tool they'll install later. If the confirmed
+   set differs from what agents were rendered for, run `reprovision` for it. (Mirrors
+   `assets/module-setup.md` → "Provision Delegate Agents".)
+2. **Choose setup depth:** ask **Quick** (recommended — `target_tools` + TEA only; sensible
+   defaults for everything else) or **Full** (also set git + code-review prefs). Quick → skip
+   step 4.
+3. **TEA (both depths):** detect the TEA skills (`bmad-testarch-*`) and ask `tea.enabled` —
+   default "yes" if present, "no" if absent (don't offer yes when absent). If enabled, resolve
+   `framework_ci`: detect a test-framework config (`playwright.config.*`, `cypress.config.*`,
+   `pytest`/`jest`/`vitest`) and a CI workflow (`.github/workflows/*`, `.gitlab-ci.yml`, …). Both
+   present → `framework_ci: done` silently; missing → **ask** to run one-time
+   `/bmad-testarch-framework` + `/bmad-testarch-ci` now (delegate to `ab-high`) or `skip`. Heavy,
+   infra-choosing setup — never auto-run without asking.
+4. **Full only — extra prefs** (each prefilled with the default shown; the user changes only what
+   they want): `git.mode` (auto | remote | local; default auto), `git.branch_prefix` (default
+   `story/`), `code_review.max_iterations` (default 3), `code_review.alternate_models` (default
+   true). `git.base_branch` is auto-detected, never asked.
+5. Write `config.yaml` with the seeded delegation/profiles, the confirmed `target_tools`, the
+   answers, and detected `git`/`base_branch` values (Quick fills the step-4 fields with the
+   defaults above). **Then stop — do not start the pipeline this session.** This first-run write
+   (plus any module registration done earlier this session) is the one-time setup; report what was
+   configured and tell the user to open a **new session with fresh context** and run `/auto-bmad`
+   to begin the first story. Running the pipeline on the same context that just did setup wastes
+   the window — a fresh session re-detects host/mode and starts the story clean. (On later runs
+   `config.yaml` already exists, so this flow is skipped and the pipeline proceeds normally.)
 
 ## state/{key}.yaml
 ```yaml

@@ -1,6 +1,6 @@
 # auto-bmad
 
-[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 A **BMad module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**.
 
@@ -71,7 +71,7 @@ Run from the root of a BMAD-enabled project:
 
 > 💡 **Run it in an auto-approve / "YOLO" mode.** auto-bmad is built to run autonomously between the [human-in-the-loop stops](#human-in-the-loop-stops) below, so it works best when the host tool isn't prompting for permission on every tool call — Claude Code's `--dangerously-skip-permissions` (aka YOLO mode), or Codex's full-auto/auto-approve mode. Because that hands the agent broad access, run it inside a sandbox: see [aicontainer](https://github.com/stefanoginella/aicontainer) for a containerized environment that lets you skip permission prompts safely.
 
-- **First run in a project** asks a couple of one-time setup questions (TEA on/off, test framework/CI scaffolding), writes `_bmad-output/auto-bmad/config.yaml`, then **stops and asks you to start a fresh session** — configuration pollutes the context window, so the first story runs clean when you re-run `/auto-bmad` in a new session.
+- **First run in a project** asks a few one-time setup questions — confirms which AIs to provision delegate agents for (`target_tools`, re-detected from your installed skill dirs), then **Quick** (default: TEA on/off only, sensible defaults for the rest) or **Full** (also git mode/prefix + code-review iteration cap) — writes `_bmad-output/auto-bmad/config.yaml`, then **stops and asks you to start a fresh session** so the first story runs clean (configuration pollutes the context window).
 - **No-argument `/auto-bmad` resumes unfinished work first.** It picks up an interrupted auto-bmad pipeline if one exists, otherwise the next actionable story by status (`in-progress → review → ready-for-dev → backlog`) — it doesn't jump straight to a fresh backlog item. Pass a story id to target one explicitly.
 - The pipeline is **resumable** — re-run `/auto-bmad` to continue from the last completed phase after an interruption.
 - **Code review starts on Opus** and alternates Opus/Sonnet across iterations. If Critical/High findings remain after the iteration cap (default 3), it **asks you** whether to run another pass, accept the findings and continue (the eventual PR is opened as a draft), or stop.
@@ -101,7 +101,7 @@ auto-bmad runs autonomously between the points below — delegated sub-agents an
 
 | Stop | When | What you decide / do |
 |------|------|----------------------|
-| **First-run setup** | First `/auto-bmad` in a project | One-time questions: TEA on/off, and whether to scaffold the test framework + CI. Writes `config.yaml`, then stops — **start a new session and re-run `/auto-bmad`** so the first story runs on fresh context. |
+| **First-run setup** | First `/auto-bmad` in a project | One-time questions: confirm `target_tools`, choose **Quick** (TEA on/off + framework/CI scaffolding) or **Full** (also git + code-review prefs). Writes `config.yaml`, then stops — **start a new session and re-run `/auto-bmad`** so the first story runs on fresh context. |
 | **Module setup** | `/auto-bmad setup` (or module not yet registered) | Confirm or adjust which AIs to provision delegate agents for (defaults to the ones your BMAD install targets). |
 | **Code review didn't converge** | Phase 7 — iteration cap reached with unresolved Critical/High findings | Choose: run another review + fix pass, accept and continue (the PR is opened as a **draft**), or stop. |
 | **Re-running a completed story** | You target an already-`done` story | Confirm before its report log is overwritten; otherwise it won't redo the story. |

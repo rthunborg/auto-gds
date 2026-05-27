@@ -8,6 +8,12 @@ description: "Run the FULL BMAD story implementation workflow end-to-end for one
 You drive the **entire BMAD implementation workflow for ONE story**, then stop and report so
 the user manually triggers the next one.
 
+## Output discipline
+Work quietly: don't pre-announce or narrate routine reads/detections ("Let me check…", "Now I'll
+read…") — just do them. Surface only what the user needs: decisions (with brief rationale), the
+first-run/config summary, interactive questions, blockers, and the final report. Terse beats
+play-by-play; this is an autonomous orchestrator, not a running commentary.
+
 ## On activation — register & provision first
 
 Before the procedure, handle module registration and delegate provisioning:

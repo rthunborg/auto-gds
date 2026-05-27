@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "auto-bmad",
+  "description": "Orchestrator that runs the full BMAD story implementation workflow end-to-end, one story at a time.",
+  "owner": {
+    "name": "Stefano Ginella",
+    "email": "stefano@stefanoginella.com"
+  },
+  "plugins": [
+    {
+      "name": "auto-bmad",
+      "source": "./plugins/auto-bmad",
+      "description": "Drive the full BMAD story workflow (create-story -> dev-story -> code-review, plus TEA + epic-boundary skills) for one story at a time: branch, commit per step, open a PR, and report. The orchestrator only delegates to model/effort-tuned sub-agents.",
+      "author": {
+        "name": "Stefano Ginella",
+        "email": "stefano@stefanoginella.com"
+      },
+      "homepage": "https://github.com/stefanoginella/auto-bmad",
+      "repository": "https://github.com/stefanoginella/auto-bmad",
+      "license": "MIT",
+      "category": "development",
+      "keywords": ["bmad", "orchestrator", "workflow", "automation", "stories", "tea"]
+    }
+  ]
+}

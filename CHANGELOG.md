@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workaround that uses `stop before code-review` + resume to implement a story in
   one tool and code-review it in the other (either direction), leaning on
   auto-detected host and the resumable, commit-checkpointed pipeline.
+- Preflight **provisioning-drift detection**. `render-agents.py --check` re-renders
+  the delegate agents in memory and diffs them against the on-disk files (exit 1
+  when stale). On a `custom-subagents` host the orchestrator runs it every preflight
+  and **auto-reprovisions** — reporting it — when the agents are missing or stale
+  after a module update or a `profiles` edit, so generated agents no longer drift
+  unnoticed.
 
 ## [0.1.1] - 2026-05-27
 

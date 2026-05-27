@@ -107,7 +107,10 @@ module is ready to run immediately after setup.
 **Reprovision-only path:** if the user invoked with `reprovision` (or asked only to regenerate
 agents after editing profiles), skip config collection entirely and run just step 3 above,
 reading the live profiles with `--profiles "{output_folder}/auto-bmad/config.yaml"` (fall back to
-the shipped defaults if that file doesn't exist yet).
+the shipped defaults if that file doesn't exist yet). An explicit `reprovision` always re-renders;
+the orchestrator also **detects when it's needed on its own** at preflight via `render-agents.py
+--check` and auto-reprovisions (see `references/delegation-runtime.md` → "Resolving host & mode"),
+so users rarely have to run this by hand.
 
 ## Confirm
 

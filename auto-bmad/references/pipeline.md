@@ -23,6 +23,10 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Git preflight (**orchestrator runs this directly**): is this a git repo? is the working tree
   clean? detect git mode (gh installed AND a GitHub remote → `remote`; else `local`); detect the
   base branch. Dirty tree on a non-story branch → hard-stop.
+- **Provisioning freshness (custom-subagents hosts):** run `render-agents.py --check`; if the
+  delegate agents are missing or stale (module updated / profiles edited), auto-reprovision and
+  note it in the preflight echo + final report. Not a human stop. See `delegation-runtime.md` →
+  "Resolving host & mode".
 - **Triage (only if `tea.enabled`; delegated to `ab-fast`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_selected` (e.g. `[atdd, automate]`,
   or `[]` for trivial) in state.

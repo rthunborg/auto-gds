@@ -26,10 +26,26 @@ Detect the host in this order, then pick the best tier it supports:
 2. **Codex** — a `.codex/` dir exists or the `codex` CLI is on PATH → `custom-subagents`.
 3. **Other** — neither. General subagent/Task mechanism → `general-subagents`; else → `inline`.
 
-If the detected host needs `custom-subagents` but its agent files are absent
-(`.claude/agents/ab-*.md` / `.codex/agents/ab-*.toml` — e.g. they were provisioned only for the
-other tool, or not yet rendered), run the `reprovision` action for this host's tool first (see
-`module-setup.md`), or fall back to `general-subagents`/`inline` for this run and note it in the
+If the detected host needs `custom-subagents`, **verify the agent files are present _and_ current**
+before relying on them — checking existence alone lets the generated agents drift silently after a
+module update (new templates) or a `profiles` edit. Run the freshness check, which re-renders every
+agent in memory and diffs it against the on-disk files (so it catches changed templates, edited
+profiles, an added/dropped `target_tool`, and mangled files alike):
+
+```bash
+python3 ./scripts/render-agents.py --check --project-root "{project-root}" \
+  --tools "<comma-joined target_tools>" --profiles "{output_folder}/auto-bmad/config.yaml"
+```
+
+Read the JSON `needs_reprovision` (exit 1 ⇒ stale). When true, **auto-reprovision** — rerun the same
+command without `--check` (the `reprovision` action; see `module-setup.md`) — then **report it
+prominently** in the Phase 0 preflight echo and the final report, e.g. *"⚠ Delegate agents were stale
+(module updated and/or profiles changed since last provisioned) — regenerated N file(s) before this
+run."* The check distinguishes the cases: `missing` ⇒ never rendered for this tool (e.g. provisioned
+only for the other one); `stale` ⇒ out of date; `extra` ⇒ left over from a tool dropped from
+`target_tools` (reported, not auto-removed). Reprovisioning is deterministic and safe (the agent
+files are generated and gitignored), so this self-heals without a human stop. If the host can't do
+`custom-subagents` at all, fall back to `general-subagents`/`inline` for this run and note it in the
 report.
 
 ## Tier 1 — `custom-subagents` (Claude Code & Codex)

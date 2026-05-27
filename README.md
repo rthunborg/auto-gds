@@ -70,7 +70,7 @@ npx bmad-method install --action quick-update
 
 The interactive flow classifies the change and defaults accordingly — **patch** and **minor** upgrades are auto-accepted, **major** upgrades ask first. `quick-update` is the fast path: it re-pulls auto-bmad (and your other modules) from their original sources without prompting, applying patch/minor upgrades and refusing majors. To track development versions ahead of a tagged release, use the prerelease channel: `npx bmad-method@next install`.
 
-> 💡 **After updating, re-render the delegate agents.** auto-bmad generates its tuned subagents from `profiles`/templates, so once the module files refresh, run `/auto-bmad reprovision` to regenerate `.claude/agents` / `.codex/agents`. Nothing else needs reconfiguring — the running tool is auto-detected every run.
+> 💡 **Delegate agents re-render themselves after an update.** auto-bmad generates its tuned subagents from `profiles`/templates, so a module update (or a `profiles` edit) would otherwise leave the generated `.claude/agents` / `.codex/agents` stale. The next `/auto-bmad` run **detects this at preflight and reprovisions automatically**, noting it in the report — so you normally don't need to do anything. To refresh them yourself (e.g. right after editing `profiles`), run `/auto-bmad reprovision`. Nothing else needs reconfiguring — the running tool is auto-detected every run.
 
 If you installed via the Claude plugin marketplace (the alternative above) rather than the BMAD installer, update through Claude Code instead:
 

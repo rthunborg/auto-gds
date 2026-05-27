@@ -24,7 +24,17 @@ block-structured reader (same spirit as ``story_plan.py``), so no PyYAML needed.
 Usage:
     render-agents.py --project-root DIR [--tools claude-code,codex]
                      [--profiles FILE] [--templates-dir DIR] [--dry-run]
+    render-agents.py --check --project-root DIR [--tools ...] [--profiles FILE]
     render-agents.py --self-test
+
+``--check`` renders every agent in memory and diffs it against the on-disk files
+instead of writing — answering "is ``/auto-bmad reprovision`` needed?". It
+reports ``needs_reprovision`` plus the ``missing`` / ``stale`` / ``extra`` files,
+and exits 0 when fresh, 1 when reprovision is needed, 2 on usage error. Because
+it uses the same inputs as a real render (current profiles + current templates +
+``target_tools``), the check and the fix can never disagree, and it catches every
+drift source: a module update that changed the templates, an edited ``profiles``
+block, an added/removed ``target_tool``, or a hand-mangled generated file.
 
 Output: a single JSON object on stdout.
 """
@@ -143,15 +153,20 @@ def parse_profiles(text: str) -> dict:
     return profiles
 
 
-def render(
+def _plan(
     profiles: dict,
     tools: list[str],
     templates_dir: Path,
     project_root: Path,
-    dry_run: bool = False,
-) -> dict:
-    """Render the requested tools' agent files. Returns a JSON-able summary."""
-    files_written: list[str] = []
+) -> tuple[list[tuple[Path, str]], list[str]]:
+    """Render every requested profile×tool in memory (no writes).
+
+    Returns ``(outputs, warnings)`` where ``outputs`` is a list of
+    ``(out_path, rendered_content)``. This is the single source of truth shared
+    by ``render`` (which writes) and ``check`` (which diffs), so the two can
+    never disagree about what the agent files *should* contain.
+    """
+    outputs: list[tuple[Path, str]] = []
     warnings: list[str] = []
 
     for tool in tools:
@@ -184,17 +199,83 @@ def render(
             if leftover:
                 warnings.append(f"{name} ({tool}): unfilled placeholders {sorted(set(leftover))}")
 
-            out_path = out_dir / f"{name}{spec['out_suffix']}"
-            if not dry_run:
-                out_dir.mkdir(parents=True, exist_ok=True)
-                out_path.write_text(content, encoding="utf-8")
-            files_written.append(str(out_path))
+            outputs.append((out_dir / f"{name}{spec['out_suffix']}", content))
+
+    return outputs, warnings
+
+
+def render(
+    profiles: dict,
+    tools: list[str],
+    templates_dir: Path,
+    project_root: Path,
+    dry_run: bool = False,
+) -> dict:
+    """Render the requested tools' agent files. Returns a JSON-able summary."""
+    outputs, warnings = _plan(profiles, tools, templates_dir, project_root)
+    files_written: list[str] = []
+    for out_path, content in outputs:
+        if not dry_run:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(content, encoding="utf-8")
+        files_written.append(str(out_path))
 
     return {
         "status": "success",
         "tools": tools,
         "dry_run": dry_run,
         "files_written": files_written,
+        "warnings": warnings,
+    }
+
+
+def check(
+    profiles: dict,
+    tools: list[str],
+    templates_dir: Path,
+    project_root: Path,
+) -> dict:
+    """Diff what *would* be rendered now against the on-disk agent files.
+
+    Answers "is ``/auto-bmad reprovision`` needed?" without writing anything.
+    ``missing`` = expected but absent; ``stale`` = present but content differs
+    (template or profile changed since last render); ``extra`` = ab-* agent
+    files on disk that are no longer expected (e.g. a tool dropped from
+    ``target_tools``) — informational, since a plain render never deletes them.
+    ``needs_reprovision`` is true iff anything is missing or stale.
+    """
+    outputs, warnings = _plan(profiles, tools, templates_dir, project_root)
+    missing: list[str] = []
+    stale: list[str] = []
+    ok: list[str] = []
+    for out_path, content in outputs:
+        if not out_path.exists():
+            missing.append(str(out_path))
+        elif out_path.read_text(encoding="utf-8") != content:
+            stale.append(str(out_path))
+        else:
+            ok.append(str(out_path))
+
+    # Scan *every* tool's output dir, not just the requested ones, so agents
+    # left behind by a tool dropped from target_tools are surfaced as 'extra'.
+    expected = {str(p) for p, _ in outputs}
+    extra: list[str] = []
+    for spec in TOOLS.values():
+        out_dir = project_root / spec["out_dir"]
+        if out_dir.is_dir():
+            for f in sorted(out_dir.glob(f"ab-*{spec['out_suffix']}")):
+                if str(f) not in expected:
+                    extra.append(str(f))
+
+    needs = bool(missing or stale)
+    return {
+        "status": "stale" if needs else "fresh",
+        "needs_reprovision": needs,
+        "tools": tools,
+        "missing": missing,
+        "stale": stale,
+        "ok": ok,
+        "extra": extra,
         "warnings": warnings,
     }
 
@@ -270,10 +351,41 @@ def _run_self_test() -> int:
         # All four profiles rendered for both tools => 8 files.
         assert len(result["files_written"]) == 8, result["files_written"]
 
+        # --check: right after a render, everything is fresh.
+        chk = check(profiles, ["claude-code", "codex"], templates_dir, root)
+        assert chk["status"] == "fresh" and not chk["needs_reprovision"], chk
+        assert len(chk["ok"]) == 8 and not chk["stale"] and not chk["missing"], chk
+
+        # Editing a profile makes that agent's rendered output differ -> stale.
+        bumped = json.loads(json.dumps(profiles))  # deep copy
+        bumped["ab-fast"]["claude"]["model"] = "opus"
+        chk_stale = check(bumped, ["claude-code"], templates_dir, root)
+        assert chk_stale["needs_reprovision"], chk_stale
+        assert any(p.endswith("ab-fast.md") for p in chk_stale["stale"]), chk_stale
+        assert not chk_stale["missing"], chk_stale
+
+        # Deleting a generated file -> missing.
+        (root / ".claude/agents/ab-max.md").unlink()
+        chk_missing = check(profiles, ["claude-code"], templates_dir, root)
+        assert chk_missing["needs_reprovision"], chk_missing
+        assert any(p.endswith("ab-max.md") for p in chk_missing["missing"]), chk_missing
+
+        # A tool dropped from target_tools leaves 'extra' files (informational,
+        # not on its own a reprovision trigger). Re-render to a clean state first.
+        render(profiles, ["claude-code", "codex"], templates_dir, root)
+        chk_extra = check(profiles, ["claude-code"], templates_dir, root)
+        assert chk_extra["status"] == "fresh", chk_extra
+        assert any(p.endswith("ab-max.toml") for p in chk_extra["extra"]), chk_extra
+
         # dry-run writes nothing new.
         with tempfile.TemporaryDirectory() as td2:
             dr = render(profiles, ["claude-code"], templates_dir, Path(td2), dry_run=True)
             assert dr["files_written"] and not any(Path(p).exists() for p in dr["files_written"])
+
+        # --check on a never-rendered root: everything missing -> needs reprovision.
+        with tempfile.TemporaryDirectory() as td3:
+            fresh_chk = check(profiles, ["claude-code"], templates_dir, Path(td3))
+            assert fresh_chk["needs_reprovision"] and len(fresh_chk["missing"]) == 4, fresh_chk
 
     print("SELF-TEST PASSED (all assertions)")
     return 0
@@ -282,6 +394,11 @@ def _run_self_test() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render auto-bmad tool-native delegate agents.")
     parser.add_argument("--self-test", action="store_true", help="Run internal tests and exit.")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Diff on-disk agents vs current profiles/templates; report if reprovision is needed. Exit 1 if stale.",
+    )
     parser.add_argument("--project-root", help="Project root to write .claude/agents and/or .codex/agents into.")
     parser.add_argument("--tools", default="claude-code", help="Comma-separated: claude-code,codex")
     parser.add_argument("--profiles", help="Profiles source (YAML). Default: shipped assets/agents/profiles.yaml")
@@ -312,6 +429,12 @@ def main() -> int:
     if bad:
         print(json.dumps({"status": "error", "message": f"unknown tools: {bad}; valid: {list(TOOLS)}"}))
         return 2
+
+    if args.check:
+        result = check(profiles, tools, templates_dir, Path(args.project_root))
+        result["profiles_source"] = str(profiles_file)
+        print(json.dumps(result, indent=2))
+        return 1 if result["needs_reprovision"] else 0
 
     result = render(profiles, tools, templates_dir, Path(args.project_root), dry_run=args.dry_run)
     result["profiles_source"] = str(profiles_file)

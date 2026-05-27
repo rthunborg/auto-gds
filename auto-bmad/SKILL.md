@@ -39,9 +39,10 @@ every TEA skill, retrospective — runs inside a delegated sub-agent (the `ab-*`
 preflight, branching, per-phase commits, push, and PR. You hold the full pipeline context, so you
 write the commit and PR messages yourself; delegating git would only add a slow round-trip. So
 your own actions are: reading config/state, running `scripts/story_plan.py`, deciding what to
-delegate, **all git/PR work** (per `references/git-and-pr.md`), writing the state file, and
-producing the final report. If you ever feel tempted to edit code, write a test, or run a
-`/bmad-*` skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
+delegate, **all git/PR work** (per `references/git-and-pr.md`), writing the state file, **flipping
+the BMAD-level story status to `done` at finalize on a clean completion** (Phase 9 — the same
+direct, non-delegated finalize bookkeeping as git), and producing the final report. If you ever
+feel tempted to edit code, write a test, or run a `/bmad-*` skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
 host with no subagent support — see `references/delegation-runtime.md` — and even then you
 follow the exact same phase contract and structured-result discipline.)
 
@@ -135,7 +136,10 @@ Always produce a single report (even on hard-stop). **Append it** as a new times
 resume — earlier runs' reports carry context we must not lose. The ONLY time you overwrite the
 file is a deliberate full re-run of an already-`done` story, and only after explicit user
 confirmation. The report contains:
-- **Story:** key, final status, branch.
+- **Story:** key, branch, and final status — state whether the BMAD-level status (story file +
+  sprint-status) was flipped to `done` (clean completion) or left at `review` (caveated: draft PR /
+  blocker / waived gate). On a clean completion, frame the open PR's merge as the human's
+  remaining (optional, non-blocking) step, not a gate that holds the story back.
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps) — omit if none.
 - **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why.
 - **CI:** link to the CI run the PR/push triggered + its status, if the repo has workflows (omit if none).
@@ -143,7 +147,10 @@ confirmation. The report contains:
 - **Open questions** surfaced by any step.
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
   `<impl>/deferred-work.md` ledger).
-- **⚠️ Needs human:** blockers / manual actions required before this can be considered done.
+- **⚠️ Needs human:** blockers / manual actions. On a **caveated** completion these are required
+  before the story can be considered done (it was left at `review`). On a **clean** completion the
+  story is already `done`; list only genuine follow-ups (e.g. merging the open PR is optional and
+  on the human's own time) — do not imply the merge gates `done`.
 - **Next:** the next story `story_plan.py` would pick (preview only — do NOT start it).
 
 ## Hard-stop conditions (surface clearly, then report & exit)

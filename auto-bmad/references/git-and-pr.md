@@ -42,7 +42,10 @@ lands on the base branch; every phase is its own commit so the pipeline is resum
   Add `--draft` if any blocker was recorded, `convergence_unverified` is `true` (Phase 7: code
   review hit the cap while still finding Critical/High and the user chose to ship anyway), or
   `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
-  trace skill — chose to ship despite the coverage gaps).
+  trace skill — chose to ship despite the coverage gaps). **The negation of this same draft
+  predicate is the "clean completion" test** that decides whether Phase 9 also flips the
+  BMAD-level story status (story file `Status:` + `sprint-status.yaml`) to `done` — non-draft ⇒
+  flip, draft ⇒ leave at `review` (see `pipeline.md` Phase 9). Keep the two coupled if you edit it.
 - Title: a conventional summary of the story, e.g. `feat(story-1-2): user authentication`.
 - Body must include:
   - one-paragraph summary of what the story delivered;

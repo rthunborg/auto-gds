@@ -11,8 +11,11 @@ The orchestrator **delegates BMAD work and reports** — it must never implement
 runs in a delegated `ab-*` sub-agent. **Git/PR work is the deliberate exception that the
 orchestrator owns directly** (never delegated): preflight detection, branching, per-phase
 commits, push, and PR — it holds the full pipeline context to write commit/PR messages, and a
-round-trip to a delegate would only be slower. Apart from git, the **only** time the orchestrator
-does step work itself is the `inline` delegation tier (hosts with no subagent support — see
+round-trip to a delegate would only be slower. The Phase 9 **clean-completion BMAD-status flip**
+(story file `Status:` + `sprint-status.yaml` → `done`) is the same kind of orchestrator-owned
+finalize bookkeeping — a one-field status write, not story work, coupled to the git finalize the
+orchestrator already owns. Apart from those, the **only** time the orchestrator does step work
+itself is the `inline` delegation tier (hosts with no subagent support — see
 `delegation-runtime.md`), and even then it follows the same phase contract and structured-result
 discipline. When editing, preserve this separation.
 

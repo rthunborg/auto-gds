@@ -183,9 +183,10 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
 ## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).
 - **git mode `remote`:** push the branch and open a PR via `gh pr create` (see `git-and-pr.md`).
-  Make it a **draft** if any blocker was recorded, or `convergence_unverified` is `true` (the
-  user chose to accept the fixes and ship in Phase 7 despite the cap being hit while Critical/High
-  were still surfacing). PR body = conventional summary + link to the story file +
+  Make it a **draft** if any blocker was recorded, `convergence_unverified` is `true` (the user
+  chose to accept the fixes and ship in Phase 7 despite the cap being hit while Critical/High were
+  still surfacing), or `gate_decision` is `WAIVED` (Phase 8 epic gate did not pass; see
+  `git-and-pr.md` for the authoritative predicate). PR body = conventional summary + link to the story file +
   a checklist of open questions / deferred work / human-action items. If the repo has CI
   workflows, also capture the triggered CI run link into `ci_run_url` (see `git-and-pr.md`) — do
   not wait for it to finish.

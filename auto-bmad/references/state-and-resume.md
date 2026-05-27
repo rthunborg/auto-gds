@@ -145,6 +145,18 @@ No-arg `/auto-bmad` chooses the target story with this precedence:
 
 An explicit `--story <arg>` overrides both and targets that story directly.
 
+**Why a finished story doesn't re-stick (clean completions).** A `dev-story` run leaves the
+BMAD-level status at `review`, and BMAD only flips `review → done` on human merge. Without
+intervention that traps the pipeline: `story_plan.py` (precedence above) keeps returning the
+just-finished `review` story, but its auto-bmad `state/{key}.yaml` is already `done`, so the run
+reports "already complete" and stops — it never advances. To avoid this, **Phase 9 flips the
+BMAD-level status (story file `Status:` + the `sprint-status.yaml` entry) to `done` on a clean
+completion** (non-draft PR — see `pipeline.md` Phase 9), decoupling `done` from the human's
+merge so `story_plan.py` moves on to the next story. A **caveated** completion (draft PR / blocker
+/ waived gate) deliberately stays at `review`: it still needs a human, so it keeps re-surfacing —
+and a re-run, finding the auto-bmad state already `done`, reports it complete (per the rule below)
+rather than redoing the work.
+
 Once the target `story_key` is known:
 - If `state/{key}.yaml` exists and `status != done` → **resume**: skip phases already in
   `completed_phases`, and if Phase 7 is in progress, continue the review loop from

@@ -31,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A finished story now advances instead of getting stuck waiting for a human merge.** `dev-story`
+  leaves the BMAD-level status at `review`, and BMAD only flips `review → done` on merge — so after
+  a full pipeline run, `story_plan.py` kept re-selecting the just-finished `review` story while its
+  auto-bmad state file was already `done`, and the run reported "already complete" and stopped
+  without ever moving on. Phase 9 now **flips the BMAD-level status (story file `Status:` + the
+  `sprint-status.yaml` entry) to `done` on a clean completion** — i.e. when the PR is/would be
+  non-draft (no blocker, `convergence_unverified` false, gate not `WAIVED`) — decoupling `done` from
+  the human's merge (auto-bmad still never merges; the open PR is theirs to merge whenever). A
+  caveated completion (draft PR / blocker / waived gate) deliberately stays at `review` so it keeps
+  surfacing for the human. (`pipeline.md` Phase 9, `git-and-pr.md`, `state-and-resume.md`,
+  `SKILL.md`; principle note in `CLAUDE.md`.)
+
 - **Deferred code-review findings are persisted to the durable `deferred-work.md` ledger again.**
   `/bmad-code-review` natively appends every `[Review][Defer]` finding to the cross-story ledger
   `{implementation_artifacts}/deferred-work.md` (next to `sprint-status.yaml`), but auto-bmad's

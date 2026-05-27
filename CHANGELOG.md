@@ -31,6 +31,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Deferred code-review findings are persisted to the durable `deferred-work.md` ledger again.**
+  `/bmad-code-review` natively appends every `[Review][Defer]` finding to the cross-story ledger
+  `{implementation_artifacts}/deferred-work.md` (next to `sprint-status.yaml`), but auto-bmad's
+  `code-review` delegation prompt only emphasized the story-file `### Review Findings` section and
+  the orchestrator hoisted defer/decision handling into its own Phase 7 loop — recording deferrals
+  to the per-story `state.deferred_work`, the report, and retro-notes, while the BMAD-native ledger
+  silently never got written. The per-story state mirror is operational; the ledger is the durable,
+  human-discoverable backlog the team and any later manual BMAD run rely on. Three reinforcing
+  fixes: the `code-review` delegation prompt (`delegation.md`) now makes appending defers to
+  `<impl>/deferred-work.md` part of the deliverable and adds a `Deferrals logged: <W>` report line;
+  Phase 7 (`pipeline.md`) appends user-deferred decisions to the same ledger as a direct
+  orchestrator write (like the report/retro-notes) and extends the reconciliation gate to confirm
+  defers reached the ledger; and `scripts/review_findings.py` gains `--deferred-work-file` /
+  `--story-key` to count scoped `## Deferred from:` bullets and fail reconciliation on a shortfall.
+  (`delegation.md`, `pipeline.md`, `SKILL.md`, `scripts/review_findings.py` with new `--self-test`
+  coverage.)
+
 - **Code review now enforces that findings are persisted to the story file.** `/bmad-code-review`
   silently runs in `no-spec` mode — dropping `[Review][Decision]` items and writing nothing to the
   story's `### Review Findings` section — whenever the story file isn't bound as its spec, yet it

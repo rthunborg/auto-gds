@@ -47,7 +47,9 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
 - `auto-bmad/scripts/render-agents.py` — dependency-free agent generator (`--self-test`).
 - `auto-bmad/scripts/review_findings.py` — dependency-free reader for a story's `### Review
   Findings` section; the Phase 7 reconciliation gate runs it to confirm the review skill actually
-  persisted findings (`--expect-min N` ⇒ exit 1 on shortfall; `--self-test`).
+  persisted findings (`--expect-min N` ⇒ exit 1 on shortfall) and that every `[Review][Defer]`
+  finding reached the durable `deferred-work.md` ledger (`--deferred-work-file` + `--story-key` ⇒
+  exit 1 on shortfall; `--self-test`).
 - `auto-bmad/scripts/merge-config.py` + `merge-help-csv.py` — config/CSV merge (from the BMAD
   standalone-module template; use PyYAML via the BMAD installer's environment).
 - `CHANGELOG.md` — hand-maintained ([Keep a Changelog](https://keepachangelog.com/)); version

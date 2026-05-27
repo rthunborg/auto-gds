@@ -12,15 +12,30 @@ This script lets the orchestrator reconcile what the reviewer *claimed* against
 what is actually in the file, deterministically (no LLM re-read). It parses the
 ``### Review Findings`` section and counts each triage type by checked state.
 
+It also reconciles the durable, cross-story deferral ledger
+(``{implementation_artifacts}/deferred-work.md``): the code-review step is
+supposed to append every ``[Review][Defer]`` finding there under a
+``## Deferred from: …`` heading, but auto-bmad's delegation prompt historically
+emphasized only the story-file section, so that side-effect got dropped. With
+``--deferred-work-file`` the gate confirms each defer finding in the story
+actually reached the ledger.
+
 Dependency-free. Output is a single JSON object on stdout.
 
 Usage:
     review_findings.py --story-file PATH [--expect-min N]
+                       [--deferred-work-file PATH [--story-key KEY]]
     review_findings.py --self-test
 
 With ``--expect-min N`` the process also exits non-zero (and sets
 ``reconciled: false``) when the section is absent or holds fewer than N total
 items — pass the reviewer's reported finding count as N to gate the phase.
+
+With ``--deferred-work-file PATH`` the process additionally fails reconciliation
+when the ledger holds fewer ``## Deferred from:`` bullets than the story has
+``[Review][Defer]`` findings. Pass ``--story-key KEY`` to scope the ledger count
+to this story's heading (the ledger is append-only across stories, so an unscoped
+count is trivially satisfied once history accumulates).
 """
 from __future__ import annotations
 
@@ -38,10 +53,39 @@ ANY_HEADING_RE = re.compile(r"^#{1,4}\s+\S")
 BULLET_RE = re.compile(
     r"^\s*[-*]\s+\[(?P<mark>[ xX])\]\s+\[Review\]\[(?P<type>Patch|Decision|Defer)\]",
 )
+# A ledger section heading: `## Deferred from: code review of story-3.3 (2026-03-18)`.
+DEFER_HEADING_RE = re.compile(r"^#{1,4}\s+deferred\s+from:", re.IGNORECASE)
+# Any list bullet (the ledger entries are plain bullets, not triage checkboxes).
+LEDGER_BULLET_RE = re.compile(r"^\s*[-*]\s+\S")
 
 
 def _empty_counts():
     return {t: {"open": 0, "checked": 0} for t in ("patch", "decision", "defer")}
+
+
+def parse_deferred_work(text: str, story_key=None):
+    """Count deferral bullets in the ledger under ``## Deferred from:`` headings.
+
+    Returns ``(present, count)``. ``present`` is True if any ``## Deferred from:``
+    heading exists at all. When ``story_key`` is given, only bullets under a
+    heading whose text contains that key (case-insensitive) are counted — the
+    ledger is append-only across stories, so scoping keeps the count meaningful.
+    """
+    present = False
+    count = 0
+    counting = False
+    for raw in text.splitlines():
+        if DEFER_HEADING_RE.match(raw):
+            present = True
+            counting = story_key is None or story_key.lower() in raw.lower()
+            continue
+        if ANY_HEADING_RE.match(raw):
+            # Any other heading closes the current deferral block.
+            counting = False
+            continue
+        if counting and LEDGER_BULLET_RE.match(raw):
+            count += 1
+    return present, count
 
 
 def parse_section(text: str):
@@ -69,7 +113,7 @@ def parse_section(text: str):
     return section_present, by_type
 
 
-def build_result(story_file: str, expect_min):
+def build_result(story_file: str, expect_min, deferred_work_file=None, story_key=None):
     result = {
         "story_file": story_file,
         "section_present": False,
@@ -78,6 +122,10 @@ def build_result(story_file: str, expect_min):
         "open_patch": 0,
         "open_decision": 0,
         "open_defer": 0,
+        "deferred_work_file": deferred_work_file,
+        "deferred_work_present": False,
+        "deferred_work_logged": 0,
+        "deferred_work_expected": 0,
         "reconciled": True,
         "expect_min": expect_min,
         "error": None,
@@ -93,6 +141,7 @@ def build_result(story_file: str, expect_min):
 
     section_present, by_type = parse_section(text)
     total = sum(c["open"] + c["checked"] for c in by_type.values())
+    story_defer = by_type["defer"]["open"] + by_type["defer"]["checked"]
     result.update(
         {
             "section_present": section_present,
@@ -101,12 +150,27 @@ def build_result(story_file: str, expect_min):
             "open_patch": by_type["patch"]["open"],
             "open_decision": by_type["decision"]["open"],
             "open_defer": by_type["defer"]["open"],
+            "deferred_work_expected": story_defer,
         }
     )
 
+    section_ok = True
     if expect_min is not None:
-        result["reconciled"] = section_present and total >= expect_min
+        section_ok = section_present and total >= expect_min
 
+    # Ledger reconciliation: every story defer finding must reach deferred-work.md.
+    ledger_ok = True
+    if deferred_work_file is not None:
+        if os.path.isfile(deferred_work_file):
+            with open(deferred_work_file, "r", encoding="utf-8") as fh:
+                ledger_present, logged = parse_deferred_work(fh.read(), story_key)
+        else:
+            ledger_present, logged = False, 0
+        result["deferred_work_present"] = ledger_present
+        result["deferred_work_logged"] = logged
+        ledger_ok = logged >= story_defer
+
+    result["reconciled"] = section_ok and ledger_ok
     return result
 
 
@@ -144,6 +208,28 @@ _NO_SECTION = """\
 Nothing was persisted here.
 """
 
+# Ledger that logged the one defer finding from story 1-2, plus an older story's.
+_LEDGER_WITH_DEFER = """\
+# Deferred Work
+
+## Deferred from: code review of story-1-1 (2026-03-10)
+
+- Tidy the legacy import shim [src/old.py:3] — pre-existing
+
+## Deferred from: code review of story-1-2 (2026-03-18)
+
+- Pre-existing flaky test [tests/t.py:9] — deferred, not caused by this change
+"""
+
+# Ledger missing story 1-2's defer entirely (only the older story present).
+_LEDGER_MISSING_DEFER = """\
+# Deferred Work
+
+## Deferred from: code review of story-1-1 (2026-03-10)
+
+- Tidy the legacy import shim [src/old.py:3] — pre-existing
+"""
+
 
 def _run_self_test():
     import tempfile
@@ -173,6 +259,33 @@ def _run_self_test():
     # expect-min satisfied / shortfall.
     check("expect-min 4 ok", build_result(p1, 4)["reconciled"] is True)
     check("expect-min 5 shortfall", build_result(p1, 5)["reconciled"] is False)
+
+    # Ledger reconciliation: p1 has one [Review][Defer] finding (story 1-2).
+    led_ok = write(_LEDGER_WITH_DEFER)
+    led_missing = write(_LEDGER_MISSING_DEFER)
+    r_led = build_result(p1, None, led_ok, "story-1-2")
+    check("ledger present detected", r_led["deferred_work_present"] is True)
+    check("ledger expects 1 defer", r_led["deferred_work_expected"] == 1)
+    check("ledger scoped count 1", r_led["deferred_work_logged"] == 1)
+    check("ledger satisfied => reconciled", r_led["reconciled"] is True)
+    # Same ledger, wrong story key => that story's deferral isn't logged.
+    check(
+        "ledger scoped to absent key => NOT reconciled",
+        build_result(p1, None, led_ok, "story-9-9")["reconciled"] is False,
+    )
+    # Defer finding never reached the ledger.
+    r_miss = build_result(p1, None, led_missing, "story-1-2")
+    check("ledger missing defer logged 0", r_miss["deferred_work_logged"] == 0)
+    check("ledger missing defer => NOT reconciled", r_miss["reconciled"] is False)
+    # Ledger file absent but a defer exists => NOT reconciled.
+    check(
+        "ledger file absent + defer => NOT reconciled",
+        build_result(p1, None, "/no/such-ledger.md", "story-1-2")["reconciled"] is False,
+    )
+    # Unscoped count tolerates history (counts all `## Deferred from:` bullets).
+    check("ledger unscoped counts all", build_result(p1, None, led_ok, None)["deferred_work_logged"] == 2)
+    for p in (led_ok, led_missing):
+        os.unlink(p)
 
     p2 = write(_NO_SECTION)
     r2 = build_result(p2, None)
@@ -205,6 +318,16 @@ def main(argv=None):
         default=None,
         help="reviewer's reported finding count; exit 1 if the file holds fewer",
     )
+    parser.add_argument(
+        "--deferred-work-file",
+        default=None,
+        help="path to deferred-work.md; exit 1 if it holds fewer deferrals than the story",
+    )
+    parser.add_argument(
+        "--story-key",
+        default=None,
+        help="scope the ledger count to this story's `## Deferred from:` heading",
+    )
     parser.add_argument("--self-test", action="store_true", help="run built-in fixtures and exit")
     args = parser.parse_args(argv)
 
@@ -214,7 +337,9 @@ def main(argv=None):
     if not args.story_file:
         parser.error("--story-file is required (or use --self-test)")
 
-    result = build_result(args.story_file, args.expect_min)
+    result = build_result(
+        args.story_file, args.expect_min, args.deferred_work_file, args.story_key
+    )
     print(json.dumps(result, indent=2))
     return 0 if result["reconciled"] else 1
 

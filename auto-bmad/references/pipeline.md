@@ -88,15 +88,19 @@ For iteration `i` (1-based):
    **Verify persistence (reconciliation gate) — before trusting the result.** The review skill
    silently runs in `no-spec` mode and persists *nothing* if the story file isn't bound as its
    spec, so never take the reviewer's chat counts on faith. After the delegate returns, run
-   `python3 {skill-root}/scripts/review_findings.py --story-file <story_file> --expect-min {N}`
-   where `{N}` is the reviewer's reported `Findings persisted:` count (fall back to its total
-   raised-findings count if that line is missing). `reconciled: true` (exit 0) → proceed, and use
-   **the file's** counts (`open_patch` / `open_decision`), not the chat report, to drive steps 2–3.
-   `reconciled: false` (exit 1 — section absent, or fewer bullets than claimed) → the findings did
-   NOT persist: **re-delegate the `code-review` entry once more this iteration** with the spec
-   binding reinforced (this retry does not consume a loop iteration). If it still won't persist,
-   **stop and report `needs-human`** ("code-review did not persist findings to `<story_file>`")
-   rather than running the fix loop against an empty section.
+   `python3 {skill-root}/scripts/review_findings.py --story-file <story_file> --expect-min {N}
+   --deferred-work-file <impl>/deferred-work.md --story-key {key}` where `{N}` is the reviewer's
+   reported `Findings persisted:` count (fall back to its total raised-findings count if that line
+   is missing). The same gate confirms the `### Review Findings` section persisted AND that every
+   `[Review][Defer]` finding reached the durable ledger (`deferred_work_logged >=` the story's
+   defer count). `reconciled: true` (exit 0) → proceed, and use **the file's** counts (`open_patch`
+   / `open_decision`), not the chat report, to drive steps 2–3.
+   `reconciled: false` (exit 1 — section absent, fewer bullets than claimed, or defer findings not
+   logged to the ledger) → the findings did NOT persist: **re-delegate the `code-review` entry once
+   more this iteration** with the spec binding and deferral-ledger reinforced (this retry does not
+   consume a loop iteration). If it still won't persist, **stop and report `needs-human`**
+   ("code-review did not persist findings to `<story_file>`") rather than running the fix loop
+   against an empty section.
 2. **Resolve `[Review][Decision]` items first — ASK the user.** These are the calls the reviewer
    flagged as needing a human (the fix is ambiguous), so never auto-guess them. If this pass wrote
    any open `[Review][Decision]` items, batch them into `AskUserQuestion` **before** the fix: at
@@ -104,7 +108,12 @@ For iteration `i` (1-based):
    finding's title, detail, and the reviewer's suggested options; the user picks the fix direction
    (or **defer** / **dismiss**). Record each resolution in state (`open_questions`/`deferred_work`)
    + the report. The chosen directions flow into the fix in step 3 (defer → leave it
-   `[Review][Defer]` and log to `deferred_work`; dismiss → check it off as won't-fix).
+   `[Review][Defer]` and log to `deferred_work`; dismiss → check it off as won't-fix). For each
+   item the user **defers**, also append it (with their one-line reason) to the durable cross-story
+   ledger `<impl>/deferred-work.md` under this story's `## Deferred from: code review of {key}
+   (<date>)` heading — the same file the `code-review` delegate logs its own `[Review][Defer]`
+   findings to. This is a direct orchestrator write, like the report and retro-notes: it owns the
+   user-deferred decisions because it (not the delegate) resolved them.
 3. Read the verdict (Approve / Changes Requested / Blocked) and the Critical/High/Med/Low counts.
    When there is fixable work — `[Review][Patch]` items, or `[Review][Decision]` items the user just
    resolved — delegate the fix via the **`code-review fix`** entry (profile `code_review_fix`),
@@ -182,6 +191,21 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
   not wait for it to finish.
 - **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the PR; leave the
   branch in place and note it in the report.
-- Mark the state file `done` (record `pr_url`, `ci_run_url`, final `branch`, any `blockers`).
+- Mark the auto-bmad state file `done` (record `pr_url`, `ci_run_url`, final `branch`, any `blockers`).
+- **Advance the BMAD-level status on a clean completion only.** auto-bmad never merges — the open
+  PR is the human's to merge on their own time, and that merge no longer gates whether the story is
+  `done`. So when this is a **clean completion** — the PR is/would be **non-draft**: no blocker
+  recorded, `convergence_unverified` is false, and `gate_decision` is not `WAIVED` (the exact
+  negation of the draft predicate in `git-and-pr.md`) — flip the story to `done` in the two
+  BMAD-level sources, so the next run advances past it instead of re-selecting the finished story:
+  - the **story file `Status:`** field (the same one `dev-story` set to `review`) → `done`;
+  - the **`<impl>/sprint-status.yaml`** entry for `{key}` → `done` (the flat `development_status:`
+    map `story_plan.py` reads; change only that one line's value and preserve the rest of the file).
+  Otherwise — a **caveated completion** (draft PR, recorded blocker, or waived gate) — **leave both
+  BMAD-level sources at `review`**: the story still needs a human, so it should keep re-surfacing
+  there until they act (a re-run then finds the auto-bmad state already `done` and reports it as
+  complete rather than redoing it — see `state-and-resume.md`). This BMAD-status flip is
+  orchestrator-owned finalize bookkeeping — like the state-file write and git/PR above, it is **not**
+  a delegated step.
 - Hand control back to the SKILL's Step 3, which **writes the report to
   `_bmad-output/auto-bmad/reports/{key}.md`** and prints it.

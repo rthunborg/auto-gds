@@ -58,13 +58,20 @@ Persisting findings to <story_file>'s `### Review Findings` section IS the deliv
 step (not the chat summary): the skill writes `[Review][Patch]`, `[Review][Decision]`, and
 `[Review][Defer]` items there. The story file already has a Tasks/Subtasks section, so the append
 must happen.
+DEFERRAL LEDGER: every `[Review][Defer]` finding must ALSO be appended to the durable, cross-story
+ledger `<impl>/deferred-work.md` (the skill's own `deferred_work_file`) — one bullet per deferral
+under a `## Deferred from: code review of {key} (<date>)` heading; create the file if absent. The
+skill already does this in the same findings-write step (not the interactive defer prompt), so it
+is part of this step's deliverable, not an optional extra — confirm it actually happened.
 VERIFY THEN REPORT: after the skill finishes, RE-READ <story_file> and confirm the
-`### Review Findings` section exists and holds one bullet per finding you raised. If you raised
-findings but the section is missing/empty, write them there yourself before returning.
+`### Review Findings` section exists and holds one bullet per finding you raised; likewise RE-READ
+`<impl>/deferred-work.md` and confirm each `[Review][Defer]` finding has a matching bullet there.
+If you raised findings but either is missing/incomplete, write them there yourself before returning.
 Report the verdict (Approve / Changes Requested / Blocked), the Critical/High/Med/Low severity
 counts, the count of open `[Review][Decision]` items (they need a human call — see `pipeline.md`
-Phase 7), AND a final line `Findings persisted: <N>` = the number of `[Review][*]` bullets
-actually present in <story_file> after your re-read.
+Phase 7), a final line `Findings persisted: <N>` = the number of `[Review][*]` bullets
+actually present in <story_file> after your re-read, AND a line `Deferrals logged: <W>` = the
+number of bullets you wrote under this story's `## Deferred from:` heading in `<impl>/deferred-work.md`.
 ```
 
 ### code-review fix

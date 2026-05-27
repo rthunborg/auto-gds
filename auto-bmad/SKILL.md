@@ -141,7 +141,8 @@ confirmation. The report contains:
 - **CI:** link to the CI run the PR/push triggered + its status, if the repo has workflows (omit if none).
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.
 - **Open questions** surfaced by any step.
-- **Deferred work** (anything intentionally postponed).
+- **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
+  `<impl>/deferred-work.md` ledger).
 - **⚠️ Needs human:** blockers / manual actions required before this can be considered done.
 - **Next:** the next story `story_plan.py` would pick (preview only — do NOT start it).
 

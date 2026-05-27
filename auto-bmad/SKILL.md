@@ -18,9 +18,10 @@ delegate, committing checkpoints (or delegating that), writing the state file, a
 the final report. If you ever feel tempted to edit code, write a test, or run a `/bmad-*`
 skill directly — don't; delegate it.
 
-`${CLAUDE_PLUGIN_ROOT}` is this plugin's root. Reference files live under
-`${CLAUDE_PLUGIN_ROOT}/skills/auto-bmad/references/` and the helper script under
-`.../scripts/story_plan.py`. Read a reference file at the moment its step calls for it.
+`{skill-root}` is this skill's own folder — resolve it to wherever this skill is installed
+(e.g. `.claude/skills/auto-bmad/` or `.codex/skills/auto-bmad/`). Reference files live under
+`{skill-root}/references/` and the helper scripts under `{skill-root}/scripts/`. Read a
+reference file at the moment its step calls for it.
 
 ## Delegation mechanics
 
@@ -56,7 +57,7 @@ Read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0), th
       should be at most one given "one story at a time"; if several, take the most recently
       modified and note the others in the report).
    b. Otherwise run
-      `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auto-bmad/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>`
+      `python3 {skill-root}/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>`
       to pick the next actionable story. Its precedence is `in-progress → review →
       ready-for-dev → backlog → retrospective`, so it **resumes BMAD-level unfinished work
       before pulling a fresh backlog item** — it does not jump straight to backlog.

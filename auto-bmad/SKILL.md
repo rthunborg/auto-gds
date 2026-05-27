@@ -67,7 +67,12 @@ reference file at the moment its step calls for it.
    when code review fails to converge within the iteration cap — see Phase 7.)
 
 ### Step 1 — Preflight
-Read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0), then:
+Read `references/state-and-resume.md`, `references/pipeline.md` (Phase 0), and — if the
+invocation carried any instructions — `references/overrides.md`, then:
+0. **Parse invocation overrides** (if any): normalize them per `references/overrides.md`,
+   **echo the interpretation plus the resolved phase window/skips to the user**, and record them
+   in state under `overrides`. If `dry_run`, print the plan and stop here. (`skip tea` flips
+   `tea.enabled` off for this run, affecting sub-steps 1 and 4 below.)
 1. **Skill availability:** verify the BMAD skills required for the selected path exist
    (core always; TEA set only if `tea.enabled`; epic-end skills if this is a last story). Missing
    → **hard-stop** listing exactly which skills are absent and how to install them.
@@ -93,10 +98,14 @@ Read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0), th
 ### Step 2 — Run the pipeline
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases
 whose conditions don't apply (epic-start only if `is_first_in_epic`; TEA phases per triage and
-`tea.enabled`; epic-end only if `is_last_in_epic`). For each phase:
-- delegate to the profile named in the pipeline using the prompt from `references/delegation.md`;
+`tea.enabled`; epic-end only if `is_last_in_epic`). **Also honor this run's overrides
+(`references/overrides.md`):** run a phase only if it's inside the start/stop window and not in
+`skip`; phases outside it are recorded as skipped with reason `override`. For each phase that runs:
+- delegate to the profile named in the pipeline using the prompt from `references/delegation.md`
+  (spawn it per `references/delegation-runtime.md`);
 - on a `blocked` / `needs-human` outcome, **stop the pipeline** and jump to the report;
-- otherwise checkpoint (commit per `references/git-and-pr.md`), append retro notes, update state.
+- otherwise checkpoint (commit per `references/git-and-pr.md` — **unless `skip git-commits` is in
+  effect**), append retro notes, update state.
 
 ### Step 3 — Final report
 Always produce a single report (even on hard-stop). **Append it** as a new timestamped section
@@ -106,6 +115,7 @@ resume — earlier runs' reports carry context we must not lose. The ONLY time y
 file is a deliberate full re-run of an already-`done` story, and only after explicit user
 confirmation. The report contains:
 - **Story:** key, final status, branch.
+- **Overrides:** any invocation overrides applied this run (phase window, skips, caps) — omit if none.
 - **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.
 - **Open questions** surfaced by any step.

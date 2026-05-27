@@ -114,6 +114,7 @@ pr_url: null
 open_questions: []
 deferred_work: []
 blockers: []                 # each: short human-action description
+overrides: {}                # this run's normalized invocation overrides (see overrides.md); {} if none
 ```
 Update it after every phase. Treat it as the source of truth for resume.
 

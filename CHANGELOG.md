@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ab-xhigh` from `high` to `xhigh` (the Codex gpt-5.x ceiling), restoring the
   Claude-side tiering on Codex; `ab-high`/`ab-alt` stay `high`. Re-run
   `/auto-bmad reprovision` to regenerate the Codex delegate `.toml` files.
+- Renamed the `ab-fast` delegate profile (and its `claude/`+`codex/` templates)
+  to `ab-alt` — it's the *alternate*/secondary code reviewer and low-stakes
+  worker, not necessarily a faster model. Upgraders from v0.2.0 should run
+  `/auto-bmad reprovision` to regenerate the delegate files under the new name;
+  the old `ab-fast` agent files can be deleted.
 
 ### Fixed
 

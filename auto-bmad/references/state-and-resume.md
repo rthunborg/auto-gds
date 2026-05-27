@@ -13,11 +13,12 @@ _bmad-output/auto-bmad/
 ## config.yaml
 ```yaml
 version: 1
-delegation:                # how steps are spawned on this host (set at setup, overridable)
-  host: claude-code        # claude-code | codex | other
-  mode: custom-subagents   # custom-subagents | general-subagents | inline
-  target_tools:            # tools to (re)provision delegate agents for
+delegation:                # spawn mechanism — host/mode auto-detected each run
+  host: auto               # auto (detect each run) | claude-code | codex | other
+  mode: auto               # auto (derive from host) | custom-subagents | general-subagents | inline
+  target_tools:            # which tools to provision agents for (both = run in either, no reconfig)
     - claude-code
+    - codex
 tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
@@ -70,17 +71,19 @@ phase_profiles:            # phase -> profile (defaults; user may retune)
 ```
 
 The `profiles` block is the single source of truth for model/effort; `phase_profiles` picks
-which profile each phase uses. `delegation.host`/`mode` select the spawn mechanism — see
-`delegation-runtime.md`. Codex model names are placeholders confirmed at setup.
+which profile each phase uses. `delegation.host`/`mode` default to `auto` and are **re-detected
+each run**, so the same config runs in Claude Code or Codex with no reconfiguration;
+`target_tools` only controls which agent files were provisioned (see `delegation-runtime.md`).
+Codex model names are placeholders confirmed at setup.
 
 ## First-run flow (only when config.yaml is absent)
 This is the single interactive moment in normal operation. Use AskUserQuestion:
-0. **Seed delegation & profiles (non-interactive):** populate `delegation.host`/`mode`/
-   `target_tools` from the `abm` section of `{project-root}/_bmad/config.yaml` (written by
-   `module-setup.md`); if that's absent, detect per `delegation-runtime.md`. Copy the `profiles`
-   and `phase_profiles` defaults from `{skill-root}/assets/agents/profiles.yaml`. If
-   `delegation.mode` is `custom-subagents` and the rendered agent files don't exist yet, run the
-   `reprovision` action (`scripts/render-agents.py`) before the pipeline starts.
+0. **Seed delegation & profiles (non-interactive):** set `delegation.host`/`mode` to `auto`
+   (re-detected each run — see `delegation-runtime.md`); set `target_tools` from the `abm` section
+   of `{project-root}/_bmad/config.yaml` (default: both tools). Copy the `profiles` and
+   `phase_profiles` defaults from `{skill-root}/assets/agents/profiles.yaml`. Detect the live host;
+   if it needs `custom-subagents` but its agent files are missing, run the `reprovision` action
+   (`scripts/render-agents.py`) before the pipeline starts.
 1. **Detect TEA availability:** check that the TEA skills (`bmad-testarch-*`) are installed.
 2. **Ask `tea.enabled`** — default to "yes" if TEA skills are present, "no" if absent (and if
    absent, don't offer yes).

@@ -13,23 +13,24 @@ everything:
 `ab-high`, `ab-sonnet`); `profiles` holds each profile's per-tool model + effort. This file
 turns "delegate phase X" into a concrete spawn.
 
-## Resolving host & mode
+## Resolving host & mode (every run)
 
-Normally set once at setup (`module-setup.md` detects tools and writes them). If the config is
-missing or you must re-derive at runtime, detect in this order and pick the **best tier the host
-supports**:
+`delegation.host` and `delegation.mode` default to `auto` and are **re-detected on every run** —
+so one project, with agents provisioned for both tools, runs in Claude Code *or* Codex with no
+reconfiguration. `delegation.target_tools` is a **separate** thing: it only decides which agent
+files were generated, not which tool runs now. An explicit non-`auto` value in config forces the
+choice.
 
-1. **Claude Code** — `${CLAUDE_PLUGIN_ROOT}` is set, or a `.claude/` dir exists. Supports
-   `custom-subagents`.
-2. **Codex** — a `.codex/` dir exists or the `codex` CLI is on PATH. Supports
-   `custom-subagents`.
-3. **Other** — neither. If the host has *some* general subagent/Task mechanism →
-   `general-subagents`; otherwise → `inline`.
+Detect the host in this order, then pick the best tier it supports:
+1. **Claude Code** — `${CLAUDE_PLUGIN_ROOT}` is set, or a `.claude/` dir exists → `custom-subagents`.
+2. **Codex** — a `.codex/` dir exists or the `codex` CLI is on PATH → `custom-subagents`.
+3. **Other** — neither. General subagent/Task mechanism → `general-subagents`; else → `inline`.
 
-If `mode` is `custom-subagents` but the rendered agent files are absent
-(`.claude/agents/ab-*.md` / `.codex/agents/ab-*.toml`), the provisioning step was skipped —
-run the renderer once (see `module-setup.md`, the `reprovision` action) before delegating, or
-fall back to `general-subagents` for this run and note it in the report.
+If the detected host needs `custom-subagents` but its agent files are absent
+(`.claude/agents/ab-*.md` / `.codex/agents/ab-*.toml` — e.g. they were provisioned only for the
+other tool, or not yet rendered), run the `reprovision` action for this host's tool first (see
+`module-setup.md`), or fall back to `general-subagents`/`inline` for this run and note it in the
+report.
 
 ## Tier 1 — `custom-subagents` (Claude Code & Codex)
 

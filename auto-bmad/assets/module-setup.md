@@ -74,13 +74,16 @@ auto-bmad delegates each pipeline step to a model/effort-tuned subagent. Those s
 tool-native files that must be generated into the host's agent directory. Do this here so the
 module is ready to run immediately after setup.
 
-1. **Read `target_tools`** from the collected config (the `abm` section). Default `[claude-code]`
-   if unset.
-2. **Detect the current host** (for the run-time `delegation.mode`, recorded later by the skill's
-   first-run): Claude Code if `${CLAUDE_PLUGIN_ROOT}` is set or a `.claude/` dir exists; Codex if
-   a `.codex/` dir exists or the `codex` CLI is on PATH; otherwise `other`. Claude Code and Codex
-   support `custom-subagents`; an `other` host with a generic subagent mechanism uses
-   `general-subagents`, and one with none uses `inline` (see `references/delegation-runtime.md`).
+1. **Read `target_tools`** from the collected config (the `abm` section). Default: **both tools**
+   (`claude-code` and `codex`) — provisioning both means the project runs in either tool with no
+   later reconfiguration. This is independent of which tool runs the pipeline (that's
+   auto-detected each run).
+2. **Confirm a supported host is present** (informational — `delegation.host`/`mode` stay `auto`
+   and are re-detected on every run, not pinned here): Claude Code if `${CLAUDE_PLUGIN_ROOT}` is
+   set or a `.claude/` dir exists; Codex if a `.codex/` dir exists or the `codex` CLI is on PATH.
+   Claude Code and Codex support `custom-subagents`; a host with only a generic subagent
+   mechanism uses `general-subagents`, and one with none uses `inline` (see
+   `references/delegation-runtime.md`).
 3. **Render the delegate files** for the selected tools (resolve `{project-root}` to the real
    path; defaults come from `./assets/agents/profiles.yaml`):
 

@@ -14,7 +14,10 @@ module_greeting: >
 # --- Install-time variables (written to the `abm` section of _bmad/config.yaml) ---
 
 target_tools:
-  prompt: "Which AI tools should auto-bmad provision delegate agents for?"
+  prompt: >
+    Which AI tools should auto-bmad provision delegate agents for? Select BOTH to run this
+    project in either Claude Code or Codex without reconfiguring — the running tool is
+    auto-detected each run; this only controls which agent files get generated.
   multi-select:
     - value: claude-code
       label: "Claude Code  (.claude/agents — model + thinking effort)"
@@ -22,6 +25,7 @@ target_tools:
       label: "Codex  (.codex/agents — model + reasoning effort)"
   default:
     - claude-code
+    - codex
 
 post-install-notes: >
   Delegate agents were rendered for the tools you selected. To change which model or

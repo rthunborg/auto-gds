@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Resume detection (`state-and-resume.md`) now steers the orchestrator to enumerate
+  `state/*.yaml` with `find` (or Python) instead of a raw `for f in …/state/*.yaml`
+  glob loop. On a first run the `state/` dir is empty, and an unmatched glob aborts
+  with exit 1 under zsh/fish (`nomatch`) — benign noise that looked like a failure.
+  `find` yields empty output + exit 0 in every shell. Recorded as a verified platform
+  fact in CLAUDE.md.
+
 ## [0.3.0] - 2026-05-27
 
 ### Added

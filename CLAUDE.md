@@ -122,3 +122,7 @@ runtime concern (`/auto-bmad reprovision`), not a release artifact, so nothing r
 - **BMAD** has no portable abstraction for delegation or model/effort; modules are skills copied
   into a tool's skills dir (`.claude/skills/`, `.codex/skills/`). Hence the tiered design.
 - `/bmad-create-story` has no `validate` mode; it self-validates against its checklist.
+- **Shell globs:** the orchestrator's probe commands run under whatever shell the host uses (zsh,
+  fish, bash). An unmatched glob is fatal in zsh/fish (`nomatch` ⇒ exit 1), and the `for f in
+  *.glob; do …` loop syntax isn't even portable to fish — so probes must not iterate raw globs.
+  Use `find … -name '<pat>'` (external binary, empty output + exit 0 everywhere) or Python.

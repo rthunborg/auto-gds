@@ -127,6 +127,10 @@ No-arg `/auto-bmad` chooses the target story with this precedence:
 1. **Incomplete auto-bmad pipeline first.** If any `state/*.yaml` has `status != done`, that
    story is the target — finish in-flight work before starting anything new. (At most one should
    exist; if several, take the most-recently-modified and mention the others in the report.)
+   Enumerate these files shell-agnostically — `find {output_folder}/auto-bmad/state -maxdepth 1
+   -name '*.yaml'` or Python — never a raw `for f in …/state/*.yaml` glob loop: the state dir is
+   empty on a first run, and an unmatched glob aborts with exit 1 under zsh/fish (`nomatch`),
+   whereas `find` yields empty output and exit 0 in every shell.
 2. **Else `story_plan.py`** picks the next actionable story. Its own precedence is
    `in-progress → review → ready-for-dev → backlog → retrospective`, so it resumes BMAD-level
    unfinished work before pulling a fresh `backlog` item — it does NOT jump straight to backlog.

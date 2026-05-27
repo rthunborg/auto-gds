@@ -74,13 +74,19 @@ auto-bmad delegates each pipeline step to a model/effort-tuned subagent. Those s
 tool-native files that must be generated into the host's agent directory. Do this here so the
 module is ready to run immediately after setup.
 
-1. **Read `target_tools`** from the collected config (the `abm` section). Default: **both tools**
-   (`claude-code` and `codex`) — provisioning both means the project runs in either tool with no
-   later reconfiguration. This is independent of which tool runs the pipeline (that's
-   auto-detected each run).
+1. **Determine `target_tools` — default to the AIs this BMAD install targets, then confirm.**
+   Detect from where the `auto-bmad` skill is installed (the tools that can actually invoke it):
+   - `claude-code` if `.claude/skills/auto-bmad/` exists;
+   - `codex` if `.agents/skills/auto-bmad/` exists (BMAD installs Codex skills under `.agents/`),
+     or if `.codex/skills/auto-bmad/` / `~/.codex/skills/auto-bmad/` exists.
+
+   Use that detected set as the **default** for the `target_tools` question (fall back to
+   `[claude-code]` if nothing matches), then **still ask** — the user confirms, drops one, or adds
+   a tool they plan to install later. Provisioning is independent of which tool *runs* the
+   pipeline (that's auto-detected each run).
 2. **Confirm a supported host is present** (informational — `delegation.host`/`mode` stay `auto`
    and are re-detected on every run, not pinned here): Claude Code if `${CLAUDE_PLUGIN_ROOT}` is
-   set or a `.claude/` dir exists; Codex if a `.codex/` dir exists or the `codex` CLI is on PATH.
+   set or a `.claude/` dir exists; Codex if a `.codex/` dir or the `codex` CLI is present.
    Claude Code and Codex support `custom-subagents`; a host with only a generic subagent
    mechanism uses `general-subagents`, and one with none uses `inline` (see
    `references/delegation-runtime.md`).

@@ -45,7 +45,7 @@ reference file at the moment its step calls for it.
   runs each step in an isolated delegate at the profile's tuned model + thinking/reasoning
   effort; `general-subagents` uses the host's generic subagent without effort tuning; `inline`
   runs the step in this context as a last resort. `phase_profiles` maps each phase to a profile
-  (`ab-max`/`ab-xhigh`/`ab-high`/`ab-sonnet`); `profiles` holds each profile's per-tool model +
+  (`ab-max`/`ab-xhigh`/`ab-high`/`ab-fast`); `profiles` holds each profile's per-tool model +
   effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`)
   are rendered at setup by `scripts/render-agents.py` from those profiles.
 - The delegate prompt is always the **exact** content from `references/delegation.md` for that
@@ -91,7 +91,7 @@ invocation carried any instructions — `references/overrides.md`, then:
 3. **Resume check:** if a non-`done` state file exists for the chosen `story_key`, resume from
    the first phase not in `completed_phases` (and continue the review loop from
    `code_review_iterations`). Otherwise initialize a fresh state file in Phase 1.
-4. **Git preflight & triage:** delegate to `ab-sonnet` per Phase 0 of the pipeline (detect repo,
+4. **Git preflight & triage:** delegate to `ab-fast` per Phase 0 of the pipeline (detect repo,
    clean tree, git mode, base branch; and — only if TEA enabled — classify story risk to pick
    per-story TEA skills). Record the decisions in state.
 

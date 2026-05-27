@@ -12,7 +12,7 @@ Placeholders: `{e}`/`{s}` = epic/story number, `{key}` = full story key (e.g.
 
 ---
 
-## Phase 0 — Preflight & triage  → `ab-sonnet`
+## Phase 0 — Preflight & triage  → `ab-fast`
 Runs during Step 1 of the SKILL procedure (before any commit).
 - Verify required skills exist for the selected path. Missing → hard-stop.
 - Git preflight (delegate): is this a git repo? is the working tree clean? detect git mode
@@ -23,7 +23,7 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   or `[]` for trivial) in state.
 - No commit (nothing changed yet). Persist decisions to state.
 
-## Phase 1 — Branch  → `ab-sonnet`
+## Phase 1 — Branch  → `ab-fast`
 - Ensure we are NOT on the base branch. Create/checkout `{branch_prefix}{e}-{s}-{slug}`
   (default `story/{e}-{s}-{slug}`). If the branch already exists (resume), check it out.
 - Write the initial state file and commit it:
@@ -41,7 +41,7 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Capture any open questions the skill saved → retro notes + report.
 - Commit: `docs(story-{e}-{s}): create story context file`.
 
-## Phase 4 — Pre-dev TEA  *(only if `tea.enabled` AND `atdd ∈ tea_selected`)*  → `ab-sonnet`
+## Phase 4 — Pre-dev TEA  *(only if `tea.enabled` AND `atdd ∈ tea_selected`)*  → `ab-fast`
 - Delegate `/bmad-testarch-atdd` with `<story_file>`.
 - Commit: `test(story-{e}-{s}): ATDD acceptance scaffolds (red)`.
 
@@ -53,7 +53,7 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   (If the dev agent reports it cannot complete — missing secret, external service, manual
   step — that is `needs-human`: stop and report.)
 
-## Phase 6 — Post-dev TEA  *(only if `tea.enabled` AND `automate ∈ tea_selected`)*  → `ab-sonnet`
+## Phase 6 — Post-dev TEA  *(only if `tea.enabled` AND `automate ∈ tea_selected`)*  → `ab-fast`
 - Delegate `/bmad-testarch-automate` with `<story_file>`.
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
@@ -63,7 +63,7 @@ is hit. Track `code_review_iterations` in state (so resume continues mid-loop).
 
 For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with opus.** When `code_review.alternate_models` is
-   true: odd `i` → `ab-xhigh` (opus), even `i` → `ab-sonnet` (sonnet) — so iter 1 = opus, iter 2
+   true: odd `i` → `ab-xhigh` (opus), even `i` → `ab-fast` (sonnet) — so iter 1 = opus, iter 2
    = sonnet, iter 3 = opus. When alternation is off, every iteration is `ab-xhigh` (opus).
    Delegate `/bmad-code-review` targeting the branch diff for `<story_file>`. The skill writes a
    review section + `[AI-Review]` follow-up tasks into the story file.
@@ -93,12 +93,12 @@ Run these in order; commit once at the end: `docs(epic-{e}): gate, project conte
    `ab-high`, in order: `/bmad-testarch-trace` (capture PASS/CONCERNS/FAIL/WAIVED),
    `/bmad-testarch-nfr`, `/bmad-testarch-test-review`. Record the gate decision in state +
    report.
-2. **Project context:** delegate `/bmad-generate-project-context` via `ab-sonnet`.
+2. **Project context:** delegate `/bmad-generate-project-context` via `ab-fast`.
 3. **Retrospective:** delegate `/bmad-retrospective` via `ab-high`, handing it the accumulated
    `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
    writes the retro doc + flips the retrospective status to `done`.
 
-## Phase 9 — Finalize  → `ab-sonnet`
+## Phase 9 — Finalize  → `ab-fast`
 - Ensure everything is committed (no dirty tree).
 - **git mode `remote`:** push the branch and open a PR via `gh pr create` (see `git-and-pr.md`).
   Make it a **draft** if any blocker was recorded (including unresolved review findings the user

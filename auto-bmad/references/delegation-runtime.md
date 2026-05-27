@@ -10,7 +10,7 @@ everything:
 - `delegation.mode` — `custom-subagents` | `general-subagents` | `inline`
 
 `phase_profiles` (also in config) maps each phase to a profile name (`ab-max`, `ab-xhigh`,
-`ab-high`, `ab-sonnet`); `profiles` holds each profile's per-tool model + effort. This file
+`ab-high`, `ab-fast`); `profiles` holds each profile's per-tool model + effort. This file
 turns "delegate phase X" into a concrete spawn.
 
 ## Resolving host & mode (every run)
@@ -38,7 +38,7 @@ Full fidelity: the delegate runs in an isolated context at the profile's tuned m
 Look up the profile for the phase via `phase_profiles`, then:
 
 - **Claude Code:** delegate with the Agent/Task tool, `subagent_type` = the profile name
-  (`ab-max` / `ab-xhigh` / `ab-high` / `ab-sonnet`). These resolve to the project-level
+  (`ab-max` / `ab-xhigh` / `ab-high` / `ab-fast`). These resolve to the project-level
   `.claude/agents/<name>.md` rendered at setup. (No plugin namespace prefix — they are project
   agents now.) The agent body already carries the autonomy directive; the prompt is the
   `delegation.md` body with placeholders filled.

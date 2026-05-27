@@ -91,9 +91,11 @@ interpreted them and which phases will run before executing. See `references/ove
 `_bmad-output/auto-bmad/config.yaml` (created on first run) controls TEA on/off, git mode
 (PR vs local-only), branch prefix, code-review iteration cap + model alternation, the
 per-phase profile mapping (`phase_profiles`), and the per-tool model + effort for each delegate
-(`profiles`). It also records `delegation.target_tools` — the tools agents are provisioned for.
-**Provision both Claude Code and Codex and the same project works in either** — the running tool
-is auto-detected each run, so you never reconfigure when you switch. After editing `profiles`
+(`profiles`). It also records `delegation.target_tools` — the tools agents are provisioned for. Setup
+**defaults this to whichever AIs your BMAD install already targets** (detected from where the
+skill is installed — `.claude/skills` for Claude Code, `.agents/skills` for Codex) and lets you
+confirm or adjust. **Provision more than one and the same project works in either** — the running
+tool is auto-detected each run, so you never reconfigure when you switch. After editing `profiles`
 (e.g. to set your Codex model names), run `/auto-bmad reprovision`. See
 `references/state-and-resume.md` for the full schema.
 

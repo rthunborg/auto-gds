@@ -25,7 +25,8 @@ tool-native files and degrade gracefully:
 maps each phase to a profile. `scripts/render-agents.py` generates the tool-native files from
 `profiles`. **Host/mode are `auto` and re-detected every run**, so one project (with both tools
 provisioned) runs in Claude Code or Codex with no reconfiguration; `target_tools` only controls
-which agent files get generated.
+which agent files get generated — it defaults at setup to the AIs the BMAD install targets
+(`.claude/skills` ⇒ claude-code, `.agents/skills` ⇒ codex) and is still confirmed by the user.
 
 ## Layout
 - `.claude-plugin/marketplace.json` — Claude distribution (lists the single `./auto-bmad` skill).

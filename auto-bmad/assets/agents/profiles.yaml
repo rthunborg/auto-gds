@@ -20,26 +20,26 @@ profiles:
       model: opus
       effort: max
     codex:
-      model: gpt-5.3-codex
+      model: gpt-5.5
       reasoning_effort: high
   ab-xhigh:
     claude:
       model: opus
       effort: xhigh
     codex:
-      model: gpt-5.3-codex
+      model: gpt-5.5
       reasoning_effort: high
   ab-high:
     claude:
       model: opus
       effort: high
     codex:
-      model: gpt-5.3-codex
+      model: gpt-5.5
       reasoning_effort: high
-  ab-sonnet:
+  ab-fast:
     claude:
       model: sonnet
       effort: high
     codex:
-      model: gpt-5.3-codex-spark
-      reasoning_effort: medium
+      model: gpt-5.4
+      reasoning_effort: high

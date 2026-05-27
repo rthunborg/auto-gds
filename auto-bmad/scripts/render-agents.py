@@ -2,7 +2,7 @@
 """Render auto-bmad's tool-native delegate agents from a profiles definition.
 
 The auto-bmad orchestrator delegates each pipeline step to one of four profiles
-(``ab-max``, ``ab-xhigh``, ``ab-high``, ``ab-sonnet``). Each profile bakes in a
+(``ab-max``, ``ab-xhigh``, ``ab-high``, ``ab-fast``). Each profile bakes in a
 model + thinking/reasoning effort. Those knobs are tool-specific, so this script
 generates the tool-native definition files from a single, user-editable profiles
 block:
@@ -37,7 +37,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-PROFILE_NAMES = ("ab-max", "ab-xhigh", "ab-high", "ab-sonnet")
+PROFILE_NAMES = ("ab-max", "ab-xhigh", "ab-high", "ab-fast")
 
 # tool -> (template subdir, template suffix, output subdir, output suffix, required keys)
 TOOLS = {
@@ -219,7 +219,7 @@ def _run_self_test() -> int:
         assert profiles[name]["codex"].get("reasoning_effort"), f"{name}.codex.reasoning_effort empty"
     assert profiles["ab-max"]["claude"]["model"] == "opus"
     assert profiles["ab-max"]["claude"]["effort"] == "max"
-    assert profiles["ab-sonnet"]["claude"]["model"] == "sonnet"
+    assert profiles["ab-fast"]["claude"]["model"] == "sonnet"
 
     # Inline-flow-map parsing.
     inline = parse_profiles(
@@ -250,7 +250,7 @@ def _run_self_test() -> int:
         assert "name: ab-max" in claude_max
 
         codex_max = (root / ".codex/agents/ab-max.toml").read_text(encoding="utf-8")
-        assert 'model = "gpt-5.3-codex"' in codex_max, codex_max[:200]
+        assert 'model = "gpt-5.5"' in codex_max, codex_max[:200]
         assert 'model_reasoning_effort = "high"' in codex_max, codex_max[:200]
         assert "@@" not in codex_max, "unfilled placeholder in Codex output"
 
@@ -260,7 +260,7 @@ def _run_self_test() -> int:
 
             parsed = tomllib.loads(codex_max)
             assert parsed["name"] == "ab-max"
-            assert parsed["model"] == "gpt-5.3-codex"
+            assert parsed["model"] == "gpt-5.5"
             assert parsed["model_reasoning_effort"] == "high"
             assert parsed["developer_instructions"].strip()
         except ModuleNotFoundError:

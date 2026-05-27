@@ -16,9 +16,9 @@ version: 1
 delegation:                # spawn mechanism — host/mode auto-detected each run
   host: auto               # auto (detect each run) | claude-code | codex | other
   mode: auto               # auto (derive from host) | custom-subagents | general-subagents | inline
-  target_tools:            # which tools to provision agents for (both = run in either, no reconfig)
-    - claude-code
-    - codex
+  target_tools:            # tools to provision agents for; defaults at setup to the AIs the BMAD
+    - claude-code          # install targets (.claude/skills=>claude-code, .agents/skills=>codex).
+    - codex                # Listing more than one = run in either tool with no reconfig.
 tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
@@ -28,46 +28,46 @@ git:
   base_branch: main        # auto-detected; written after first detection
 code_review:
   max_iterations: 3
-  alternate_models: true   # odd iters use the review profile (ab-xhigh), even iters ab-sonnet
+  alternate_models: true   # odd iters use the review profile (ab-xhigh), even iters ab-fast
 profiles:                  # per-profile model + effort, PER TOOL — the source render-agents.py
   ab-max:                  # reads to generate .claude/agents and .codex/agents. Keep block
     claude:                # style; run `/auto-bmad reprovision` after editing.
       model: opus
       effort: max
     codex:
-      model: gpt-5.3-codex
-      reasoning_effort: high
+      model: gpt-5.5
+      reasoning_effort: xhigh
   ab-xhigh:
     claude:
       model: opus
       effort: xhigh
     codex:
-      model: gpt-5.3-codex
-      reasoning_effort: high
+      model: gpt-5.5
+      reasoning_effort: xhigh
   ab-high:
     claude:
       model: opus
       effort: high
     codex:
-      model: gpt-5.3-codex
+      model: gpt-5.5
       reasoning_effort: high
-  ab-sonnet:
+  ab-fast:
     claude:
       model: sonnet
       effort: high
     codex:
-      model: gpt-5.3-codex-spark
-      reasoning_effort: medium
+      model: gpt-5.4-mini
+      reasoning_effort: high
 phase_profiles:            # phase -> profile (defaults; user may retune)
   create_story: ab-xhigh
   dev_story: ab-max
   code_review_review: ab-xhigh
   code_review_fix: ab-max
-  tea_per_story: ab-sonnet
+  tea_per_story: ab-fast
   tea_epic: ab-high
   retrospective: ab-high
-  project_context: ab-sonnet
-  ops: ab-sonnet
+  project_context: ab-fast
+  ops: ab-fast
 ```
 
 The `profiles` block is the single source of truth for model/effort; `phase_profiles` picks
@@ -80,7 +80,8 @@ Codex model names are placeholders confirmed at setup.
 This is the single interactive moment in normal operation. Use AskUserQuestion:
 0. **Seed delegation & profiles (non-interactive):** set `delegation.host`/`mode` to `auto`
    (re-detected each run — see `delegation-runtime.md`); set `target_tools` from the `abm` section
-   of `{project-root}/_bmad/config.yaml` (default: both tools). Copy the `profiles` and
+   of `{project-root}/_bmad/config.yaml` (set at setup from the AIs the BMAD install targets —
+   `.claude/skills` ⇒ claude-code, `.agents/skills` ⇒ codex). Copy the `profiles` and
    `phase_profiles` defaults from `{skill-root}/assets/agents/profiles.yaml`. Detect the live host;
    if it needs `custom-subagents` but its agent files are missing, run the `reprovision` action
    (`scripts/render-agents.py`) before the pipeline starts.

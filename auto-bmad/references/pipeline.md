@@ -1,9 +1,10 @@
 # Per-story pipeline
 
 The orchestrator runs these phases **in order** for a single story. Each phase: check its
-condition → delegate to the named `ab-*` profile with the prompt from `delegation.md` →
-read the result → if `blocked`/`needs-human`, stop and report → else append retro notes,
-**commit** (see `git-and-pr.md`), and update the state file (see `state-and-resume.md`).
+condition → delegate to the named `ab-*` profile with the prompt from `delegation.md` (spawn it
+for the current host/tier per `delegation-runtime.md`) → read the result → if
+`blocked`/`needs-human`, stop and report → else append retro notes, **commit** (see
+`git-and-pr.md`), and update the state file (see `state-and-resume.md`).
 
 Placeholders: `{e}`/`{s}` = epic/story number, `{key}` = full story key (e.g.
 `1-2-user-auth`), `{slug}` = the title part, `<impl>` = `implementation_artifacts` dir,

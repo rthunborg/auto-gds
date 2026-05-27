@@ -13,6 +13,11 @@ _bmad-output/auto-bmad/
 ## config.yaml
 ```yaml
 version: 1
+delegation:                # how steps are spawned on this host (set at setup, overridable)
+  host: claude-code        # claude-code | codex | other
+  mode: custom-subagents   # custom-subagents | general-subagents | inline
+  target_tools:            # tools to (re)provision delegate agents for
+    - claude-code
 tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
@@ -22,8 +27,37 @@ git:
   base_branch: main        # auto-detected; written after first detection
 code_review:
   max_iterations: 3
-  alternate_models: true   # odd iters ab-xhigh (opus), even iters ab-sonnet (sonnet)
-profiles:                  # phase -> agent profile (defaults; user may retune)
+  alternate_models: true   # odd iters use the review profile (ab-xhigh), even iters ab-sonnet
+profiles:                  # per-profile model + effort, PER TOOL — the source render-agents.py
+  ab-max:                  # reads to generate .claude/agents and .codex/agents. Keep block
+    claude:                # style; run `/auto-bmad reprovision` after editing.
+      model: opus
+      effort: max
+    codex:
+      model: gpt-5.3-codex
+      reasoning_effort: high
+  ab-xhigh:
+    claude:
+      model: opus
+      effort: xhigh
+    codex:
+      model: gpt-5.3-codex
+      reasoning_effort: high
+  ab-high:
+    claude:
+      model: opus
+      effort: high
+    codex:
+      model: gpt-5.3-codex
+      reasoning_effort: high
+  ab-sonnet:
+    claude:
+      model: sonnet
+      effort: high
+    codex:
+      model: gpt-5.3-codex-spark
+      reasoning_effort: medium
+phase_profiles:            # phase -> profile (defaults; user may retune)
   create_story: ab-xhigh
   dev_story: ab-max
   code_review_review: ab-xhigh
@@ -35,8 +69,18 @@ profiles:                  # phase -> agent profile (defaults; user may retune)
   ops: ab-sonnet
 ```
 
+The `profiles` block is the single source of truth for model/effort; `phase_profiles` picks
+which profile each phase uses. `delegation.host`/`mode` select the spawn mechanism — see
+`delegation-runtime.md`. Codex model names are placeholders confirmed at setup.
+
 ## First-run flow (only when config.yaml is absent)
 This is the single interactive moment in normal operation. Use AskUserQuestion:
+0. **Seed delegation & profiles (non-interactive):** populate `delegation.host`/`mode`/
+   `target_tools` from the `abm` section of `{project-root}/_bmad/config.yaml` (written by
+   `module-setup.md`); if that's absent, detect per `delegation-runtime.md`. Copy the `profiles`
+   and `phase_profiles` defaults from `{skill-root}/assets/agents/profiles.yaml`. If
+   `delegation.mode` is `custom-subagents` and the rendered agent files don't exist yet, run the
+   `reprovision` action (`scripts/render-agents.py`) before the pipeline starts.
 1. **Detect TEA availability:** check that the TEA skills (`bmad-testarch-*`) are installed.
 2. **Ask `tea.enabled`** — default to "yes" if TEA skills are present, "no" if absent (and if
    absent, don't offer yes).
@@ -47,7 +91,8 @@ This is the single interactive moment in normal operation. Use AskUserQuestion:
    - If missing → **ask**: run one-time `/bmad-testarch-framework` + `/bmad-testarch-ci` now
      (delegate to `ab-high`), or skip and let the user handle it (`skip`). Heavy, infra-choosing
      setup — never auto-run without asking.
-4. Write `config.yaml` with the answers and detected `git`/`base_branch` values. Proceed.
+4. Write `config.yaml` with the seeded delegation/profiles, the answers, and detected
+   `git`/`base_branch` values. Proceed.
 
 ## state/{key}.yaml
 ```yaml

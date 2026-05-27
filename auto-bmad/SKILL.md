@@ -12,11 +12,13 @@ the user manually triggers the next one.
 
 **You only orchestrate. You never do story work yourself.** Every BMAD step — create-story,
 dev-story, code-review, every TEA skill, retrospective — runs inside a delegated sub-agent
-(the bundled `ab-*` profiles). You also delegate the mechanical git/PR work. Your own actions
+(the `ab-*` profiles). You also delegate the mechanical git/PR work. Your own actions
 are limited to: reading config/state, running `scripts/story_plan.py`, deciding what to
 delegate, committing checkpoints (or delegating that), writing the state file, and producing
 the final report. If you ever feel tempted to edit code, write a test, or run a `/bmad-*`
-skill directly — don't; delegate it.
+skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
+host with no subagent support — see `references/delegation-runtime.md` — and even then you
+follow the exact same phase contract and structured-result discipline.)
 
 `{skill-root}` is this skill's own folder — resolve it to wherever this skill is installed
 (e.g. `.claude/skills/auto-bmad/` or `.codex/skills/auto-bmad/`). Reference files live under
@@ -25,14 +27,19 @@ reference file at the moment its step calls for it.
 
 ## Delegation mechanics
 
-- Delegate with the Agent/Task tool, setting `subagent_type` to the profile name: `ab-max`,
-  `ab-xhigh`, `ab-high`, or `ab-sonnet` (each bakes in its model + thinking effort). If a bare
-  name doesn't resolve, try the namespaced form `auto-bmad:ab-max`.
-- The agent prompt must be the **exact** content from `references/delegation.md` for that step,
-  with placeholders filled (story id, absolute file paths). Pass absolute paths — the sub-agent
-  resolves BMAD's `{project-root}` from its cwd, but explicit paths remove ambiguity.
-- After each delegated step, read the agent's structured result. Append its **retro notes** to
-  the epic retro-notes file. Then checkpoint (commit) and update state.
+- **Pick the spawn method by host/tier — read `references/delegation-runtime.md`.** It uses
+  `delegation.host` + `delegation.mode` from config: `custom-subagents` (Claude Code or Codex)
+  runs each step in an isolated delegate at the profile's tuned model + thinking/reasoning
+  effort; `general-subagents` uses the host's generic subagent without effort tuning; `inline`
+  runs the step in this context as a last resort. `phase_profiles` maps each phase to a profile
+  (`ab-max`/`ab-xhigh`/`ab-high`/`ab-sonnet`); `profiles` holds each profile's per-tool model +
+  effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`)
+  are rendered at setup by `scripts/render-agents.py` from those profiles.
+- The delegate prompt is always the **exact** content from `references/delegation.md` for that
+  step, with placeholders filled (story id, absolute file paths). Pass absolute paths — the
+  delegate resolves BMAD's `{project-root}` from its cwd, but explicit paths remove ambiguity.
+- After each delegated step, read the structured result. Append its **retro notes** to the epic
+  retro-notes file. Then checkpoint (commit) and update state. This is identical across tiers.
 
 ## Procedure
 

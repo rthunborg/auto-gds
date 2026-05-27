@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batched `AskUserQuestion` (≤4 per call) **before** the fix pass — it never
   auto-guesses an ambiguous fix — and feeds the human-chosen directions into the
   `code_review_fix` delegate.
+- A `FAIL` epic trace gate (Phase 8 `/bmad-testarch-trace`) is no longer captured-
+  and-ignored — it now halts and **asks the user** (`AskUserQuestion`): **remediate
+  & re-gate** (delegate `/bmad-testarch-automate` at epic scope to close the flagged
+  coverage gaps, then re-run trace; bounded by the new `tea.gate_max_iterations`
+  config, default 2), **waive & continue** (records `WAIVED` + rationale; Phase 9
+  ships a **draft** PR with the gaps noted), or **stop** (no push/PR; gaps reported
+  as `needs-human`). `CONCERNS` stays advisory (recorded + surfaced, non-blocking);
+  `PASS`/skill-emitted `WAIVED` are unchanged. New state field `gate_iterations`
+  tracks the remediation loop for resume.
 
 ### Changed
 

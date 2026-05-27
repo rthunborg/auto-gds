@@ -147,5 +147,6 @@ not-found `--story`; epic already `done`; dirty working tree on the wrong branch
 conflict; a delegated step returns `blocked`/`needs-human` (missing secret/credential, required
 external service, or manual action). Never push past a hard-stop — report and let the human act.
 
-(Note: code review NOT converging within `max_iterations` is NOT a silent hard-stop — Phase 7
-**asks the user** what to do.)
+(Note: two pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
+code review not converging within `max_iterations` (Phase 7), and a `FAIL` epic trace gate
+(Phase 8 — remediate & re-gate / waive / stop).)

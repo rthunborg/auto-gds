@@ -75,11 +75,15 @@ Generate the red-phase acceptance test scaffolds + checklist for this story.
 Run `/bmad-testarch-automate` in <project_root> for story file <story_file>.
 Expand automated test coverage for the code implemented in this story.
 ```
+(Phase 8 trace-gate remediation reuses this skill at **epic scope**: pass epic {e} instead of a
+single story file and target the specific coverage gaps the trace gate reported.)
 
 ### testarch-trace (epic gate)
 ```
 Run `/bmad-testarch-trace` in <project_root> for epic {e}. Build the traceability matrix and
 produce the quality-gate decision. Report the gate verdict (PASS/CONCERNS/FAIL/WAIVED) + rationale.
+If the verdict is not PASS, also list the specific requirements / acceptance criteria left
+uncovered, so the orchestrator can summarize them for the human and target remediation.
 ```
 
 ### testarch-nfr (epic gate)

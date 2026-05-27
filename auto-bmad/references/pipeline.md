@@ -117,11 +117,35 @@ For iteration `i` (1-based):
    Record the user's choice and any extra iterations in state (`code_review_iterations`).
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*
-Run these in order; commit once at the end: `docs(epic-{e}): gate, project context, retrospective`.
+Run these in order. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project
+context, retrospective`. (Trace-gate remediation, if any, commits separately as it runs — step 1.)
 1. **TEA gates (only if `tea.enabled`; epic-level skills are always on here):** delegate via
-   `tea_epic`, in order: `/bmad-testarch-trace` (capture PASS/CONCERNS/FAIL/WAIVED),
-   `/bmad-testarch-nfr`, `/bmad-testarch-test-review`. Record the gate decision in state +
-   report.
+   `tea_epic`, in order: `/bmad-testarch-trace`, then `/bmad-testarch-nfr`, then
+   `/bmad-testarch-test-review`. Capture each verdict; record the gate decision in state
+   (`gate_decision`) + report. Handle the **trace** verdict before running nfr/test-review:
+   - `PASS` → continue.
+   - `WAIVED` (emitted by the skill itself) → continue; it ships as a **draft** PR in Phase 9
+     (already a documented human waiver — see `git-and-pr.md`).
+   - `CONCERNS` → advisory; continue silently, but record it and surface it in the report + PR body.
+     It does **not** halt or force a draft.
+   - `FAIL` → **ASK the user** (AskUserQuestion; mirrors the Phase 7 cap prompt — this is not a
+     silent hard-stop). Summarize the uncovered requirements/ACs the trace flagged, then offer:
+     - **Remediate & re-gate** *(recommended; offered only while `gate_iterations <
+       tea.gate_max_iterations`, default 2)* — delegate `/bmad-testarch-automate` at **epic scope**
+       via `tea_epic` to close the flagged coverage gaps, commit `test(epic-{e}): close trace
+       coverage gaps (gate iter {i})`, increment `gate_iterations`, then re-run
+       `/bmad-testarch-trace` and re-apply this same handling to the new verdict. (If the gaps are
+       scope/spec drift rather than missing tests, the right heavier step is `/bmad-correct-course`
+       — tell the user; do **not** auto-run it, as it changes story scope.)
+     - **Waive & continue** — set `gate_decision: WAIVED`, record the user's rationale + the
+       uncovered items in `deferred_work`/`open_questions`, then continue. Phase 9 opens the PR as a
+       **draft** with the waiver + gaps in the body.
+     - **Stop now** — skip the remaining phases, go straight to the report (Step 3); commits stay on
+       the branch, nothing is pushed and no PR is opened. Keep `gate_decision: FAIL`, add a
+       `blockers[]` entry (e.g. `epic {e} trace gate FAILED — {n} requirements lack test coverage`),
+       and report the gaps as `needs-human`.
+     Once `gate_iterations` reaches the cap and trace is still `FAIL`, drop the Remediate option and
+     re-ask with only Waive / Stop. Run nfr + test-review on every path except **Stop**.
 2. **Project context:** delegate `/bmad-generate-project-context` via `project_context`.
 3. **Retrospective:** delegate `/bmad-retrospective` via `retrospective`, handing it the accumulated
    `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and

@@ -113,7 +113,7 @@ Run from the root of a BMAD-enabled project:
 | 5 | Implement story | `bmad-dev-story` | always |
 | 6 | Expand automated coverage | `bmad-testarch-automate` | TEA on + risk-warranted |
 | 7 | Code review (Opus-first, alternating models, ≤3 iters; asks if unresolved) | `bmad-code-review` | always |
-| 8 | Gates, project context, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
+| 8 | Gates (asks if trace fails), project context, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
 | 9 | Push + open PR + final report | — | always |
 
 Each phase ends with a conventional commit, so progress survives interruptions and is easy to review.
@@ -127,6 +127,7 @@ auto-bmad runs autonomously between the points below — delegated sub-agents an
 | **First-run setup** | First `/auto-bmad` in a project | One-time questions: confirm `target_tools`, choose **Quick** (TEA on/off + framework/CI scaffolding) or **Full** (also git + code-review prefs). Writes `config.yaml`, then stops — **start a new session and re-run `/auto-bmad`** so the first story runs on fresh context. |
 | **Module setup** | `/auto-bmad setup` (or module not yet registered) | Confirm or adjust which AIs to provision delegate agents for (defaults to the ones your BMAD install targets). |
 | **Code review didn't converge** | Phase 7 — iteration cap reached with unresolved Critical/High findings | Choose: run another review + fix pass, accept and continue (the PR is opened as a **draft**), or stop. |
+| **Epic trace gate failed** | Phase 8 — `bmad-testarch-trace` returns `FAIL` (requirements/ACs lack test coverage) | Choose: remediate & re-gate (auto-expand coverage, then re-run trace; capped, default 2), waive and continue (PR opened as a **draft** with the gaps noted), or stop. `CONCERNS` is advisory and doesn't pause. |
 | **Re-running a completed story** | You target an already-`done` story | Confirm before its report log is overwritten; otherwise it won't redo the story. |
 | **Blocker / needs-human** | Any phase | Hard-stop: a missing secret/credential, a required external service or manual step, a merge/rebase conflict, a dirty tree on the wrong branch, not a BMAD project, a missing required skill, or an ambiguous/not-found `--story`. It reports exactly what's needed and never pushes past it. |
 

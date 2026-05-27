@@ -22,6 +22,7 @@ delegation:                # spawn mechanism — host/mode auto-detected each ru
 tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
+  gate_max_iterations: 2   # Phase 8 trace-gate remediation cap (automate + re-trace) before only waive/stop are offered
 git:
   mode: auto               # auto -> detect; or force "remote" / "local"
   branch_prefix: "story/"
@@ -111,6 +112,7 @@ code_review_iterations: 1
 convergence_unverified: false  # true if the review cap was hit while Critical/High were still being found+fixed and the user chose to ship anyway (Phase 7) -> Phase 9 opens the PR as a draft
 commits: [a1b2c3d, e4f5g6h]
 gate_decision: null          # PASS|CONCERNS|FAIL|WAIVED (last story only)
+gate_iterations: 0           # Phase 8 trace-gate remediation passes run (automate+re-trace); capped by tea.gate_max_iterations; resume continues mid-loop
 pr_url: null
 ci_run_url: null             # link to the CI run the PR/push triggered, if the repo has workflows
 open_questions: []

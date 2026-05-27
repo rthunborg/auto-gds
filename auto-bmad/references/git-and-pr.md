@@ -39,8 +39,10 @@ lands on the base branch; every phase is its own commit so the pipeline is resum
 ## PR (Phase 9, mode `remote` only)
 - Push: `git push -u origin <branch>`.
 - Open PR: `gh pr create --base <base_branch> --head <branch> --title "<title>" --body "<body>"`.
-  Add `--draft` if any blocker was recorded, or `convergence_unverified` is `true` (Phase 7: code
-  review hit the cap while still finding Critical/High and the user chose to ship anyway).
+  Add `--draft` if any blocker was recorded, `convergence_unverified` is `true` (Phase 7: code
+  review hit the cap while still finding Critical/High and the user chose to ship anyway), or
+  `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
+  trace skill — chose to ship despite the coverage gaps).
 - Title: a conventional summary of the story, e.g. `feat(story-1-2): user authentication`.
 - Body must include:
   - one-paragraph summary of what the story delivered;

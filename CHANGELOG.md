@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- README **"Split a story across Claude Code and Codex"** section — a manual
+  workaround that uses `stop before code-review` + resume to implement a story in
+  one tool and code-review it in the other (either direction), leaning on
+  auto-detected host and the resumable, commit-checkpointed pipeline.
+
 ## [0.1.1] - 2026-05-27
 
 First tagged release. The module had been published at `0.1.1` via the

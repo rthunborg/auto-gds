@@ -136,6 +136,34 @@ Use overrides (below) if you want to add your own stops — e.g. `stop before co
 
 Steer a single run by adding instructions to the invocation (natural language or flags) — e.g. `stop before code-review`, `start at phase 5`, `skip git commits`, `skip TEA`, `max 5 review iterations`, `git mode local`, `dry run`. The orchestrator echoes how it interpreted them and which phases will run before executing. See `references/overrides.md`.
 
+## Split a story across Claude Code and Codex
+
+The running tool is auto-detected every run and the pipeline is resumable, so you can hand a single story off between tools mid-pipeline — e.g. **implement in Claude Code, review in Codex** (or the reverse). There's no built-in per-phase tool switching; it's a manual workaround built from overrides: run part of the pipeline in one tool, stop at a phase boundary, then resume in the other.
+
+**Prerequisites:** install the `auto-bmad` skill in **both** tools and provision delegates for both — `delegation.target_tools` must list `claude-code` *and* `codex` (confirm at `/auto-bmad setup`). Keep git commits **on** (the default): the per-phase checkpoint commits and the shared `_bmad-output/auto-bmad/state/` file are exactly what let the other tool pick up where the first left off.
+
+Implement in Claude Code, review in Codex:
+
+```text
+# In Claude Code — runs phases 0–6 (create-story → dev-story), committing each phase
+/auto-bmad stop before code-review
+
+# In Codex, same project directory — resumes at phase 7 (code-review) through the PR
+/auto-bmad
+```
+
+Implement in Codex, review in Claude Code — same idea, tools swapped:
+
+```text
+# In Codex
+/auto-bmad stop before code-review
+
+# In Claude Code
+/auto-bmad                 # or, explicitly: /auto-bmad start at phase 7
+```
+
+A plain no-arg `/auto-bmad` resumes the interrupted pipeline at the next unfinished phase; `start at phase 7` is the explicit equivalent (it first validates the story is implemented). The same pattern works at any phase boundary — e.g. `stop after phase 5`, then resume — so you can route any slice of the pipeline to whichever tool you prefer for it.
+
 ## Configuration
 
 `_bmad-output/auto-bmad/config.yaml` (created on first run) controls TEA on/off, git mode (PR vs local-only), branch prefix, code-review iteration cap + model alternation, the per-phase profile mapping (`phase_profiles`), and the per-tool model + effort for each delegate (`profiles`). It also records `delegation.target_tools` — the tools agents are provisioned for. Setup **defaults this to whichever AIs your BMAD install already targets** (detected from where the skill is installed — `.claude/skills` for Claude Code, `.agents/skills` for Codex) and lets you confirm or adjust. **Provision more than one and the same project works in either** — the running tool is auto-detected each run, so you never reconfigure when you switch. After editing `profiles` (e.g. to set your Codex model names), run `/auto-bmad reprovision`. See `references/state-and-resume.md` for the full schema.

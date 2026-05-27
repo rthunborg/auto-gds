@@ -6,24 +6,29 @@ for the current host/tier per `delegation-runtime.md`) → read the result → i
 `blocked`/`needs-human`, stop and report → else append retro notes, **commit** (see
 `git-and-pr.md`), and update the state file (see `state-and-resume.md`).
 
+**Git/PR work is never delegated** — the orchestrator runs it directly (preflight, branch,
+commits, push, PR; see `git-and-pr.md`). The git-only phases below (0 preflight, 1 branch,
+9 finalize) carry no `ab-*` profile; only their non-git parts (e.g. Phase 0's TEA triage) are
+delegated.
+
 Placeholders: `{e}`/`{s}` = epic/story number, `{key}` = full story key (e.g.
 `1-2-user-auth`), `{slug}` = the title part, `<impl>` = `implementation_artifacts` dir,
 `<story_file>` = `<impl>/{key}.md` (from `story_plan.py`).
 
 ---
 
-## Phase 0 — Preflight & triage  → `ab-fast`
+## Phase 0 — Preflight & triage  *(git preflight: orchestrator; TEA triage: `ab-fast`)*
 Runs during Step 1 of the SKILL procedure (before any commit).
 - Verify required skills exist for the selected path. Missing → hard-stop.
-- Git preflight (delegate): is this a git repo? is the working tree clean? detect git mode
-  (gh installed AND a GitHub remote → `remote`; else `local`); detect the base branch.
-  Dirty tree on a non-story branch → hard-stop.
-- **Triage (only if `tea.enabled`)**: classify the story `low | med | high` and choose the
+- Git preflight (**orchestrator runs this directly**): is this a git repo? is the working tree
+  clean? detect git mode (gh installed AND a GitHub remote → `remote`; else `local`); detect the
+  base branch. Dirty tree on a non-story branch → hard-stop.
+- **Triage (only if `tea.enabled`; delegated to `ab-fast`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_selected` (e.g. `[atdd, automate]`,
   or `[]` for trivial) in state.
 - No commit (nothing changed yet). Persist decisions to state.
 
-## Phase 1 — Branch  → `ab-fast`
+## Phase 1 — Branch  *(orchestrator)*
 - Ensure we are NOT on the base branch. Create/checkout `{branch_prefix}{e}-{s}-{slug}`
   (default `story/{e}-{s}-{slug}`). If the branch already exists (resume), check it out.
 - Write the initial state file and commit it:
@@ -106,7 +111,7 @@ Run these in order; commit once at the end: `docs(epic-{e}): gate, project conte
    `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
    writes the retro doc + flips the retrospective status to `done`.
 
-## Phase 9 — Finalize  → `ab-fast`
+## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).
 - **git mode `remote`:** push the branch and open a PR via `gh pr create` (see `git-and-pr.md`).
   Make it a **draft** if any blocker was recorded, or `convergence_unverified` is `true` (the

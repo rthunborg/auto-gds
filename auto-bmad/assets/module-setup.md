@@ -119,4 +119,4 @@ Then display the `module_greeting` from `./assets/module.yaml` to the user.
 
 ## Return to Skill
 
-Setup is complete. Resume the main skill's normal activation flow — load config from the freshly written files and proceed with whatever the user originally intended.
+Setup is complete. Resume the main skill's normal activation flow — load config from the freshly written files. If this was a `setup`/`configure`/`reprovision`-only invocation, stop here (already reported). If it was a run-intent invocation that triggered setup only because the module wasn't registered, continue into the Procedure to finish the first-run flow, then **stop and have the user start a fresh session** before any story runs (see the first-run stop in `references/state-and-resume.md`) — the pipeline must not run on the same context that just did configuration.

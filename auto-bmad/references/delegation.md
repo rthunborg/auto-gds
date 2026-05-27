@@ -95,8 +95,6 @@ the accumulated notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md plus the
 sprint-status. Produce the full retrospective document and mark the epic retrospective `done`.
 ```
 
-### git ops (preflight / branch / finalize / PR)  → `ab-fast`
-The orchestrator sends concrete instructions (no `/bmad-*`); see `git-and-pr.md` for exact
-commands. Examples: "detect git mode and base branch and report", "create+checkout branch
-`story/{e}-{s}-{slug}`", "stage all and commit with message `<msg>`", "push and open a (draft?)
-PR with this title/body".
+### git ops (preflight / branch / commits / finalize / PR) — **not delegated**
+Git/PR work is run by the **orchestrator itself**, never by an `ab-*` delegate — so there is no
+delegation prompt for it. See `git-and-pr.md` for the exact commands.

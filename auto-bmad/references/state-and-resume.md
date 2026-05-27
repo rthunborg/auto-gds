@@ -67,7 +67,7 @@ phase_profiles:            # phase -> profile (defaults; user may retune)
   tea_epic: ab-high
   retrospective: ab-high
   project_context: ab-fast
-  ops: ab-fast
+  # (git/PR work is run by the orchestrator directly — it has no delegate profile)
 ```
 
 The `profiles` block is the single source of truth for model/effort; `phase_profiles` picks
@@ -96,7 +96,13 @@ This is the single interactive moment in normal operation. Use AskUserQuestion:
      (delegate to `ab-high`), or skip and let the user handle it (`skip`). Heavy, infra-choosing
      setup — never auto-run without asking.
 4. Write `config.yaml` with the seeded delegation/profiles, the answers, and detected
-   `git`/`base_branch` values. Proceed.
+   `git`/`base_branch` values. **Then stop — do not start the pipeline this session.** This
+   first-run write (plus any module registration done earlier this session) is the one-time setup;
+   report what was configured and tell the user to open a **new session with fresh context** and
+   run `/auto-bmad` to begin the first story. Running the pipeline on the same context that just
+   did setup wastes the window — a fresh session re-detects host/mode and starts the story clean.
+   (On later runs `config.yaml` already exists, so this flow is skipped and the pipeline proceeds
+   normally.)
 
 ## state/{key}.yaml
 ```yaml

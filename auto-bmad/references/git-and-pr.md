@@ -1,7 +1,8 @@
 # Git & PR conventions
 
-All git work is delegated to `ab-fast` with concrete instructions. Nothing ever lands on the
-base branch; every phase is its own commit so the pipeline is resumable and reviewable.
+All git work is performed by the **orchestrator directly** — never delegated. The orchestrator
+holds the full pipeline context, so it writes the commit and PR messages itself. Nothing ever
+lands on the base branch; every phase is its own commit so the pipeline is resumable and reviewable.
 
 ## Mode detection (Phase 0)
 - It's a git repo? `git rev-parse --is-inside-work-tree`. If not → hard-stop (suggest

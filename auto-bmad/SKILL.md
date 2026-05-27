@@ -19,17 +19,22 @@ Before the procedure, handle module registration and delegate provisioning:
   agent-render step; `setup`/`configure` always re-run registration even if already registered.
 - This requires a BMAD project; if `_bmad/` is absent, the Step 0.1 hard-stop applies.
 - If the user's only intent was `setup`/`configure`/`reprovision`, stop after reporting what was
-  written/rendered — do **not** start a pipeline run. Otherwise continue to the Procedure.
+  written/rendered — do **not** start a pipeline run. Otherwise continue to the Procedure — but
+  if configuration ran **only because it was missing** (a run-intent invocation on a fresh
+  project), the Procedure's first-run flow finishes the remaining config and then **stops for a
+  fresh session** rather than launching the pipeline (see Step 0.3).
 
 ## The one rule
 
-**You only orchestrate. You never do story work yourself.** Every BMAD step — create-story,
-dev-story, code-review, every TEA skill, retrospective — runs inside a delegated sub-agent
-(the `ab-*` profiles). You also delegate the mechanical git/PR work. Your own actions
-are limited to: reading config/state, running `scripts/story_plan.py`, deciding what to
-delegate, committing checkpoints (or delegating that), writing the state file, and producing
-the final report. If you ever feel tempted to edit code, write a test, or run a `/bmad-*`
-skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
+**You never do story work yourself.** Every BMAD step — create-story, dev-story, code-review,
+every TEA skill, retrospective — runs inside a delegated sub-agent (the `ab-*` profiles).
+**Git is yours, though: you run all git/PR operations directly, never via a delegate** — repo/mode
+preflight, branching, per-phase commits, push, and PR. You hold the full pipeline context, so you
+write the commit and PR messages yourself; delegating git would only add a slow round-trip. So
+your own actions are: reading config/state, running `scripts/story_plan.py`, deciding what to
+delegate, **all git/PR work** (per `references/git-and-pr.md`), writing the state file, and
+producing the final report. If you ever feel tempted to edit code, write a test, or run a
+`/bmad-*` skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
 host with no subagent support — see `references/delegation-runtime.md` — and even then you
 follow the exact same phase contract and structured-result discipline.)
 
@@ -65,6 +70,11 @@ reference file at the moment its step calls for it.
    run the **first-run flow** in `references/state-and-resume.md`, then write the config.
    (First-run is normally the only interactive moment; the one other place auto-bmad may ask is
    when code review fails to converge within the iteration cap — see Phase 7.)
+   **After first-time configuration completes** (this first-run write, plus any module
+   registration done earlier this session), **stop — do not start the pipeline this session.**
+   Report what was configured and tell the user to open a **new session with fresh context** and
+   run `/auto-bmad` to begin the first story. If the config already existed (normal later runs),
+   this stop does not apply — continue to Step 1.
 
 ### Step 1 — Preflight
 Read `references/state-and-resume.md`, `references/pipeline.md` (Phase 0), and — if the
@@ -91,9 +101,9 @@ invocation carried any instructions — `references/overrides.md`, then:
 3. **Resume check:** if a non-`done` state file exists for the chosen `story_key`, resume from
    the first phase not in `completed_phases` (and continue the review loop from
    `code_review_iterations`). Otherwise initialize a fresh state file in Phase 1.
-4. **Git preflight & triage:** delegate to `ab-fast` per Phase 0 of the pipeline (detect repo,
-   clean tree, git mode, base branch; and — only if TEA enabled — classify story risk to pick
-   per-story TEA skills). Record the decisions in state.
+4. **Git preflight & triage** (per Phase 0 of the pipeline): **you run the git preflight directly**
+   — detect repo, clean tree, git mode, base branch. Then, **only if TEA enabled**, delegate the
+   story-risk classification to `ab-fast` to pick per-story TEA skills. Record the decisions in state.
 
 ### Step 2 — Run the pipeline
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases

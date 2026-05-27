@@ -6,11 +6,15 @@ workflow one story at a time, on **Claude Code or Codex**. This file is guidance
 **on the module**, not for using it.
 
 ## Core principle (do not violate)
-The orchestrator **only delegates and reports** — it must never implement story work, run
-`/bmad-*` skills directly, or do git surgery itself beyond checkpoint commits. Every BMAD step
-runs in a delegated `ab-*` sub-agent. The **only** exception is the `inline` delegation tier
-(hosts with no subagent support — see `delegation-runtime.md`), and even then it follows the same
-phase contract and structured-result discipline. When editing, preserve this separation.
+The orchestrator **delegates BMAD work and reports** — it must never implement story work or run
+`/bmad-*` skills directly. Every BMAD step (create-story, dev-story, code-review, TEA, retro)
+runs in a delegated `ab-*` sub-agent. **Git/PR work is the deliberate exception that the
+orchestrator owns directly** (never delegated): preflight detection, branching, per-phase
+commits, push, and PR — it holds the full pipeline context to write commit/PR messages, and a
+round-trip to a delegate would only be slower. Apart from git, the **only** time the orchestrator
+does step work itself is the `inline` delegation tier (hosts with no subagent support — see
+`delegation-runtime.md`), and even then it follows the same phase contract and structured-result
+discipline. When editing, preserve this separation.
 
 ## Delegation is tiered (the heart of the module)
 BMad abstracts neither sub-agent delegation nor per-agent model/effort, so we supply those with

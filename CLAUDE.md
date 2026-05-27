@@ -113,7 +113,11 @@ runtime concern (`/auto-bmad reprovision`), not a release artifact, so nothing r
 ## Known platform facts (verified)
 - **Claude Code:** sub-agents take `model:` + `effort:` frontmatter (effort is settable ONLY
   there, not via the Agent tool — that's why the templates exist); they CAN invoke skills but
-  CANNOT spawn sub-agents.
+  CANNOT spawn sub-agents. Project sub-agents in `.claude/agents/` are scanned into the
+  invokable-agent roster **only at process launch** — agents rendered mid-session (first-run setup,
+  reprovision) aren't invokable until a full quit & relaunch; `/clear` starts a fresh context in the
+  same process and does not re-scan. (Verified: a freshly-rendered `ab-high` returned *"Agent type
+  'ab-high' not found"* until the tool was restarted.)
 - **Codex:** subagents are TOML files in `.codex/agents/` (project) or `~/.codex/agents/`, with
   `model` + `model_reasoning_effort` (gpt-5.x effort: low|medium|high|xhigh — xhigh is the
   ceiling); invoked by naming the

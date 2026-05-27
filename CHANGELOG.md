@@ -13,6 +13,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- First-run setup and `reprovision` now tell the user to **fully restart the tool** (quit &
+  relaunch) — not just open a "new session with fresh context" — before running the pipeline on the
+  `custom-subagents` tier. Claude Code/Codex scan project delegate agents (`.claude/agents/*.md`,
+  `.codex/agents/*.toml`) into the invokable-agent roster only at process launch, so agents rendered
+  mid-session stay unregistered after a `/clear` (same process) and the first delegation failed with
+  *"Agent type 'ab-…' not found"*. (`SKILL.md`, `state-and-resume.md`, `module-setup.md`; recorded
+  as a verified platform fact in `CLAUDE.md`.)
+- `delegation-runtime.md`: a fresh-on-disk delegate reported as *"Agent type not found"* on a
+  custom-subagents host is now read as **restart-needed** (stop, have the user relaunch) instead of a
+  cue to **degrade to `general-subagents`** — degrading would run the whole pipeline untuned when a
+  restart restores per-phase model/effort.
+- `delegation-runtime.md`: auto-reprovision-on-stale no longer claims to "self-heal without a human
+  stop" unconditionally — it heals the on-disk files, but a running process keeps the agent
+  definitions it loaded at launch, so a regenerated `model`/`effort`/body applies only after a
+  restart (and a `missing` agent isn't invokable at all until then).
+
 ## [0.3.1] - 2026-05-27
 
 ### Fixed

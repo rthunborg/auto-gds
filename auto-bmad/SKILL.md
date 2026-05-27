@@ -79,9 +79,11 @@ reference file at the moment its step calls for it.
    when code review fails to converge within the iteration cap — see Phase 7.)
    **After first-time configuration completes** (this first-run write, plus any module
    registration done earlier this session), **stop — do not start the pipeline this session.**
-   Report what was configured and tell the user to open a **new session with fresh context** and
-   run `/auto-bmad` to begin the first story. If the config already existed (normal later runs),
-   this stop does not apply — continue to Step 1.
+   Report what was configured and how to begin the first story: on the `custom-subagents` tier the
+   just-rendered delegate agents become invokable only after a **full tool restart** (quit &
+   relaunch — **not** `/clear`, which reuses the same process); other tiers just need a fresh
+   context. See the first-run stop in `references/state-and-resume.md`. If the config already
+   existed (normal later runs), this stop does not apply — continue to Step 1.
 
 ### Step 1 — Preflight
 Read `references/state-and-resume.md`, `references/pipeline.md` (Phase 0), and — if the

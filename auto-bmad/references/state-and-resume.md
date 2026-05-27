@@ -90,10 +90,18 @@ The single interactive episode in normal operation. Always confirm `target_tools
    answers, and detected `git`/`base_branch` values (Quick fills the step-4 fields with the
    defaults above). **Then stop — do not start the pipeline this session.** This first-run write
    (plus any module registration done earlier this session) is the one-time setup; report what was
-   configured and tell the user to open a **new session with fresh context** and run `/auto-bmad`
-   to begin the first story. Running the pipeline on the same context that just did setup wastes
-   the window — a fresh session re-detects host/mode and starts the story clean. (On later runs
-   `config.yaml` already exists, so this flow is skipped and the pipeline proceeds normally.)
+   configured and tell the user **how** to begin the first story:
+   - **`custom-subagents` tier (Claude Code / Codex):** the delegate agents were just rendered to
+     `.claude/agents/` / `.codex/agents/` *this session*. The host loads project agents into the
+     invokable-agent roster **only at process launch**, so they are not invokable yet — the user
+     must **fully quit and relaunch the tool**, then run `/auto-bmad`. A `/clear` or "new chat"
+     reuses the same process and will fail with *"Agent type 'ab-…' not found"* (see
+     `delegation-runtime.md` → "Newly-rendered agents need a process restart").
+   - **Other tiers:** no project agents to load, so a **new session with fresh context** suffices.
+
+   Either way, running the pipeline on the context that just did setup wastes the window — a fresh
+   start re-detects host/mode and begins the story clean. (On later runs `config.yaml` already
+   exists, so this flow is skipped and the pipeline proceeds normally.)
 
 ## state/{key}.yaml
 ```yaml

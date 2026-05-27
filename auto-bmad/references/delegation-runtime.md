@@ -44,9 +44,32 @@ prominently** in the Phase 0 preflight echo and the final report, e.g. *"⚠ Del
 run."* The check distinguishes the cases: `missing` ⇒ never rendered for this tool (e.g. provisioned
 only for the other one); `stale` ⇒ out of date; `extra` ⇒ left over from a tool dropped from
 `target_tools` (reported, not auto-removed). Reprovisioning is deterministic and safe (the agent
-files are generated and gitignored), so this self-heals without a human stop. If the host can't do
-`custom-subagents` at all, fall back to `general-subagents`/`inline` for this run and note it in the
-report.
+files are generated and gitignored), so the **files** self-heal without a human stop — but on Claude
+Code/Codex the **running process loaded its agent roster at launch and won't reload it mid-run** (see
+"Newly-rendered agents need a process restart" below). So a mid-run regeneration only fully applies
+next launch: for `stale`, continue this run with the launch-time definitions (they still resolve) and
+report that a restart is needed for the new model/effort/body to take effect; for `missing` (the
+agent wasn't on disk at launch, so it isn't in the roster at all) the run **cannot invoke it this
+session** — stop and have the user restart, don't silently degrade. A host that genuinely lacks
+custom-subagent support is different: there, fall back to `general-subagents`/`inline` for this run
+and note it in the report.
+
+### Newly-rendered agents need a process restart (custom-subagents only)
+
+Claude Code loads project delegate agents (`.claude/agents/*.md`) into the **invokable-agent roster
+once, at process launch** — and Codex loads `.codex/agents/*.toml` the same way. Agents rendered
+*during* a session (first-run setup, an explicit `reprovision`, or an auto-reprovision) are written
+to disk but are **not invokable until the tool is fully quit and relaunched**. A `/clear` or "new
+chat" starts a fresh *context* in the **same process** and does **not** re-scan the agents dir.
+
+So `render-agents.py --check` reporting `fresh` proves the files are correct on disk — not that the
+current process can invoke them. The canonical symptom is the Agent/Task tool returning
+**`Agent type 'ab-…' not found`** though the file exists and is fresh. On a custom-subagents host,
+read that as **"restart needed," not "host lacks custom subagents":** stop and tell the user to quit
+& relaunch, then re-run — do **not** degrade to Tier 2, which would run the pipeline untuned when a
+restart restores full fidelity. (Only a host with no custom-subagent mechanism at all degrades — see
+the tiers below.) This is also why the first-run stop (`state-and-resume.md`) sends the user to
+relaunch the tool, not merely open a fresh context.
 
 ## Tier 1 — `custom-subagents` (Claude Code & Codex)
 

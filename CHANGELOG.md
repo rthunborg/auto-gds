@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-27
+
 ### Changed
 
 - **Retro notes are now terse, signal-only, and skipped when empty**, so the epic retro-notes file
@@ -223,7 +225,8 @@ changelog and release tooling to keep versions traceable from here on.
   release helper that promotes `[Unreleased]`, syncs the version in
   `marketplace.json` + `module.yaml`, commits, and tags.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.1.1...v0.2.0

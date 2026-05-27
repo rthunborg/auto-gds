@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `assets/agents/profiles.yaml` is now the **single source** for the default
   `profiles` + `phase_profiles` values. The `config.yaml` schema in
   `state-and-resume.md` previously re-listed every model/effort and had already
-  drifted from the asset (e.g. `ab-fast` codex `gpt-5.4-mini` vs `gpt-5.4`, and
+  drifted from the asset (e.g. `ab-alt` codex `gpt-5.4-mini` vs `gpt-5.4`, and
   `xhigh` vs `high` effort on `ab-max`/`ab-xhigh`). The schema now shows just the
   *shape* and points at the asset, so the two can't drift.
 - Corrected the documented Codex reasoning-effort set to `low|medium|high|xhigh`
@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{...}` for non-path fill-ins — so `{project_root}` is now `<project_root>`.
 - Bumped the Codex `reasoning_effort` of the top-tier profiles `ab-max` and
   `ab-xhigh` from `high` to `xhigh` (the Codex gpt-5.x ceiling), restoring the
-  Claude-side tiering on Codex; `ab-high`/`ab-fast` stay `high`. Re-run
+  Claude-side tiering on Codex; `ab-high`/`ab-alt` stay `high`. Re-run
   `/auto-bmad reprovision` to regenerate the Codex delegate `.toml` files.
 
 ### Fixed

@@ -36,7 +36,7 @@ profiles:
     codex:
       model: gpt-5.5
       reasoning_effort: high
-  ab-fast:
+  ab-alt:
     claude:
       model: sonnet
       effort: high
@@ -53,9 +53,9 @@ phase_profiles:
   create_story: ab-xhigh
   dev_story: ab-max
   code_review_review: ab-xhigh            # primary reviewer (odd iterations)
-  code_review_review_secondary: ab-fast   # even iterations, when code_review.alternate_models
+  code_review_review_secondary: ab-alt   # even iterations, when code_review.alternate_models
   code_review_fix: ab-max
-  tea_per_story: ab-fast                  # Phase 0 triage, Phase 4 ATDD, Phase 6 automate
+  tea_per_story: ab-alt                  # Phase 0 triage, Phase 4 ATDD, Phase 6 automate
   tea_epic: ab-high                       # Phase 2 epic test design, Phase 8 epic gates
   retrospective: ab-high
-  project_context: ab-fast
+  project_context: ab-alt

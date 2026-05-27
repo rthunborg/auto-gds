@@ -33,7 +33,7 @@ code_review:
 # purpose — their single source is assets/agents/profiles.yaml, which render-agents.py reads and
 # first run copies in verbatim. Edit that file (or this per-project copy) then `/auto-bmad
 # reprovision`. Shape only — see the asset for the actual model/effort defaults:
-profiles: {…}              # ab-max | ab-xhigh | ab-high | ab-fast, each:
+profiles: {…}              # ab-max | ab-xhigh | ab-high | ab-alt, each:
                            #   {claude: {model, effort}, codex: {model, reasoning_effort}}
 phase_profiles: {…}        # create_story, dev_story, code_review_review,
                            #   code_review_review_secondary, code_review_fix, tea_per_story,

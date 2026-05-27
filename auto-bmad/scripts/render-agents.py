@@ -2,7 +2,7 @@
 """Render auto-bmad's tool-native delegate agents from a profiles definition.
 
 The auto-bmad orchestrator delegates each pipeline step to one of four profiles
-(``ab-max``, ``ab-xhigh``, ``ab-high``, ``ab-fast``). Each profile bakes in a
+(``ab-max``, ``ab-xhigh``, ``ab-high``, ``ab-alt``). Each profile bakes in a
 model + thinking/reasoning effort. Those knobs are tool-specific, so this script
 generates the tool-native definition files from a single, user-editable profiles
 block:
@@ -47,7 +47,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-PROFILE_NAMES = ("ab-max", "ab-xhigh", "ab-high", "ab-fast")
+PROFILE_NAMES = ("ab-max", "ab-xhigh", "ab-high", "ab-alt")
 
 # tool -> (template subdir, template suffix, output subdir, output suffix, required keys)
 TOOLS = {
@@ -307,7 +307,7 @@ def _run_self_test() -> int:
         assert profiles[name]["codex"].get("reasoning_effort"), f"{name}.codex.reasoning_effort empty"
     assert profiles["ab-max"]["claude"]["model"] == "opus"
     assert profiles["ab-max"]["claude"]["effort"] == "max"
-    assert profiles["ab-fast"]["claude"]["model"] == "sonnet"
+    assert profiles["ab-alt"]["claude"]["model"] == "sonnet"
 
     # Inline-flow-map parsing.
     inline = parse_profiles(
@@ -380,10 +380,10 @@ def _run_self_test() -> int:
 
         # Editing a profile makes that agent's rendered output differ -> stale.
         bumped = json.loads(json.dumps(profiles))  # deep copy
-        bumped["ab-fast"]["claude"]["model"] = "opus"
+        bumped["ab-alt"]["claude"]["model"] = "opus"
         chk_stale = check(bumped, ["claude-code"], templates_dir, root)
         assert chk_stale["needs_reprovision"], chk_stale
-        assert any(p.endswith("ab-fast.md") for p in chk_stale["stale"]), chk_stale
+        assert any(p.endswith("ab-alt.md") for p in chk_stale["stale"]), chk_stale
         assert not chk_stale["missing"], chk_stale
 
         # Deleting a generated file -> missing.

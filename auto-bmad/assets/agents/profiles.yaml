@@ -52,10 +52,10 @@ profiles:
 phase_profiles:
   create_story: ab-xhigh
   dev_story: ab-max
-  code_review_review: ab-xhigh            # primary reviewer (odd iterations)
+  code_review_review: ab-xhigh           # primary reviewer (odd iterations)
   code_review_review_secondary: ab-alt   # even iterations, when code_review.alternate_models
-  code_review_fix: ab-max
-  tea_per_story: ab-alt                  # Phase 0 triage, Phase 4 ATDD, Phase 6 automate
-  tea_epic: ab-high                       # Phase 2 epic test design, Phase 8 epic gates
-  retrospective: ab-high
+  code_review_fix: ab-xhigh
+  tea_per_story: ab-high                 # Phase 0 triage, Phase 4 ATDD, Phase 6 automate
+  tea_epic: ab-xhigh                     # Phase 2 epic test design, Phase 8 epic gates
+  retrospective: ab-alt
   project_context: ab-alt

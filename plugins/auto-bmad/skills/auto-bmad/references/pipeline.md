@@ -57,23 +57,30 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
 ## Phase 7 — Code-review loop  (≤ `code_review.max_iterations`, default 3)
-Iterate until the review **Approves** / has no remaining High-severity findings, or the cap is
-hit. Track `code_review_iterations` in state (so resume continues mid-loop).
+Iterate until the review **Approves** / has no remaining Critical or High findings, or the cap
+is hit. Track `code_review_iterations` in state (so resume continues mid-loop).
 
 For iteration `i` (1-based):
-1. **Reviewer profile** (alternates when `code_review.alternate_models` is true):
-   odd `i` → `ab-xhigh` (opus), even `i` → `ab-sonnet` (sonnet). If alternation is off, always
-   `ab-xhigh`. Delegate `/bmad-code-review` targeting the branch diff for `<story_file>`.
-   The skill writes a review section + `[AI-Review]` follow-up tasks into the story file.
-2. Read the verdict (Approve / Changes Requested / Blocked) and High/Med/Low counts.
-   - **Approve / no High findings** → commit `chore(story-{e}-{s}): code review passed
-     (iter {i})` and exit the loop.
+1. **Reviewer profile** — **always start with opus.** When `code_review.alternate_models` is
+   true: odd `i` → `ab-xhigh` (opus), even `i` → `ab-sonnet` (sonnet) — so iter 1 = opus, iter 2
+   = sonnet, iter 3 = opus. When alternation is off, every iteration is `ab-xhigh` (opus).
+   Delegate `/bmad-code-review` targeting the branch diff for `<story_file>`. The skill writes a
+   review section + `[AI-Review]` follow-up tasks into the story file.
+2. Read the verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low counts.
+   - **Approve / no Critical or High findings** → commit `chore(story-{e}-{s}): code review
+     passed (iter {i})` and exit the loop.
    - **Findings remain** → delegate the fix to `ab-max`: `/bmad-dev-story <story_file>` focused
      on the `[AI-Review]` follow-up tasks. Commit `fix(story-{e}-{s}): address code review
      (iter {i})`. Continue to iteration `i+1`.
-3. **Cap reached with unresolved High findings** → record a blocker in state, do NOT block the
-   PR entirely: proceed to finalize but mark the PR **draft** and surface the findings in the
-   report as `needs-human`.
+3. **Cap reached with unresolved Critical/High findings → ASK the user** (AskUserQuestion); do
+   not silently proceed. Summarize the remaining findings, then offer:
+   - **Run another review+fix iteration** *(recommended)* — continue beyond the cap with the
+     **opus** reviewer (`ab-xhigh`) + `ab-max` fix, to drive the remaining Critical/High to zero.
+     Repeat this ask after each extra iteration until clean or the user stops.
+   - **Open a draft PR and stop here** — finalize with a **draft** PR, the findings recorded as
+     `needs-human` in state and the report.
+   - **Stop without a PR** — leave the branch as-is; report the findings as `needs-human`.
+   Record the user's choice and any extra iterations in state (`code_review_iterations`).
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*
 Run these in order; commit once at the end: `docs(epic-{e}): gate, project context, retrospective`.
@@ -89,8 +96,11 @@ Run these in order; commit once at the end: `docs(epic-{e}): gate, project conte
 ## Phase 9 — Finalize  → `ab-sonnet`
 - Ensure everything is committed (no dirty tree).
 - **git mode `remote`:** push the branch and open a PR via `gh pr create` (see `git-and-pr.md`).
-  Make it a **draft** if any blocker was recorded. PR body = conventional summary + link to the
-  story file + a checklist of open questions / deferred work / human-action items.
-- **git mode `local`:** skip the PR; leave the branch in place and note it in the report.
+  Make it a **draft** if any blocker was recorded (including unresolved review findings the user
+  chose to ship as draft in Phase 7). PR body = conventional summary + link to the story file +
+  a checklist of open questions / deferred work / human-action items.
+- **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the PR; leave the
+  branch in place and note it in the report.
 - Mark the state file `done` (record `pr_url`, final `branch`, any `blockers`).
-- Hand control back to the SKILL's Step 3 (final report).
+- Hand control back to the SKILL's Step 3, which **writes the report to
+  `_bmad-output/auto-bmad/reports/{key}.md`** and prints it.

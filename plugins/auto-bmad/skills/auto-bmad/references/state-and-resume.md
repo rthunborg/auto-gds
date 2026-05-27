@@ -7,6 +7,7 @@ _bmad-output/auto-bmad/
   config.yaml                 # project config (created on first run)
   state/{key}.yaml            # one resumable state file per story
   retro-notes/epic-{e}.md     # accumulated notes feeding the epic retrospective
+  reports/{key}.md            # the final per-story report (written in Phase 9 / SKILL Step 3)
 ```
 
 ## config.yaml
@@ -71,8 +72,18 @@ blockers: []                 # each: short human-action description
 ```
 Update it after every phase. Treat it as the source of truth for resume.
 
-## Resume logic
-On invocation, after `story_plan.py` gives the target `story_key`:
+## Target selection & resume logic
+No-arg `/auto-bmad` chooses the target story with this precedence:
+1. **Incomplete auto-bmad pipeline first.** If any `state/*.yaml` has `status != done`, that
+   story is the target — finish in-flight work before starting anything new. (At most one should
+   exist; if several, take the most-recently-modified and mention the others in the report.)
+2. **Else `story_plan.py`** picks the next actionable story. Its own precedence is
+   `in-progress → review → ready-for-dev → backlog → retrospective`, so it resumes BMAD-level
+   unfinished work before pulling a fresh `backlog` item — it does NOT jump straight to backlog.
+
+An explicit `--story <arg>` overrides both and targets that story directly.
+
+Once the target `story_key` is known:
 - If `state/{key}.yaml` exists and `status != done` → **resume**: skip phases already in
   `completed_phases`, and if Phase 7 is in progress, continue the review loop from
   `code_review_iterations`. Re-detect git mode/branch (cheap) rather than trusting stale values

@@ -41,20 +41,30 @@ skill directly — don't; delegate it.
 2. Read `_bmad/bmm/config.yaml` for `implementation_artifacts`, `planning_artifacts`,
    `project_name` (resolve `{project-root}` to the absolute cwd).
 3. Load auto-bmad config from `{project-root}/_bmad-output/auto-bmad/config.yaml`. If missing,
-   run the **first-run flow** in `references/state-and-resume.md` (this is the ONLY interactive
-   moment in normal operation), then write the config.
+   run the **first-run flow** in `references/state-and-resume.md`, then write the config.
+   (First-run is normally the only interactive moment; the one other place auto-bmad may ask is
+   when code review fails to converge within the iteration cap — see Phase 7.)
 
 ### Step 1 — Preflight
 Read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0), then:
 1. **Skill availability:** verify the BMAD skills required for the selected path exist
    (core always; TEA set only if `tea.enabled`; epic-end skills if this is a last story). Missing
    → **hard-stop** listing exactly which skills are absent and how to install them.
-2. **Target story:** run
-   `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auto-bmad/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl> [--story <arg>]`
-   where `<arg>` is the user's argument if given. Parse the JSON. If `hard_stop` is true →
-   surface `hard_stop_reason` and stop.
-3. **Resume check:** if a non-`done` state file exists for `story_key`, you are resuming —
-   continue from the first incomplete phase. Otherwise initialize a fresh state file.
+2. **Target story** (precedence when NO `--story` argument is given):
+   a. **Resume an interrupted pipeline first:** if any `state/*.yaml` has `status != done`,
+      that story wins — auto-bmad finishes in-flight work before starting anything new (there
+      should be at most one given "one story at a time"; if several, take the most recently
+      modified and note the others in the report).
+   b. Otherwise run
+      `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auto-bmad/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>`
+      to pick the next actionable story. Its precedence is `in-progress → review →
+      ready-for-dev → backlog → retrospective`, so it **resumes BMAD-level unfinished work
+      before pulling a fresh backlog item** — it does not jump straight to backlog.
+   With a `--story <arg>`: pass `--story <arg>` to the script (overrides the above). Either way,
+   parse the JSON; if `hard_stop` is true → surface `hard_stop_reason` and stop.
+3. **Resume check:** if a non-`done` state file exists for the chosen `story_key`, resume from
+   the first phase not in `completed_phases` (and continue the review loop from
+   `code_review_iterations`). Otherwise initialize a fresh state file in Phase 1.
 4. **Git preflight & triage:** delegate to `ab-sonnet` per Phase 0 of the pipeline (detect repo,
    clean tree, git mode, base branch; and — only if TEA enabled — classify story risk to pick
    per-story TEA skills). Record the decisions in state.
@@ -68,7 +78,9 @@ whose conditions don't apply (epic-start only if `is_first_in_epic`; TEA phases 
 - otherwise checkpoint (commit per `references/git-and-pr.md`), append retro notes, update state.
 
 ### Step 3 — Final report
-Always end with a single report (even on hard-stop) containing:
+Always produce a single report (even on hard-stop). **Write it to**
+`{project-root}/_bmad-output/auto-bmad/reports/{key}.md` (overwrite on re-run/resume) **and**
+print the same content to the user. The report contains:
 - **Story:** key, final status, branch.
 - **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.
@@ -80,6 +92,8 @@ Always end with a single report (even on hard-stop) containing:
 ## Hard-stop conditions (surface clearly, then report & exit)
 Not a BMAD project; missing required skill; no `sprint-status.yaml` / no epics; ambiguous or
 not-found `--story`; epic already `done`; dirty working tree on the wrong branch; merge/rebase
-conflict; unresolved High-severity review findings after `code_review.max_iterations`;
-a delegated step returns `blocked`/`needs-human` (missing secret/credential, required external
-service, or manual action). Never push past a hard-stop — report and let the human act.
+conflict; a delegated step returns `blocked`/`needs-human` (missing secret/credential, required
+external service, or manual action). Never push past a hard-stop — report and let the human act.
+
+(Note: code review NOT converging within `max_iterations` is NOT a silent hard-stop — Phase 7
+**asks the user** what to do.)

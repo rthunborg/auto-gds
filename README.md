@@ -35,10 +35,18 @@ Run from the root of a BMAD-enabled project:
 
 - **First run in a project** asks a couple of one-time setup questions (TEA on/off, test
   framework/CI scaffolding) and writes `_bmad-output/auto-bmad/config.yaml`.
-- The pipeline is **resumable** — re-run `/auto-bmad` (same story) to continue from the last
-  completed phase after an interruption.
+- **No-argument `/auto-bmad` resumes unfinished work first.** It picks up an interrupted
+  auto-bmad pipeline if one exists, otherwise the next actionable story by status
+  (`in-progress → review → ready-for-dev → backlog`) — it doesn't jump straight to a fresh
+  backlog item. Pass a story id to target one explicitly.
+- The pipeline is **resumable** — re-run `/auto-bmad` to continue from the last completed phase
+  after an interruption.
+- **Code review starts on Opus** and alternates Opus/Sonnet across iterations. If Critical/High
+  findings remain after the iteration cap (default 3), it **asks you** whether to run another
+  pass, open a draft PR, or stop.
+- A per-story **report is saved** to `_bmad-output/auto-bmad/reports/<story>.md` (and printed).
 - It **stops and tells you** whenever something genuinely needs a human (missing planning
-  docs, merge conflicts, unresolved review findings, missing credentials, etc.).
+  docs, merge conflicts, missing credentials, etc.).
 
 ## What it does per story
 
@@ -51,7 +59,7 @@ Run from the root of a BMAD-enabled project:
 | 4 | ATDD acceptance scaffolds | `bmad-testarch-atdd` | TEA on + risk-warranted |
 | 5 | Implement story | `bmad-dev-story` | always |
 | 6 | Expand automated coverage | `bmad-testarch-automate` | TEA on + risk-warranted |
-| 7 | Code review (≤3 iterations, alternating models) | `bmad-code-review` | always |
+| 7 | Code review (Opus-first, alternating models, ≤3 iters; asks if unresolved) | `bmad-code-review` | always |
 | 8 | Gates, project context, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
 | 9 | Push + open PR + final report | — | always |
 

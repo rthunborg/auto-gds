@@ -134,6 +134,16 @@ runtime concern (`/auto-bmad reprovision`), not a release artifact, so nothing r
   (retunable per install), so they're config, not hardcoded — the shipped defaults are real.
 - **BMAD** has no portable abstraction for delegation or model/effort; modules are skills copied
   into a tool's skills dir (`.claude/skills/`, `.codex/skills/`). Hence the tiered design.
+- **BMAD update of a custom-source module (auto-bmad/`abm`):** `--action quick-update` only re-pulls
+  modules whose source is cached under `~/.bmad/cache/` and **skips custom-source re-cloning
+  entirely** (`installer.js quickUpdate` adds a custom module only if `findModuleSourceByCode` hits a
+  cached repo; otherwise it's in `skippedModules`). The installer's `resolveInstalledModuleYaml`
+  never searches the project tree, so a self-registered/marketplace-installed `abm` has
+  `source: unknown` in `_bmad/_config/manifest.yaml` and emits benign `could not locate module.yaml
+  for 'abm'` warnings on every update. The fix is to update with the full path re-supplying the
+  source: `npx bmad-method install --action update --custom-source <repo-url> --yes` (re-clones to
+  cache, rewrites the manifest source). So the README "Updating" section must recommend
+  `--action update --custom-source …`, **never** bare `quick-update`.
 - `/bmad-create-story` has no `validate` mode; it self-validates against its checklist.
 - **Shell globs:** the orchestrator's probe commands run under whatever shell the host uses (zsh,
   fish, bash). An unmatched glob is fatal in zsh/fish (`nomatch` ⇒ exit 1), and the `for f in

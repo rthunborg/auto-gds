@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **README "Updating" no longer recommends `--action quick-update`, which silently skips auto-bmad.**
+  auto-bmad installs as a *custom-source* BMAD module, but `quick-update` only re-pulls modules whose
+  source is already cached under `~/.bmad/cache/` and skips custom-source re-cloning entirely — so on
+  a marketplace/copy install (or any install whose source resolved to `unknown` in the BMAD manifest)
+  it passes auto-bmad over without updating it, and `bmad update` keeps emitting the benign `[warn] …
+  could not locate module.yaml for 'abm'`. The Updating section now documents the full path that
+  re-supplies the source — `npx bmad-method install --action update --custom-source <repo-url> --yes`
+  — which re-clones into the cache and rewrites the manifest source so updates apply and resolve
+  cleanly. (Recorded as a verified platform fact in `CLAUDE.md`.)
+
 ## [0.4.0] - 2026-05-27
 
 ### Changed

@@ -58,17 +58,18 @@ If you exclusively use Claude Code, you can instead add this repo as a Claude pl
 
 ## Updating
 
-auto-bmad is a BMAD module, so you update it the way you installed it — **re-run the BMAD installer**, which re-fetches this repo from its Git source. Requires Node.js 20.12+.
+auto-bmad installs as a **custom-source** BMAD module, so an update has to re-supply its Git source. Re-run the installer in `update` mode pointing at this repo (requires Node.js 20.12+):
 
 ```bash
-# Interactive: detects your existing install and prompts for any newer version
-npx bmad-method install
-
-# Non-interactive: refresh every module from its source (re-fetches Git modules)
-npx bmad-method install --action quick-update
+npx bmad-method install \
+  --action update \
+  --custom-source https://github.com/stefanoginella/auto-bmad \
+  --yes
 ```
 
-The interactive flow classifies the change and defaults accordingly — **patch** and **minor** upgrades are auto-accepted, **major** upgrades ask first. `quick-update` is the fast path: it re-pulls auto-bmad (and your other modules) from their original sources without prompting, applying patch/minor upgrades and refusing majors. To track development versions ahead of a tagged release, use the prerelease channel: `npx bmad-method@next install`.
+This re-clones the repo into BMAD's module cache and rewrites the install manifest with auto-bmad's source, so the update applies and future `bmad update` runs resolve it cleanly. To track development versions ahead of a tagged release, add the prerelease installer channel: `npx bmad-method@next install --action update --custom-source https://github.com/stefanoginella/auto-bmad --yes`.
+
+> ⚠️ **Don't update auto-bmad with `--action quick-update`** (which is also the interactive default for an existing install). quick-update only re-pulls modules whose source is already cached under `~/.bmad/cache/`, and it skips custom-source re-cloning entirely — so unless auto-bmad's repo is already cached from a prior `--custom-source` run, it is **silently skipped** and you keep seeing `[warn] … could not locate module.yaml for 'abm'` on the next `bmad update`. Always re-supply `--custom-source` as above (interactively: choose **"Modify BMAD Installation"** and re-enter the custom source — don't accept the quick-update default).
 
 > 💡 **Delegate agents re-render themselves after an update.** auto-bmad generates its tuned subagents from `profiles`/templates, so a module update (or a `profiles` edit) would otherwise leave the generated `.claude/agents` / `.codex/agents` stale. The next `/auto-bmad` run **detects this at preflight and reprovisions automatically**, noting it in the report — so you normally don't need to do anything. To refresh them yourself (e.g. right after editing `profiles`), run `/auto-bmad reprovision`. Nothing else needs reconfiguring — the running tool is auto-detected every run.
 

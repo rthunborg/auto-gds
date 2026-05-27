@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Retro notes are now terse, signal-only, and skipped when empty**, so the epic retro-notes file
+  (`_bmad-output/auto-bmad/retro-notes/epic-{e}.md`) stays small across a long epic instead of
+  accumulating a per-phase log. Delegates now default `Retro notes` to `none` and add at most a
+  one-line bullet per genuinely retrospective-worthy item (deviation / non-obvious decision /
+  surprise / risk not already in the story file); the orchestrator appends nothing — not even the
+  `## Story {key}` heading — for `none`/empty/routine notes. (All `ab-*` delegate templates, the
+  shared autonomy directive in `delegation.md`, the append step in `SKILL.md`, and the file spec in
+  `state-and-resume.md`. Run `/auto-bmad reprovision` to re-render delegate agents.)
+
 - Phase 7 code-review loop now keeps iterating on a **cluster of Medium findings**, not just on
   Critical/High. A pass exits the loop only when it found no Critical or High **and at most one
   Medium** (any number of Low is fine); two or more Mediums now re-review like a Critical/High,

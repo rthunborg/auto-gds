@@ -63,8 +63,10 @@ reference file at the moment its step calls for it.
 - The delegate prompt is always the **exact** content from `references/delegation.md` for that
   step, with placeholders filled (story id, absolute file paths). Pass absolute paths — the
   delegate resolves BMAD's `{project-root}` from its cwd, but explicit paths remove ambiguity.
-- After each delegated step, read the structured result. Append its **retro notes** to the epic
-  retro-notes file. Then checkpoint (commit) and update state. This is identical across tiers.
+- After each delegated step, read the structured result. Append any **retro notes** to the epic
+  retro-notes file — but skip `none`/empty/routine notes, so clean phases add nothing and the file
+  stays usable across a long epic (see `references/state-and-resume.md`). Then checkpoint (commit)
+  and update state. This is identical across tiers.
 
 ## Procedure
 

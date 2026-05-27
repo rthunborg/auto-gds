@@ -16,7 +16,8 @@ delegate profiles already carry it, so the short form below is enough).
 > and never wait for human input. If something genuinely needs a human (missing secret/credential,
 > external service, manual action, or an ambiguity that changes the outcome), STOP and report it
 > as `needs-human`. Return the structured result: Outcome, Files changed, Status, Open questions,
-> Deferred work, Blockers, Retro notes.
+> Deferred work, Blockers, Retro notes (terse — say `none` unless something is genuinely worth the
+> epic retrospective; one line per item, no recap of routine work).
 
 **Placeholders (canonical glossary — `pipeline.md` references this list, not its own copy).**
 `<...>` = a filesystem path the orchestrator resolves; `{...}` = a non-path value it fills in

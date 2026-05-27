@@ -158,12 +158,21 @@ Git commits are the secondary safety net: even if the state file is lost, the pe
 on the story branch show how far the pipeline got.
 
 ## retro-notes/epic-{e}.md
-After each phase, append the agent's **Retro notes** under a per-story heading:
+The cross-story scratchpad the epic retrospective reads — **signal only, not a log.** After each
+phase, append the agent's **Retro notes** under one per-story heading (create `## Story {key}` on
+the first real note for that story; reuse it for later phases):
 ```
 ## Story {key}
-- <decision / surprise / deviation / deferred item / risk worth remembering>
+- <one terse line: a deviation / non-obvious decision / surprise / risk / deferred item>
 ```
-This file is created lazily on the first note for an epic and handed to `/bmad-retrospective`
+Keep it small so it stays usable across a multi-story epic:
+- **Skip empty notes.** Most phases run clean and have nothing retrospective-worthy — when a
+  delegate returns `Retro notes: none` (or only routine "did the work" text), append **nothing**
+  (don't even write the heading). Only genuine signal lands here.
+- **One terse line per item** — never a paragraph, and never a recap of what the story file
+  already records.
+
+This file is created lazily on the first real note for an epic and handed to `/bmad-retrospective`
 at epic end as primary input — it carries the cross-step context (autonomy choices, why things
 were done a certain way) that the story file alone doesn't capture.
 

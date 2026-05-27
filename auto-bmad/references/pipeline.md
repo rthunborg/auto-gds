@@ -74,8 +74,8 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
 ## Phase 7 — Code-review loop  (≤ `code_review.max_iterations`, default 3)
-Iterate until the review **Approves** / has no remaining Critical or High findings, or the cap
-is hit. Track `code_review_iterations` in state (so resume continues mid-loop).
+Iterate until the review **Approves** / has no remaining Critical or High findings (and at most
+one Medium), or the cap is hit. Track `code_review_iterations` in state (so resume continues mid-loop).
 
 For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with the primary reviewer.** When
@@ -84,6 +84,19 @@ For iteration `i` (1-based):
    When alternation is off, every iteration is `code_review_review`. Delegate the **`code-review`**
    entry to that reviewer profile. The skill writes findings into the story file's
    `### Review Findings` section as `[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]` items.
+
+   **Verify persistence (reconciliation gate) — before trusting the result.** The review skill
+   silently runs in `no-spec` mode and persists *nothing* if the story file isn't bound as its
+   spec, so never take the reviewer's chat counts on faith. After the delegate returns, run
+   `python3 {skill-root}/scripts/review_findings.py --story-file <story_file> --expect-min {N}`
+   where `{N}` is the reviewer's reported `Findings persisted:` count (fall back to its total
+   raised-findings count if that line is missing). `reconciled: true` (exit 0) → proceed, and use
+   **the file's** counts (`open_patch` / `open_decision`), not the chat report, to drive steps 2–3.
+   `reconciled: false` (exit 1 — section absent, or fewer bullets than claimed) → the findings did
+   NOT persist: **re-delegate the `code-review` entry once more this iteration** with the spec
+   binding reinforced (this retry does not consume a loop iteration). If it still won't persist,
+   **stop and report `needs-human`** ("code-review did not persist findings to `<story_file>`")
+   rather than running the fix loop against an empty section.
 2. **Resolve `[Review][Decision]` items first — ASK the user.** These are the calls the reviewer
    flagged as needing a human (the fix is ambiguous), so never auto-guess them. If this pass wrote
    any open `[Review][Decision]` items, batch them into `AskUserQuestion` **before** the fix: at
@@ -99,19 +112,20 @@ For iteration `i` (1-based):
    it off, then commit `fix(story-{e}-{s}): address code review (iter {i})`. What happens next depends on the **severity
    this pass found** (the findings it just fixed, decision items included):
    - **No findings** → commit `chore(story-{e}-{s}): code review passed (iter {i})` and exit.
-   - **Only Med/Low (no Critical or High)** → the fixes are in and nothing high-risk surfaced;
-     exit the loop and continue the pipeline (no need to ask).
-   - **Any Critical or High** → they were fixed, but the fix is unverified and such findings can
-     recur, so re-review: if `i < cap`, continue to iteration `i+1`; if `i == cap`, go to step 4.
-4. **Cap reached while the last pass was still finding (and fixing) Critical/High → ASK the user**
-   (AskUserQuestion); do not silently proceed. Nothing is left unresolved — each pass fixed its
-   findings — but because the final pass was still surfacing Critical/High, convergence is
-   unverified. (This is mid-pipeline — the PR doesn't happen until Phase 9, after the epic-end
-   Phase 8.) Summarize the Critical/High the last pass fixed, then offer:
+   - **At most one Med, plus any number of Low (and no Critical or High)** → the fixes are in and
+     nothing high-risk surfaced; exit the loop and continue the pipeline (no need to ask).
+   - **Any Critical or High, OR two or more Med** → they were fixed, but the fix is unverified and
+     such findings can recur (and a cluster of Mediums means the change still isn't settling), so
+     re-review: if `i < cap`, continue to iteration `i+1`; if `i == cap`, go to step 4.
+4. **Cap reached while the last pass was still tripping the re-review threshold (Critical/High, or
+   ≥2 Med) → ASK the user** (AskUserQuestion); do not silently proceed. Nothing is left unresolved —
+   each pass fixed its findings — but because the final pass still tripped that threshold,
+   convergence is unverified. (This is mid-pipeline — the PR doesn't happen until Phase 9, after
+   the epic-end Phase 8.) Summarize the findings the last pass fixed, then offer:
    - **Run another review+fix iteration** *(recommended)* — continue beyond the cap with the
-     primary reviewer (`code_review_review`) + `code_review_fix`, to verify the fixes and drive any
-     remaining Critical/High to zero. Repeat this ask after each extra iteration until a pass comes
-     back clean or Med/Low-only, or the user stops.
+     primary reviewer (`code_review_review`) + `code_review_fix`, to verify the fixes and drive the
+     findings below the re-review threshold. Repeat this ask after each extra iteration until a pass
+     comes back clean or below threshold (no Critical/High and ≤1 Med), or the user stops.
    - **Accept the fixes and continue the pipeline** — trust the fixes already applied; set
      `convergence_unverified: true` in state, then proceed normally to Phase 8 (if last story) and
      Phase 9. Because that flag is set, Phase 9 opens the PR as a **draft** (or, in local mode,

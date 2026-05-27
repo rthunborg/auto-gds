@@ -46,12 +46,24 @@ moved to `review`. Do not commit or branch — the orchestrator handles git.
 
 ### code-review
 ```
-Run `/bmad-code-review` in <project_root>, reviewing the changes on the current branch for
-story <story_file> (review the branch diff against the base branch).
-Persist findings to the story file's `### Review Findings` section (the skill writes
-`[Review][Patch]`, `[Review][Decision]`, and `[Review][Defer]` items there). Report the verdict
-(Approve / Changes Requested / Blocked), the Critical/High/Med/Low counts, AND the count of
-open `[Review][Decision]` items (they need a human call — see `pipeline.md` Phase 7).
+Run `/bmad-code-review` in <project_root>.
+SPEC BINDING (do this first): the review's spec/story file is EXACTLY <story_file>. When the
+skill resolves its review target, set its spec file to that path and run in FULL (spec) review
+mode — if it asks whether a spec/story file exists, answer yes with that path. NEVER let it fall
+into `no-spec` mode: that silently drops `[Review][Decision]` items and persists nothing.
+DIFF SOURCE: the changes on the current branch — branch diff against the base branch.
+
+Persisting findings to <story_file>'s `### Review Findings` section IS the deliverable of this
+step (not the chat summary): the skill writes `[Review][Patch]`, `[Review][Decision]`, and
+`[Review][Defer]` items there. The story file already has a Tasks/Subtasks section, so the append
+must happen.
+VERIFY THEN REPORT: after the skill finishes, RE-READ <story_file> and confirm the
+`### Review Findings` section exists and holds one bullet per finding you raised. If you raised
+findings but the section is missing/empty, write them there yourself before returning.
+Report the verdict (Approve / Changes Requested / Blocked), the Critical/High/Med/Low severity
+counts, the count of open `[Review][Decision]` items (they need a human call — see `pipeline.md`
+Phase 7), AND a final line `Findings persisted: <N>` = the number of `[Review][*]` bullets
+actually present in <story_file> after your re-read.
 ```
 
 ### code-review fix

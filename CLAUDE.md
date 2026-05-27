@@ -45,6 +45,9 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
   identity, capability registry, and self-registration/provisioning flow.
 - `auto-bmad/scripts/story_plan.py` — dependency-free sprint-status reader (`--self-test`).
 - `auto-bmad/scripts/render-agents.py` — dependency-free agent generator (`--self-test`).
+- `auto-bmad/scripts/review_findings.py` — dependency-free reader for a story's `### Review
+  Findings` section; the Phase 7 reconciliation gate runs it to confirm the review skill actually
+  persisted findings (`--expect-min N` ⇒ exit 1 on shortfall; `--self-test`).
 - `auto-bmad/scripts/merge-config.py` + `merge-help-csv.py` — config/CSV merge (from the BMAD
   standalone-module template; use PyYAML via the BMAD installer's environment).
 - `CHANGELOG.md` — hand-maintained ([Keep a Changelog](https://keepachangelog.com/)); version
@@ -65,6 +68,7 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
 # Deterministic cores:
 python3 auto-bmad/scripts/story_plan.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
+python3 auto-bmad/scripts/review_findings.py --self-test
 # Marketplace manifest is valid JSON:
 python3 -m json.tool .claude-plugin/marketplace.json >/dev/null
 # Module structure passes the BMAD validator (run from the repo root, which holds the one skill):

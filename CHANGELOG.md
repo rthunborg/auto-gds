@@ -13,7 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Phase 7 code-review loop now keeps iterating on a **cluster of Medium findings**, not just on
+  Critical/High. A pass exits the loop only when it found no Critical or High **and at most one
+  Medium** (any number of Low is fine); two or more Mediums now re-review like a Critical/High,
+  because a pile of Mediums means the change still isn't settling. (`pipeline.md`)
+
 ### Fixed
+
+- **Code review now enforces that findings are persisted to the story file.** `/bmad-code-review`
+  silently runs in `no-spec` mode — dropping `[Review][Decision]` items and writing nothing to the
+  story's `### Review Findings` section — whenever the story file isn't bound as its spec, yet it
+  still reports findings to chat. The orchestrator trusted that report, so Phase 7's decision-ask
+  and fix loop ran against an empty section and lost the findings. Three reinforcing fixes: the
+  `code-review` delegation prompt (`delegation.md`) now binds `<story_file>` as the spec up front,
+  forbids `no-spec` fallback, and makes the delegate re-read the file and report a `Findings
+  persisted: <N>` count; a new reconciliation gate in Phase 7 (`pipeline.md`) runs the new
+  `scripts/review_findings.py` to confirm the section actually holds the claimed findings, and on a
+  mismatch re-delegates once (free retry) before escalating to `needs-human` rather than fixing
+  against an empty section. (New dependency-free `auto-bmad/scripts/review_findings.py` with
+  `--self-test`.)
 
 - First-run setup and `reprovision` now tell the user to **fully restart the tool** (quit &
   relaunch) — not just open a "new session with fresh context" — before running the pipeline on the

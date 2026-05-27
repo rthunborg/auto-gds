@@ -1,6 +1,6 @@
 # auto-bmad
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works with: Claude Code | Codex](https://img.shields.io/badge/works%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 A **BMad module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**.
 
@@ -18,8 +18,9 @@ delegates are real, tuned subagents (`.claude/agents` / `.codex/agents`, generat
 configurable profiles block); on a tool with generic subagents it falls back to those (untuned),
 and on one with none it runs steps inline — same pipeline either way.
 
-> Requires an existing BMAD installation in your project (the `/bmad-*` skills + `_bmad/`
-> config). auto-bmad orchestrates those skills; it does not replace them.
+> Requires the BMAD skills it orchestrates (`bmm`, plus `tea` for the test phases) and a `_bmad/`
+> config in your project — the installer below can add these in the same run. auto-bmad drives
+> those skills; it does not replace them.
 
 > ⚠️ **It can't save you from bad inputs.** auto-bmad automates the *workflow*, not judgment —
 > the quality of what comes out is capped by what goes in. Vague epics, thin acceptance
@@ -30,16 +31,55 @@ and on one with none it runs steps inline — same pipeline either way.
 
 ## Install
 
-**Claude Code** (marketplace):
+auto-bmad is a BMad module, so the official way to install it — for **any** supported tool,
+Claude Code included — is the **BMAD installer**. Requires **Node.js 20.12+** and Git.
+
+From your project directory, run the installer and add this repo as a custom source:
+
+```bash
+npx bmad-method install
+```
+
+When the interactive flow asks **"Would you like to install from a custom source (Git URL or
+local path)?"**, choose **Yes** and enter:
+
+```text
+https://github.com/stefanoginella/auto-bmad
+```
+
+The installer reads this repo's `marketplace.json`, offers the `auto-bmad` module, and copies it
+into your tool's skills dir (`.claude/skills/` for Claude Code, `.agents/skills/` for Codex, …).
+In the same run, also select the official modules auto-bmad orchestrates if they aren't already
+installed — at least **bmm**, plus **tea** for the test-architecture phases.
+
+Non-interactive equivalent:
+
+```bash
+npx bmad-method install \
+  --directory . \
+  --modules bmm,tea \
+  --custom-source https://github.com/stefanoginella/auto-bmad \
+  --tools claude-code \
+  --yes
+```
+
+Use `--tools codex` for Codex (`npx bmad-method install --list-tools` lists every target). Re-run
+`npx bmad-method install` anytime to update.
+
+Then provision the delegate agents once with `/auto-bmad setup` — though auto-bmad also
+self-registers on the first normal `/auto-bmad` run if you skip it.
+
+<details>
+<summary>Claude Code–only alternative (plugin marketplace)</summary>
+
+If you exclusively use Claude Code, you can instead add this repo as a Claude plugin marketplace
+(you'll still need the `bmm`/`tea` BMAD skills installed separately via the installer above):
 
 ```text
 /plugin marketplace add stefanoginella/auto-bmad
 /plugin install auto-bmad@auto-bmad
 ```
-
-**Codex / other BMad tools:** install the module from this repo with the BMad installer (it
-copies the `auto-bmad` skill into your tool's skills dir). Then run `/auto-bmad setup` once to
-register the module and provision the tool-native delegate agents.
+</details>
 
 ## Usage
 

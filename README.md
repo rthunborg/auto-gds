@@ -1,5 +1,7 @@
 # auto-bmad
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works with: Claude Code | Codex](https://img.shields.io/badge/works%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
 A **BMad module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**.
 
 `auto-bmad` chains the core BMM skills (`create-story` → `dev-story` → `code-review`) and the
@@ -18,6 +20,13 @@ and on one with none it runs steps inline — same pipeline either way.
 
 > Requires an existing BMAD installation in your project (the `/bmad-*` skills + `_bmad/`
 > config). auto-bmad orchestrates those skills; it does not replace them.
+
+> ⚠️ **It can't save you from bad inputs.** auto-bmad automates the *workflow*, not judgment —
+> the quality of what comes out is capped by what goes in. Vague epics, thin acceptance
+> criteria, or a shaky architecture produce vague, untrustworthy code, just faster and more
+> confidently. The automated code-review loop and the human-in-the-loop stops below are
+> guardrails, not guarantees; the real leverage is clear stories and a sound design *before* you
+> press go. Garbage in, garbage out.
 
 ## Install
 
@@ -78,6 +87,21 @@ Run from the root of a BMAD-enabled project:
 
 Each phase ends with a conventional commit, so progress survives interruptions and is easy to
 review.
+
+## Human-in-the-loop stops
+
+auto-bmad runs autonomously between the points below — delegated sub-agents answer BMAD's
+interactive prompts with sensible defaults. It pauses for **you** only here:
+
+| Stop | When | What you decide / do |
+|------|------|----------------------|
+| **First-run setup** | First `/auto-bmad` in a project | One-time questions: TEA on/off, and whether to scaffold the test framework + CI. Writes `config.yaml`. |
+| **Module setup** | `/auto-bmad setup` (or module not yet registered) | Confirm or adjust which AIs to provision delegate agents for (defaults to the ones your BMAD install targets). |
+| **Code review didn't converge** | Phase 7 — iteration cap reached with unresolved Critical/High findings | Choose: run another review + fix pass, accept and continue (the PR is opened as a **draft**), or stop. |
+| **Re-running a completed story** | You target an already-`done` story | Confirm before its report log is overwritten; otherwise it won't redo the story. |
+| **Blocker / needs-human** | Any phase | Hard-stop: a missing secret/credential, a required external service or manual step, a merge/rebase conflict, a dirty tree on the wrong branch, not a BMAD project, a missing required skill, or an ambiguous/not-found `--story`. It reports exactly what's needed and never pushes past it. |
+
+Use overrides (below) if you want to add your own stops — e.g. `stop before code-review`.
 
 ## Overrides
 

@@ -7,7 +7,7 @@ _bmad-output/auto-bmad/
   config.yaml                 # project config (created on first run)
   state/{key}.yaml            # one resumable state file per story
   retro-notes/epic-{e}.md     # accumulated notes feeding the epic retrospective
-  reports/{key}.md            # the final per-story report (written in Phase 9 / SKILL Step 3)
+  reports/{key}.md            # per-story report log (appended each run; see below)
 ```
 
 ## config.yaml
@@ -104,3 +104,13 @@ After each phase, append the agent's **Retro notes** under a per-story heading:
 This file is created lazily on the first note for an epic and handed to `/bmad-retrospective`
 at epic end as primary input — it carries the cross-step context (autonomy choices, why things
 were done a certain way) that the story file alone doesn't capture.
+
+## reports/{key}.md
+The per-story report is a **log**, not a single overwritten document:
+- Each run (first completion OR resume) **appends** a new `## Report — <ISO timestamp>` section,
+  preserving everything already in the file. A resume must never clobber an earlier run's
+  report, since prior sections may hold context (decisions, partial outcomes) we'd otherwise lose.
+- The file is created on the first report for the story.
+- The **only** time it's overwritten is a deliberate full re-run of an already-`done` story, and
+  only after explicit user confirmation ("overwrite the existing report log for {key}?"). If the
+  user declines, append instead.

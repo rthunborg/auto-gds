@@ -78,9 +78,12 @@ whose conditions don't apply (epic-start only if `is_first_in_epic`; TEA phases 
 - otherwise checkpoint (commit per `references/git-and-pr.md`), append retro notes, update state.
 
 ### Step 3 — Final report
-Always produce a single report (even on hard-stop). **Write it to**
-`{project-root}/_bmad-output/auto-bmad/reports/{key}.md` (overwrite on re-run/resume) **and**
-print the same content to the user. The report contains:
+Always produce a single report (even on hard-stop). **Append it** as a new timestamped section
+(`## Report — <ISO timestamp>`) to `{project-root}/_bmad-output/auto-bmad/reports/{key}.md`,
+**preserving any existing sections**, and print the same content to the user. Never overwrite on
+resume — earlier runs' reports carry context we must not lose. The ONLY time you overwrite the
+file is a deliberate full re-run of an already-`done` story, and only after explicit user
+confirmation. The report contains:
 - **Story:** key, final status, branch.
 - **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.

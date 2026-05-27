@@ -73,13 +73,17 @@ For iteration `i` (1-based):
      on the `[AI-Review]` follow-up tasks. Commit `fix(story-{e}-{s}): address code review
      (iter {i})`. Continue to iteration `i+1`.
 3. **Cap reached with unresolved Critical/High findings → ASK the user** (AskUserQuestion); do
-   not silently proceed. Summarize the remaining findings, then offer:
+   not silently proceed. (This is mid-pipeline — the PR doesn't happen until Phase 9, after the
+   epic-end Phase 8.) Summarize the remaining findings, then offer:
    - **Run another review+fix iteration** *(recommended)* — continue beyond the cap with the
      **opus** reviewer (`ab-xhigh`) + `ab-max` fix, to drive the remaining Critical/High to zero.
      Repeat this ask after each extra iteration until clean or the user stops.
-   - **Open a draft PR and stop here** — finalize with a **draft** PR, the findings recorded as
-     `needs-human` in state and the report.
-   - **Stop without a PR** — leave the branch as-is; report the findings as `needs-human`.
+   - **Accept the findings and continue the pipeline** — record them as `needs-human` blockers in
+     state, then proceed normally to Phase 8 (if last story) and Phase 9. Because a blocker is
+     recorded, Phase 9 will open the PR as a **draft** (or, in local mode, just note them).
+   - **Stop the pipeline now** — skip the remaining phases, go straight to the report (Step 3);
+     commits stay on the branch, nothing is pushed and no PR is opened. Findings are reported as
+     `needs-human`.
    Record the user's choice and any extra iterations in state (`code_review_iterations`).
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*

@@ -43,8 +43,9 @@ Run from the root of a BMAD-enabled project:
   after an interruption.
 - **Code review starts on Opus** and alternates Opus/Sonnet across iterations. If Critical/High
   findings remain after the iteration cap (default 3), it **asks you** whether to run another
-  pass, open a draft PR, or stop.
-- A per-story **report is saved** to `_bmad-output/auto-bmad/reports/<story>.md` (and printed).
+  pass, accept the findings and continue (the eventual PR is opened as a draft), or stop.
+- A per-story **report log** is saved to `_bmad-output/auto-bmad/reports/<story>.md` — each run
+  appends a timestamped section (never overwritten on resume) and the report is also printed.
 - It **stops and tells you** whenever something genuinely needs a human (missing planning
   docs, merge conflicts, missing credentials, etc.).
 

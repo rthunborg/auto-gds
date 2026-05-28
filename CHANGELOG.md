@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-28
+
 ### Added
 
 - **Phase 0 project-context probe + Phase 2 project-context bootstrap sub-step.** Auto-bmad now
@@ -362,7 +364,8 @@ changelog and release tooling to keep versions traceable from here on.
   release helper that promotes `[Unreleased]`, syncs the version in
   `marketplace.json` + `module.yaml`, commits, and tags.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.3.0...v0.3.1

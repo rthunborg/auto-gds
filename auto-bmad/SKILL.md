@@ -162,7 +162,7 @@ exist elsewhere already (git, GitHub, sprint-status). Both are always printed to
 - **Final status:** clean (BMAD-level flipped to `done`) vs caveated (left at `review`: draft PR /
   recorded blocker / waived gate / CI red or timed-out). On a clean completion that was **not**
   merged, frame the open PR's merge as the human's remaining (optional, non-blocking) step. On a
-  successful merge, say so plainly ("Merged via squash; branch deleted") — no further action.
+  successful merge, say so plainly ("Merged via merge commit; branch deleted") — no further action.
 - **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why. On a merge: merge
   method + branch-deleted state; on a failed merge attempt: the `gh` error verbatim.
 - **CI:** link to the CI run the PR/push triggered + its final status (`passed`/`failed`/`timeout`
@@ -178,5 +178,5 @@ external service, or manual action). Never push past a hard-stop — report and 
 (Note: three pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
 code review not converging within `max_iterations` (Phase 7); a `FAIL` epic trace gate
 (Phase 8 — remediate & re-gate / waive / stop); and the end-of-pipeline merge prompt on a
-clean-completion PR (Phase 9 — squash / merge / rebase / don't merge, plus a delete-branch
-sub-question — opt-in via `git.offer_merge`, default on).)
+clean-completion PR (Phase 9 — merge commit (default) / rebase / squash / don't merge, plus a
+delete-branch sub-question — opt-in via `git.offer_merge`, default on).)

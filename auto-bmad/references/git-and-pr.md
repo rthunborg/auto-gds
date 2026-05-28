@@ -116,10 +116,14 @@ reporting. The merge is the user's call; the orchestrator just runs the chosen `
 their behalf, then switches the working tree back to the base branch so the next run starts
 clean.
 
-- **Prompt** (`AskUserQuestion`, 4 options): Squash and merge / Merge commit / Rebase and merge /
-  Don't merge. If a merge style is chosen, **ask a second question** — Delete branch? Yes / No.
+- **Prompt** (`AskUserQuestion`, 4 options, in this order — first is the default): **Merge commit
+  (recommended)** / Rebase and merge / Squash and merge / Don't merge. Merge commit is the
+  recommended default because it preserves every per-phase auto-bmad commit (initial dev, review
+  fixes, the pipeline-report commit) — the richest signal for an AI later running
+  `git log`/`blame`/`bisect` on the story. If a merge style is chosen, **ask a second question** —
+  Delete branch? Yes / No.
 - **Execute** (only if the user picked a merge style):
-  - `gh pr merge <pr-number> --squash` *(or `--merge` / `--rebase`)* `[--delete-branch]`.
+  - `gh pr merge <pr-number> --merge` *(or `--rebase` / `--squash`)* `[--delete-branch]`.
   - On success: `git switch <base_branch>` then `git pull --ff-only` so the local tree matches
     `origin/<base_branch>` post-merge.
   - On failure (branch protection, required reviews, conflict, CI required check missing, etc.):
@@ -129,7 +133,7 @@ clean.
     user-elected action and a failed attempt doesn't invalidate the completion.
 - **Record** in state: `pr_merged: true|false`, `merge_method: squash|merge|rebase|null`,
   `branch_deleted: true|false`. Surface the outcome in the final report (one line: "Merged via
-  squash; branch deleted." / "PR left open at user's request." / "Merge attempted but failed
+  merge commit; branch deleted." / "PR left open at user's request." / "Merge attempted but failed
   (`<reason>`); merge manually.").
 
 When the prompt is **off** for this run (`git.offer_merge: false` or `skip merge-prompt`

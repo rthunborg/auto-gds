@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Phase 9 merge prompt now defaults to "Merge commit" instead of "Squash and merge", and the
+  option order is Merge commit / Rebase and merge / Squash and merge / Don't merge.** auto-bmad
+  produces meaningful per-phase commits (initial dev, `fix(story-…): apply review`, the pipeline
+  report) — squashing collapses that signal, which is exactly the signal an AI later running
+  `git log`/`blame`/`bisect` on the story needs to reconstruct what happened and why. Both
+  history-preserving options (merge commit, rebase) sit at the top; merge commit is the default
+  because it additionally marks the branch boundary as a visible "this was one auto-bmad story"
+  node. Users can still pick any of the four — the change is just the default and the order.
+  (`auto-bmad/references/git-and-pr.md` "Merging the PR", `auto-bmad/SKILL.md`, `CLAUDE.md`.)
 - **Phase 9 now commits the per-story report file *before* push, so it ships in the PR diff.**
   Previously the report was written to `_bmad-output/auto-bmad/reports/{key}.md` at the very end
   of Step 3 — after push, the PR, and any merge — leaving the file as an uncommitted change the

@@ -101,8 +101,9 @@ checkpoint, update state — identical to today's flow.
 The host has isolated subagents/Task delegation but **no per-agent model/effort knob**. Spawn
 the host's generic subagent with the prompt body. Because there's no baked-in agent persona,
 **prepend the operating guidance inline**: the shared autonomy directive from `delegation.md`
-**plus** the one-paragraph "How you operate / What you return" guidance for the mapped profile
-(copy it from the matching `assets/agents/claude/<name>.md.tmpl` body). Effort is not honored —
+**plus** the "How you operate / What you return" guidance from the shared body template
+`assets/agents/claude/agent.md.tmpl`, with the mapped profile's `role_blurb` and
+`status_example` substituted from `assets/agents/profiles.yaml`. Effort is not honored —
 record `delegation.mode: general-subagents` in the run report so the user knows steps ran
 untuned. Everything else (sequential, structured result, retro notes, checkpoints) is unchanged.
 

@@ -4,6 +4,8 @@
 command, prompt body, and the placeholders below. One entry per step, named by its heading (e.g.
 `create-story`, `dev-story`, `code-review`). `pipeline.md` references each step **by that heading
 name** and never repeats the command, so changing a command means editing here and nowhere else.
+Git/PR steps are not delegated and have no entry here — the orchestrator runs them; see
+`git-and-pr.md`.
 
 The orchestrator fills the placeholders and sends the result as the Agent prompt to the profile
 that `phase_profiles` assigns to the step's phase (see `pipeline.md` for the phase→profile-key
@@ -142,6 +144,3 @@ the accumulated notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md plus the
 sprint-status. Produce the full retrospective document and mark the epic retrospective `done`.
 ```
 
-### git ops (preflight / branch / commits / finalize / PR) — **not delegated**
-Git/PR work is run by the **orchestrator itself**, never by a delegate — so there is no
-delegation prompt for it. See `git-and-pr.md` for the exact commands.

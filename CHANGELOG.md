@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Delegate templates collapsed to one shared body per tool — no more Claude↔Codex drift.** The
+  eight per-profile templates (4 Claude + 4 Codex) were ~80% identical prose and had already
+  started drifting (Claude's `ab-alt` said *"Sonnet code-review iterations"* while Codex's said
+  *"faster-model …"*). Now one shared body per tool (`assets/agents/{claude,codex}/agent.{md,toml}.tmpl`)
+  is filled with per-profile metadata — `description`, `role_blurb`, `status_example` — living
+  next to each profile's `claude:`/`codex:` blocks in `assets/agents/profiles.yaml`. The same
+  strings flow into both tools' output, and `render-agents.py --self-test` asserts cross-tool
+  agreement, so future Claude↔Codex drift is impossible by construction. Wording is tool-neutral
+  (no more "Opus"/"Sonnet") so the bodies survive model retunings. Generated agent filenames are
+  unchanged; run `/auto-bmad reprovision` to pick up the new bodies (or let preflight
+  auto-reprovision do it). (`scripts/render-agents.py`, `assets/agents/profiles.yaml`, new shared
+  templates, 8 old templates deleted, `CLAUDE.md`, `references/delegation-runtime.md` Tier 2 note.)
+
+- **Reference duplication consolidated — each canonical fact has one home now.** Pointer-only
+  changes: the *newly-rendered agents need a restart* warning now lives only in
+  `delegation-runtime.md`; Phase 9's CI wait + draft conversion + merge prompt defer to
+  `git-and-pr.md` ("PR" / "CI link & wait" / "Merging the PR"); the first-run stop is described
+  once in `state-and-resume.md`; and a new `git-and-pr.md` → "Ownership" section names the
+  orchestrator-owned (never-delegated) list (preflight, branching, per-phase commits, push, PR,
+  Phase 9 BMAD-status flip, merge prompt) so future exceptions land in exactly one place. Pure
+  docs — no behavior change. (`SKILL.md`,
+  `references/{pipeline,state-and-resume,delegation,git-and-pr}.md`, `assets/module-setup.md`.)
+
 ### Added
 
 - **End-of-pipeline merge prompt (opt-in, default on).** On a clean-completion PR, Phase 9 now

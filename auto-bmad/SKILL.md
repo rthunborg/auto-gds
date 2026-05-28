@@ -35,19 +35,17 @@ Before the procedure, handle module registration and delegate provisioning:
 
 **You never do story work yourself.** Every BMAD step — create-story, dev-story, code-review,
 every TEA skill, retrospective — runs inside a delegated sub-agent (the `ab-*` profiles).
-**Git is yours, though: you run all git/PR operations directly, never via a delegate** — repo/mode
-preflight, branching, per-phase commits, push, PR, and (only when the user picks a merge style
-in the Phase 9 prompt) the `gh pr merge` call itself. You hold the full pipeline context, so you
-write the commit and PR messages yourself; delegating git would only add a slow round-trip. So
-your own actions are: reading config/state, running `scripts/story_plan.py`, deciding what to
-delegate, **all git/PR work** (per `references/git-and-pr.md`), writing the state file, **flipping
-the BMAD-level story status to `done` at finalize on a clean completion** (Phase 9 — the same
-direct, non-delegated finalize bookkeeping as git), **asking the user whether to merge the PR on
-a clean completion and running their chosen `gh pr merge` command** (Phase 9, opt-in via
-`git.offer_merge`), and producing the final report. If you ever
-feel tempted to edit code, write a test, or run a `/bmad-*` skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
-host with no subagent support — see `references/delegation-runtime.md` — and even then you
-follow the exact same phase contract and structured-result discipline.)
+**Git plus the orchestrator-owned finalize actions are yours: you run them directly, never via
+a delegate** — see `references/git-and-pr.md` → "Ownership" for the exact list (git preflight,
+branching, per-phase commits, push, PR, the Phase 9 BMAD-status flip on a clean completion, and
+the opt-in merge prompt + `gh pr merge` execution). You hold the full pipeline context, so you
+write commit/PR messages yourself; delegating any of that would only add a slow round-trip. Your
+own actions are: reading config/state, running `scripts/story_plan.py`, deciding what to delegate,
+the ownership list above, writing the state file, and producing the final report. If you ever
+feel tempted to edit code, write a test, or run a `/bmad-*` skill directly — don't; delegate it.
+(The **only** exception is `inline` delegation mode on a host with no subagent support — see
+`references/delegation-runtime.md` — and even then you follow the exact same phase contract and
+structured-result discipline.)
 
 `{skill-root}` is this skill's own folder — resolve it to wherever this skill is installed
 (e.g. `.claude/skills/auto-bmad/` or `.codex/skills/auto-bmad/`). Reference files live under
@@ -80,18 +78,13 @@ reference file at the moment its step calls for it.
 2. Read `_bmad/bmm/config.yaml` for `implementation_artifacts`, `planning_artifacts`,
    `project_name` (resolve `{project-root}` to the absolute cwd).
 3. Load auto-bmad config from `{project-root}/_bmad-output/auto-bmad/config.yaml`. If missing,
-   run the **first-run flow** in `references/state-and-resume.md`, then write the config.
-   (First-run is the main interactive moment; auto-bmad also asks when code review fails to
-   converge within the iteration cap (Phase 7), when an epic trace gate returns `FAIL` (Phase 8),
-   and at the very end on a clean-completion PR — whether to merge (Phase 9, opt-in via
-   `git.offer_merge`).)
-   **After first-time configuration completes** (this first-run write, plus any module
-   registration done earlier this session), **stop — do not start the pipeline this session.**
-   Report what was configured and how to begin the first story: on the `custom-subagents` tier the
-   just-rendered delegate agents become invokable only after a **full tool restart** (quit &
-   relaunch — **not** `/clear`, which reuses the same process); other tiers just need a fresh
-   context. See the first-run stop in `references/state-and-resume.md`. If the config already
-   existed (normal later runs), this stop does not apply — continue to Step 1.
+   run the **first-run flow** in `references/state-and-resume.md`, write the config, then **stop
+   for a fresh session** per the same file's First-run stop (don't start the pipeline on the
+   context that just did setup). On later runs the config already exists, so this stop does not
+   apply — continue to Step 1. First-run is the main interactive moment; auto-bmad also asks when
+   code review fails to converge within the iteration cap (Phase 7), when an epic trace gate
+   returns `FAIL` (Phase 8), and at the very end on a clean-completion PR — whether to merge
+   (Phase 9, opt-in via `git.offer_merge`).
 
 ### Step 1 — Preflight
 Read `references/state-and-resume.md`, `references/pipeline.md` (Phase 0), and — if the

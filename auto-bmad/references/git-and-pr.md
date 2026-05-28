@@ -4,6 +4,24 @@ All git work is performed by the **orchestrator directly** — never delegated. 
 holds the full pipeline context, so it writes the commit and PR messages itself. Nothing ever
 lands on the base branch; every phase is its own commit so the pipeline is resumable and reviewable.
 
+## Ownership
+
+This file is the single source for everything the orchestrator owns directly (does not delegate
+to an `ab-*` profile). The list — other docs link here by name instead of restating it:
+
+- git preflight, branching, every per-phase commit, push, PR open;
+- the **CI wait** + draft conversion (when `git.offer_merge` is on);
+- the Phase 9 **BMAD-level status flip** on a clean completion (story file `Status:` +
+  `sprint-status.yaml` → `done`) — orchestrator-owned finalize bookkeeping coupled to the git
+  finalize the orchestrator already owns;
+- the Phase 9 **merge prompt + `gh pr merge` execution** (opt-in via `git.offer_merge`,
+  default on, only on a clean completion).
+
+Each lives here because the orchestrator holds the full pipeline context — commit/PR messages,
+state, the clean-vs-caveated decision; a round-trip to a delegate would only be slower. The
+**only** exception is the `inline` delegation tier (host with no subagent mechanism — see
+`delegation-runtime.md`), where the orchestrator runs *every* step itself.
+
 ## Mode detection (Phase 0)
 - It's a git repo? `git rev-parse --is-inside-work-tree`. If not → hard-stop (suggest
   `git init`, since the local-branch flow needs a repo).

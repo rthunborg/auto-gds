@@ -46,8 +46,12 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
   `delegation.md` (exact per-skill prompts, tool-agnostic), `delegation-runtime.md` (host
   detection + the three spawn tiers), `overrides.md` (invocation-override vocabulary),
   `tea-policy.md` (risk rubric), `git-and-pr.md`, `state-and-resume.md` (config/state/first-run).
-- `auto-bmad/assets/agents/profiles.yaml` — default per-tool model+effort. `claude/*.md.tmpl` and
-  `codex/*.toml.tmpl` — delegate templates with `@@MODEL@@`/`@@EFFORT@@`/`@@REASONING_EFFORT@@`.
+- `auto-bmad/assets/agents/profiles.yaml` — the single per-profile source: tool-neutral persona
+  strings (`description`/`role_blurb`/`status_example`) **plus** per-tool model+effort. `claude/
+  agent.md.tmpl` and `codex/agent.toml.tmpl` — ONE shared body template per tool (renderer fills
+  in `@@NAME@@`/`@@DESCRIPTION@@`/`@@ROLE_BLURB@@`/`@@STATUS_EXAMPLE@@`/`@@MODEL@@`/`@@EFFORT@@`/
+  `@@REASONING_EFFORT@@`), so the same wording lands in both Claude and Codex output and the four
+  ab-* personas can't drift between tools.
 - `auto-bmad/assets/module.yaml` + `module-help.csv` + `module-setup.md` — BMAD module
   identity, capability registry, and self-registration/provisioning flow.
 - `auto-bmad/scripts/story_plan.py` — dependency-free sprint-status reader (`--self-test`).

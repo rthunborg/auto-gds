@@ -108,14 +108,11 @@ module is ready to run immediately after setup.
 **Reprovision-only path:** if the user invoked with `reprovision` (or asked only to regenerate
 agents after editing profiles), skip config collection entirely and run just step 3 above,
 reading the live profiles with `--profiles "{output_folder}/auto-bmad/config.yaml"` (fall back to
-the shipped defaults if that file doesn't exist yet). An explicit `reprovision` always re-renders;
-the orchestrator also **detects when it's needed on its own** at preflight via `render-agents.py
---check` and auto-reprovisions (see `references/delegation-runtime.md` → "Resolving host & mode"),
-so users rarely have to run this by hand. On Claude Code/Codex, agents (re)rendered this way become
-invokable only after a **full tool restart** (quit & relaunch — `/clear` reuses the same process):
-if a `reprovision` added an agent or changed its model/effort/body, tell the user to relaunch before
-the next run (see `references/delegation-runtime.md` → "Newly-rendered agents need a process
-restart").
+the shipped defaults if that file doesn't exist yet). The orchestrator also auto-reprovisions at
+preflight when agents are stale — see `references/delegation-runtime.md` → "Resolving host &
+mode", so users rarely have to run this by hand. On `custom-subagents` hosts the (re)rendered
+agents become invokable only after a full tool restart; see `references/delegation-runtime.md` →
+"Newly-rendered agents need a process restart" before telling the user what to do next.
 
 ## Confirm
 
@@ -127,4 +124,4 @@ Then display the `module_greeting` from `./assets/module.yaml` to the user.
 
 ## Return to Skill
 
-Setup is complete. Resume the main skill's normal activation flow — load config from the freshly written files. If this was a `setup`/`configure`/`reprovision`-only invocation, stop here (already reported). If it was a run-intent invocation that triggered setup only because the module wasn't registered, continue into the Procedure to finish the first-run flow, then **stop and have the user fully restart the tool** (quit & relaunch — not just `/clear`/fresh context, which won't load the agents just rendered on a custom-subagents host) before any story runs (see the first-run stop in `references/state-and-resume.md`) — the pipeline must not run on the same context that just did configuration.
+Setup is complete. Resume the main skill's normal activation flow — load config from the freshly written files. If this was a `setup`/`configure`/`reprovision`-only invocation, stop here (already reported). If it was a run-intent invocation that triggered setup only because the module wasn't registered, continue into the Procedure to finish the first-run flow, then **stop for a fresh session** per the first-run stop in `references/state-and-resume.md` — the pipeline must not run on the same context that just did configuration.

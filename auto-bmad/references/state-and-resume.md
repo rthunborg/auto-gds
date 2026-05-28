@@ -63,17 +63,11 @@ The single interactive episode in normal operation. Always confirm `target_tools
    interviewed (point the user to `config.yaml` + `/auto-bmad reprovision` to retune). Detect the
    live host; if it needs `custom-subagents` but its agent files are missing, run `reprovision`
    (`scripts/render-agents.py`) before the pipeline starts.
-1. **Confirm `target_tools` (always):** if `module-setup.md` already ran *this session* (fresh
-   registration), it already confirmed `target_tools` — reuse the `abm` value, don't re-ask.
-   Otherwise (the common case — BMAD pre-registered the module, so setup was skipped, and the
-   `abm` value is unconfirmed) **re-detect from the installed skill dirs on disk, not just the
-   `abm` section**: `claude-code` if `.claude/skills/auto-bmad/` exists; `codex` if
-   `.agents/skills/auto-bmad/` (BMAD installs Codex skills under `.agents/`) or
-   `.codex/skills/auto-bmad/` / `~/.codex/skills/auto-bmad/` exists. Present that set (unioned with
-   the `abm` value, preferring on-disk detection and noting any mismatch) as the default and **ask
-   the user to confirm** — they may drop one or add a tool they'll install later. If the confirmed
-   set differs from what agents were rendered for, run `reprovision` for it. (Mirrors
-   `assets/module-setup.md` → "Provision Delegate Agents".)
+1. **Confirm `target_tools` (always):** detect from the installed skill dirs on disk and confirm
+   with the user — same procedure as setup, see `assets/module-setup.md` → "Provision Delegate
+   Agents" (Step 1) for the exact detection rules. If `module-setup.md` already ran *this session*
+   (fresh registration), reuse the `abm` value it just confirmed instead of re-asking. If the
+   confirmed set differs from what agents were rendered for, run `reprovision` for it.
 2. **Choose setup depth:** ask **Quick** (recommended — `target_tools` + TEA only; sensible
    defaults for everything else) or **Full** (also set git + code-review prefs). Quick → skip
    step 4.
@@ -92,18 +86,15 @@ The single interactive episode in normal operation. Always confirm `target_tools
    answers, and detected `git`/`base_branch` values (Quick fills the step-4 fields with the
    defaults above). **Then stop — do not start the pipeline this session.** This first-run write
    (plus any module registration done earlier this session) is the one-time setup; report what was
-   configured and tell the user **how** to begin the first story:
-   - **`custom-subagents` tier (Claude Code / Codex):** the delegate agents were just rendered to
-     `.claude/agents/` / `.codex/agents/` *this session*. The host loads project agents into the
-     invokable-agent roster **only at process launch**, so they are not invokable yet — the user
-     must **fully quit and relaunch the tool**, then run `/auto-bmad`. A `/clear` or "new chat"
-     reuses the same process and will fail with *"Agent type 'ab-…' not found"* (see
-     `delegation-runtime.md` → "Newly-rendered agents need a process restart").
-   - **Other tiers:** no project agents to load, so a **new session with fresh context** suffices.
+   configured, then tell the user how to begin the first story:
+   - **`custom-subagents` tier (Claude Code / Codex):** the user must fully quit and relaunch the
+     tool before `/auto-bmad` — see `delegation-runtime.md` → "Newly-rendered agents need a
+     process restart". A `/clear` or "new chat" reuses the same process and will fail with
+     *"Agent type 'ab-…' not found"*.
+   - **Other tiers:** no project agents to load, so a fresh session/context is enough.
 
-   Either way, running the pipeline on the context that just did setup wastes the window — a fresh
-   start re-detects host/mode and begins the story clean. (On later runs `config.yaml` already
-   exists, so this flow is skipped and the pipeline proceeds normally.)
+   Either way, running the pipeline on the context that just did setup wastes the window. (On
+   later runs `config.yaml` already exists, so this flow is skipped.)
 
 ## state/{key}.yaml
 ```yaml

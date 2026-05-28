@@ -2,19 +2,22 @@
 """Render auto-bmad's tool-native delegate agents from a profiles definition.
 
 The auto-bmad orchestrator delegates each pipeline step to one of four profiles
-(``ab-max``, ``ab-xhigh``, ``ab-high``, ``ab-alt``). Each profile bakes in a
-model + thinking/reasoning effort. Those knobs are tool-specific, so this script
-generates the tool-native definition files from a single, user-editable profiles
-block:
+(``ab-max``, ``ab-xhigh``, ``ab-high``, ``ab-alt``). Each profile carries both
+tool-neutral persona strings (``description`` / ``role_blurb`` /
+``status_example``) and per-tool model + thinking/reasoning effort. This script
+fills ONE shared body template per tool with those values, so the four profiles
+share a single body and the same persona strings appear in both Claude and Codex
+output (no Claude-vs-Codex drift):
 
   - Claude Code -> ``{project-root}/.claude/agents/<name>.md``   (frontmatter
     ``model:`` / ``effort:``)
   - Codex       -> ``{project-root}/.codex/agents/<name>.toml``  (``model`` /
     ``model_reasoning_effort``)
 
-Templates live under ``assets/agents/{claude,codex}/<name>.{md,toml}.tmpl`` and
-contain the placeholders ``@@MODEL@@``, ``@@EFFORT@@`` (Claude),
-``@@REASONING_EFFORT@@`` (Codex) and optionally ``@@NAME@@``.
+Templates live at ``assets/agents/claude/agent.md.tmpl`` and
+``assets/agents/codex/agent.toml.tmpl`` and contain the placeholders
+``@@NAME@@``, ``@@DESCRIPTION@@``, ``@@ROLE_BLURB@@``, ``@@STATUS_EXAMPLE@@``,
+``@@MODEL@@``, ``@@EFFORT@@`` (Claude), and ``@@REASONING_EFFORT@@`` (Codex).
 
 The profiles source can be either the shipped ``assets/agents/profiles.yaml`` or
 the ``profiles:`` block of the runtime config
@@ -49,25 +52,33 @@ from pathlib import Path
 
 PROFILE_NAMES = ("ab-max", "ab-xhigh", "ab-high", "ab-alt")
 
-# tool -> (template subdir, template suffix, output subdir, output suffix, required keys)
+# tool -> (one shared body template, output dir + suffix, tool-specific placeholders)
 TOOLS = {
     "claude-code": {
         "tmpl_dir": "claude",
-        "tmpl_suffix": ".md.tmpl",
+        "tmpl_name": "agent.md.tmpl",
         "out_dir": ".claude/agents",
         "out_suffix": ".md",
-        # placeholder -> profile key
+        # placeholder -> per-tool profile key
         "subs": {"@@MODEL@@": "model", "@@EFFORT@@": "effort"},
         "cfg_key": "claude",
     },
     "codex": {
         "tmpl_dir": "codex",
-        "tmpl_suffix": ".toml.tmpl",
+        "tmpl_name": "agent.toml.tmpl",
         "out_dir": ".codex/agents",
         "out_suffix": ".toml",
         "subs": {"@@MODEL@@": "model", "@@REASONING_EFFORT@@": "reasoning_effort"},
         "cfg_key": "codex",
     },
+}
+
+# Tool-neutral per-profile metadata, filled into the shared body template.
+# Same values flow into BOTH the Claude and Codex output, so wording cannot drift.
+SHARED_SUBS = {
+    "@@DESCRIPTION@@": "description",
+    "@@ROLE_BLURB@@": "role_blurb",
+    "@@STATUS_EXAMPLE@@": "status_example",
 }
 
 _INLINE_MAP_RE = re.compile(r"^([\w-]+):\s*\{(.*)\}\s*$")
@@ -106,6 +117,9 @@ def parse_profiles(text: str) -> dict:
 
         profiles:
           ab-max:
+            description: "..."
+            role_blurb: "..."
+            status_example: "..."
             claude:
               model: opus
               effort: max
@@ -116,8 +130,11 @@ def parse_profiles(text: str) -> dict:
           ab-max:
             claude: {model: opus, effort: max}
 
+    Per-profile scalar values (``description``, ``role_blurb``,
+    ``status_example``, …) sit at indent 4 alongside the tool subsections; they
+    are the tool-neutral metadata the renderer flows into BOTH tools' output.
     Other top-level keys in the file are ignored. Returns
-    ``{profile: {tool: {key: value}}}``.
+    ``{profile: {key: value | tool: {key: value}}}``.
     """
     profiles: dict = {}
     in_block = False
@@ -153,6 +170,11 @@ def parse_profiles(text: str) -> dict:
             elif stripped.endswith(":"):
                 cur_tool = stripped[:-1].strip()
                 profiles[cur_profile][cur_tool] = {}
+            elif ":" in stripped:
+                # Per-profile scalar metadata (e.g. description, role_blurb).
+                key, _, val = stripped.partition(":")
+                profiles[cur_profile][key.strip()] = _strip_value(val)
+                cur_tool = None
         elif indent >= 6 and ":" in stripped and cur_profile is not None and cur_tool is not None:
             key, _, val = stripped.partition(":")
             profiles[cur_profile][cur_tool][key.strip()] = _strip_value(val)
@@ -168,9 +190,10 @@ def _plan(
 ) -> tuple[list[tuple[Path, str]], list[str]]:
     """Render every requested profile×tool in memory (no writes).
 
-    Returns ``(outputs, warnings)`` where ``outputs`` is a list of
-    ``(out_path, rendered_content)``. This is the single source of truth shared
-    by ``render`` (which writes) and ``check`` (which diffs), so the two can
+    Each tool has ONE shared body template; the four profile outputs are
+    produced by substituting per-profile metadata + per-tool model/effort into
+    that same template. This is the single source of truth shared by
+    ``render`` (which writes) and ``check`` (which diffs), so the two can
     never disagree about what the agent files *should* contain.
     """
     outputs: list[tuple[Path, str]] = []
@@ -179,6 +202,12 @@ def _plan(
     for tool in tools:
         spec = TOOLS[tool]
         out_dir = project_root / spec["out_dir"]
+        tmpl_path = templates_dir / spec["tmpl_dir"] / spec["tmpl_name"]
+        if not tmpl_path.is_file():
+            warnings.append(f"template not found: {tmpl_path} — skipped {tool}")
+            continue
+        tmpl_content = tmpl_path.read_text(encoding="utf-8")
+
         for name in PROFILE_NAMES:
             prof = profiles.get(name)
             if not prof:
@@ -189,13 +218,13 @@ def _plan(
                 warnings.append(f"profile '{name}' has no '{spec['cfg_key']}' config — skipped for {tool}")
                 continue
 
-            tmpl_path = templates_dir / spec["tmpl_dir"] / f"{name}{spec['tmpl_suffix']}"
-            if not tmpl_path.is_file():
-                warnings.append(f"template not found: {tmpl_path} — skipped")
-                continue
-
-            content = tmpl_path.read_text(encoding="utf-8")
+            content = tmpl_content
             content = content.replace("@@NAME@@", name)
+            for placeholder, key in SHARED_SUBS.items():
+                if key not in prof:
+                    warnings.append(f"profile '{name}' missing '{key}'")
+                    continue
+                content = content.replace(placeholder, str(prof[key]))
             for placeholder, key in spec["subs"].items():
                 if key not in tool_cfg:
                     warnings.append(f"profile '{name}.{spec['cfg_key']}' missing '{key}'")
@@ -300,6 +329,10 @@ def _run_self_test() -> int:
     # Structure assertions against the shipped defaults.
     for name in PROFILE_NAMES:
         assert name in profiles, f"profile {name} not parsed"
+        # Tool-neutral metadata flows into both Claude and Codex output.
+        for meta in ("description", "role_blurb", "status_example"):
+            assert profiles[name].get(meta), f"{name}.{meta} empty"
+        # Per-tool model + effort.
         assert "claude" in profiles[name] and "codex" in profiles[name], f"{name} missing tool blocks"
         assert profiles[name]["claude"].get("model"), f"{name}.claude.model empty"
         assert profiles[name]["claude"].get("effort"), f"{name}.claude.effort empty"
@@ -308,6 +341,11 @@ def _run_self_test() -> int:
     assert profiles["ab-max"]["claude"]["model"] == "opus"
     assert profiles["ab-max"]["claude"]["effort"] == "max"
     assert profiles["ab-alt"]["claude"]["model"] == "sonnet"
+    # Descriptions carry the profile-distinctive signal — sanity-check the labels.
+    assert "HIGHEST-stakes" in profiles["ab-max"]["description"]
+    assert "high-stakes analysis" in profiles["ab-xhigh"]["description"]
+    assert "epic-boundary" in profiles["ab-high"]["description"]
+    assert "lower-stakes" in profiles["ab-alt"]["description"]
 
     # Inline-flow-map parsing.
     inline = parse_profiles(
@@ -324,6 +362,22 @@ def _run_self_test() -> int:
     assert mixed["ab-max"]["claude"]["model"] == "opus", mixed
     assert mixed["ab-max"]["claude"]["effort"] == "max", mixed
     assert "git" not in mixed and "tea" not in mixed
+
+    # Per-profile scalar metadata at indent 4, alongside the tool subsections.
+    scalar = parse_profiles(
+        "profiles:\n"
+        "  ab-max:\n"
+        "    description: \"big stakes\"\n"
+        "    role_blurb: \"hard work\"\n"
+        "    status_example: \"all green\"\n"
+        "    claude:\n"
+        "      model: opus\n"
+        "      effort: max\n"
+    )
+    assert scalar["ab-max"]["description"] == "big stakes", scalar
+    assert scalar["ab-max"]["role_blurb"] == "hard work", scalar
+    assert scalar["ab-max"]["status_example"] == "all green", scalar
+    assert scalar["ab-max"]["claude"]["model"] == "opus", scalar
 
     # Trailing comments on STRUCTURAL lines (profiles:/profile/tool), as the
     # documented runtime config carries them — must parse like bare lines.
@@ -351,11 +405,34 @@ def _run_self_test() -> int:
         assert "model: opus" in claude_max and "effort: max" in claude_max, claude_max[:200]
         assert "@@" not in claude_max, "unfilled placeholder in Claude output"
         assert "name: ab-max" in claude_max
+        # Metadata flowed into the body.
+        assert "HIGHEST-stakes" in claude_max, "description not substituted into Claude body"
+        assert "implementing story code" in claude_max, "role_blurb not substituted"
+        assert "story moved to `review`" in claude_max, "status_example not substituted"
 
         codex_max = (root / ".codex/agents/ab-max.toml").read_text(encoding="utf-8")
         assert 'model = "gpt-5.5"' in codex_max, codex_max[:200]
         assert 'model_reasoning_effort = "xhigh"' in codex_max, codex_max[:200]
         assert "@@" not in codex_max, "unfilled placeholder in Codex output"
+        assert "HIGHEST-stakes" in codex_max, "description not substituted into Codex body"
+        assert "implementing story code" in codex_max, "role_blurb not substituted (codex)"
+
+        # Cross-tool drift guard: the persona strings are identical on both
+        # sides because they came from the single profiles entry. If a future
+        # edit forks the wording between tools, this fails immediately.
+        for name in PROFILE_NAMES:
+            c = (root / f".claude/agents/{name}.md").read_text(encoding="utf-8")
+            x = (root / f".codex/agents/{name}.toml").read_text(encoding="utf-8")
+            for meta in ("role_blurb", "status_example"):
+                val = profiles[name][meta]
+                assert val in c, f"{name}.{meta} missing from Claude output: {val!r}"
+                assert val in x, f"{name}.{meta} missing from Codex output: {val!r}"
+
+        # All four profiles produce distinct bodies (catches a regression where
+        # role_blurb or status_example silently fail to substitute and every
+        # agent ends up identical).
+        bodies = {name: (root / f".claude/agents/{name}.md").read_text(encoding="utf-8") for name in PROFILE_NAMES}
+        assert len(set(bodies.values())) == 4, "agent bodies not distinct across profiles"
 
         # Codex output must be valid TOML.
         try:
@@ -366,6 +443,7 @@ def _run_self_test() -> int:
             assert parsed["model"] == "gpt-5.5"
             assert parsed["model_reasoning_effort"] == "xhigh"
             assert parsed["developer_instructions"].strip()
+            assert "HIGHEST-stakes" in parsed["description"]
         except ModuleNotFoundError:
             # Older Python: fall back to a structural sanity check.
             assert codex_max.count('"""') == 2, "developer_instructions block malformed"
@@ -385,6 +463,14 @@ def _run_self_test() -> int:
         assert chk_stale["needs_reprovision"], chk_stale
         assert any(p.endswith("ab-alt.md") for p in chk_stale["stale"]), chk_stale
         assert not chk_stale["missing"], chk_stale
+
+        # Editing a tool-neutral metadata key also marks both tools' outputs stale.
+        bumped2 = json.loads(json.dumps(profiles))
+        bumped2["ab-high"]["role_blurb"] = "totally different blurb"
+        chk_meta = check(bumped2, ["claude-code", "codex"], templates_dir, root)
+        assert chk_meta["needs_reprovision"], chk_meta
+        assert any(p.endswith("ab-high.md") for p in chk_meta["stale"]), chk_meta
+        assert any(p.endswith("ab-high.toml") for p in chk_meta["stale"]), chk_meta
 
         # Deleting a generated file -> missing.
         (root / ".claude/agents/ab-max.md").unlink()

@@ -1,8 +1,15 @@
 # Default delegate profiles for auto-bmad.
 #
-# Each profile maps to a model + effort PER TOOL. `scripts/render-agents.py` reads
-# this file (or the `profiles:` block of the runtime config) and writes the
-# tool-native delegate definitions:
+# Each profile carries:
+#   * tool-neutral persona strings (description / role_blurb / status_example),
+#     used to render the SAME wording into both Claude and Codex agent files —
+#     this is where every per-profile difference lives, so Claude vs Codex
+#     output cannot drift;
+#   * per-tool model + effort, used to fill in the tool-native frontmatter.
+#
+# `scripts/render-agents.py` reads this file (or the `profiles:` block of the
+# runtime config) and writes the tool-native delegate definitions from ONE
+# shared body template per tool:
 #   - Claude Code -> .claude/agents/<name>.md    (frontmatter `model:` / `effort:`)
 #   - Codex       -> .codex/agents/<name>.toml   (`model` / `model_reasoning_effort`)
 #
@@ -16,27 +23,42 @@
 # Model names are environment-specific — retune above if your Codex install differs.
 profiles:
   ab-max:
+    description: "auto-bmad delegate for the HIGHEST-stakes steps (story implementation and applying code-review fixes). Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "the highest-stakes work: implementing story code and applying code-review fixes. Correctness matters more than speed — reason hard about edge cases, regressions, and acceptance criteria."
+    status_example: "any status/state the skill set (e.g. story moved to `review`), test results"
     claude:
       model: opus
       effort: max
     codex:
       model: gpt-5.5
       reasoning_effort: xhigh
+
   ab-xhigh:
+    description: "auto-bmad delegate for high-stakes analysis steps (creating the story context file, and adversarial code review on the high-effort reviewer iterations). Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "high-stakes analysis: building the comprehensive story context file (`create-story`) and running adversarial code review on the high-effort reviewer iterations. Be exhaustive and skeptical — these steps determine whether everything downstream succeeds."
+    status_example: "for reviews — the review verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low finding counts; for create-story — the story key, path, and final status"
     claude:
       model: opus
       effort: xhigh
     codex:
       model: gpt-5.5
       reasoning_effort: xhigh
+
   ab-high:
+    description: "auto-bmad delegate for epic-boundary steps (epic-level test design, release gates trace/nfr/test-review, and the epic retrospective). Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "epic-boundary work: epic-level test design, release-gate skills (trace / NFR / test-review), and the epic retrospective. These are judgment-heavy synthesis tasks — answer every interactive prompt yourself using the provided context and sensible judgment, and produce the complete output document."
+    status_example: "for gate skills — the gate decision (PASS / CONCERNS / FAIL / WAIVED) and rationale; for the retrospective — key action items and any next-epic prep flagged"
     claude:
       model: opus
       effort: high
     codex:
       model: gpt-5.5
       reasoning_effort: high
+
   ab-alt:
+    description: "auto-bmad delegate for lower-stakes mechanical steps (story triage, ATDD scaffolds, test automation, project-context updates, and the faster-model code-review iterations). Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "the lower-stakes, mechanical, or well-scoped work: story triage, ATDD scaffolds, test automation, updating project context, and the faster-model code-review iterations."
+    status_example: "tests passing? coverage added? PR opened/draft?"
     claude:
       model: sonnet
       effort: high

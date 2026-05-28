@@ -186,7 +186,20 @@ at epic end as primary input — it carries the cross-step context (autonomy cho
 were done a certain way) that the story file alone doesn't capture.
 
 ## reports/{key}.md
-The per-story report is a **log**, not a single overwritten document:
+The per-story report is a **log**, not a single overwritten document. It carries only the
+**story-level** outputs that aren't recorded elsewhere — overrides, TEA outcomes, open
+questions, deferred work, blockers, next-story preview (exact fields in `SKILL.md` Step 3).
+PR URL, CI link/status, draft reason, merge method, and the BMAD-status-flip outcome are
+**chat-only** at end of run; we don't persist them here because they're already retrievable
+from git/GitHub/sprint-status, and keeping them out of the file means it can be written
+**once** pre-push and never re-touched after the PR/CI/merge resolve.
+
+- On a clean path the file is written + committed in **Phase 9 before push**
+  (`docs(story-{e}-{s}): pipeline report`) so it ships in the PR diff. See
+  `pipeline.md` Phase 9 + `git-and-pr.md` → "Ownership".
+- On a hard-stop before Phase 9 (or any path that didn't reach the pre-push write), `SKILL.md`
+  Step 3 writes the file as a fallback — same content, no commit (the working tree is already
+  in needs-human state; the human will commit it alongside their fix).
 - Each run (first completion OR resume) **appends** a new `## Report — <ISO timestamp>` section,
   preserving everything already in the file. A resume must never clobber an earlier run's
   report, since prior sections may hold context (decisions, partial outcomes) we'd otherwise lose.

@@ -181,12 +181,24 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
 
 ## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).
+- **Write the report file (before push, so it ships in the PR).** Append a new
+  `## Report — <ISO timestamp>` section to `_bmad-output/auto-bmad/reports/{key}.md`,
+  preserving any earlier sections. The file holds only the **story-level** outputs that aren't
+  recorded elsewhere — overrides, TEA outcomes, open questions, deferred work, blockers,
+  next-story preview (see `SKILL.md` Step 3 for the exact fields). PR URL, CI link/status,
+  draft reason, merge method, and the BMAD-status-flip outcome are deliberately **chat-only**
+  (Step 3 prints them) — they're retrievable from git/GitHub/sprint-status, so we don't write
+  them into a file we'd then have to re-touch after the PR/CI/merge resolve. Commit it:
+  `docs(story-{e}-{s}): pipeline report`. (Orchestrator-owned, never delegated —
+  `git-and-pr.md` → "Ownership".)
 - **git mode `remote`:** push the branch, open the PR, evaluate CI, and convert to draft if
   warranted — all per `git-and-pr.md` ("PR" + "CI link & wait" + draft predicate clauses 1–4).
   Capture `pr_url`, `ci_run_url`, and `ci_status`. PR body = conventional summary + link to the
-  story file + a checklist of open questions / deferred work / human-action items.
-- **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the PR; leave the
-  branch in place and note it in the report. The CI wait and merge prompt below don't apply.
+  story file + a checklist of open questions / deferred work / human-action items. (The committed
+  report file is now part of the PR diff.)
+- **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the push/PR; leave
+  the branch in place (with the report commit on it) and note it in the chat report. The CI wait
+  and merge prompt below don't apply.
 - Mark the auto-bmad state file `done` (record `pr_url`, `ci_run_url`, `ci_status`, final `branch`,
   any `blockers`).
 - **Advance the BMAD-level status on a clean completion only.** A **clean completion** = the full
@@ -206,5 +218,6 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
   per `git-and-pr.md` → "Merging the PR". Records `pr_merged` / `merge_method` / `branch_deleted`
   in state. This is the third interactive moment in normal operation (after first-run setup and
   the Phase 7 cap; the Phase 8 trace-FAIL ask is also interactive).
-- Hand control back to the SKILL's Step 3, which **writes the report to
-  `_bmad-output/auto-bmad/reports/{key}.md`** and prints it.
+- Hand control back to the SKILL's Step 3, which **prints the final chat report** (the committed
+  file portion plus PR / CI / merge / final-status details). The file was already written +
+  committed at the top of this phase, before push.

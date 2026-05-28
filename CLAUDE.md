@@ -14,7 +14,10 @@ commits, push, and PR — it holds the full pipeline context to write commit/PR 
 round-trip to a delegate would only be slower. The Phase 9 **clean-completion BMAD-status flip**
 (story file `Status:` + `sprint-status.yaml` → `done`) is the same kind of orchestrator-owned
 finalize bookkeeping — a one-field status write, not story work, coupled to the git finalize the
-orchestrator already owns. The Phase 9 **merge prompt** (opt-in via `git.offer_merge`, default on)
+orchestrator already owns. The Phase 9 **pre-push report write + commit** (`docs(story-{e}-{s}):
+pipeline report` — story-level fields only, no PR/CI/merge data) is the same kind: it lands the
+report in the PR diff before push and never needs touching again, because the chat output owns
+PR/CI/merge details. The Phase 9 **merge prompt** (opt-in via `git.offer_merge`, default on)
 is another orchestrator-owned action of the same kind: auto-bmad never merges silently, but on a
 clean completion it **asks** the user to pick a merge style (squash / merge commit / rebase /
 don't merge) plus delete-branch, then runs the chosen `gh pr merge` call itself. The merge is the

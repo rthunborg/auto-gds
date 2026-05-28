@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Phase 9 now commits the per-story report file *before* push, so it ships in the PR diff.**
+  Previously the report was written to `_bmad-output/auto-bmad/reports/{key}.md` at the very end
+  of Step 3 — after push, the PR, and any merge — leaving the file as an uncommitted change the
+  user had to either land manually or merge after the fact. The pipeline now writes + commits the
+  report at the top of Phase 9 (`docs(story-{e}-{s}): pipeline report`) so the persistent log
+  lands in the PR like any other artifact. To make a single pre-push write viable, the file is
+  now **story-level only** — overrides, TEA outcomes, open questions, deferred work, blockers,
+  next-story preview. PR URL, CI link/status, draft reason, merge method, and the BMAD-status-flip
+  outcome are **chat-only** at end of run; they're already retrievable from GitHub, git, and
+  `sprint-status.yaml`, so keeping them out of the file means it never needs re-touching after
+  the PR/CI/merge resolve. On a hard-stop before Phase 9, Step 3 still writes the file as a
+  fallback (no commit; the human commits it alongside their fix). (`SKILL.md` Step 3,
+  `references/pipeline.md` Phase 9, `references/git-and-pr.md` Ownership + Commits,
+  `references/state-and-resume.md` reports/{key}.md, `CLAUDE.md`, `README.md`.)
+
 ## [0.5.0] - 2026-05-28
 
 ### Changed

@@ -128,23 +128,26 @@ whose conditions don't apply (epic-start only if `is_first_in_epic`; TEA phases 
   effect**), append retro notes, update state.
 
 ### Step 3 — Final report
-Always produce a single report (even on hard-stop). **Append it** as a new timestamped section
-(`## Report — <ISO timestamp>`) to `{project-root}/_bmad-output/auto-bmad/reports/{key}.md`,
-**preserving any existing sections**, and print the same content to the user. Never overwrite on
-resume — earlier runs' reports carry context we must not lose. The ONLY time you overwrite the
-file is a deliberate full re-run of an already-`done` story, and only after explicit user
-confirmation. The report contains:
-- **Story:** key, branch, and final status — state whether the BMAD-level status (story file +
-  sprint-status) was flipped to `done` (clean completion) or left at `review` (caveated: draft PR /
-  blocker / waived gate / CI red or timed-out). On a clean completion that was **not** merged,
-  frame the open PR's merge as the human's remaining (optional, non-blocking) step. On a
-  successful merge, say so plainly ("Merged via squash; branch deleted") — no further action.
+Always produce a report (even on hard-stop). The report is **split**: a story-level **file
+portion** that lands in the PR diff, and a **chat-only** wrapper for PR/CI/merge details that
+exist elsewhere already (git, GitHub, sprint-status). Both are always printed to the user.
+
+- **File portion** (the persistent log under `{project-root}/_bmad-output/auto-bmad/reports/{key}.md`):
+  on a clean path this file was already written + committed in Phase 9 **before push**
+  (`docs(story-{e}-{s}): pipeline report`) so it ships in the PR — Step 3 does not re-write it
+  in that case. On any path that didn't reach the Phase 9 pre-push write (a hard-stop in
+  Phases 0–8, `needs-human`, or an override that ended the run early), Step 3 writes it now as
+  a fallback (append a new `## Report — <ISO timestamp>` section, preserving any earlier
+  sections; **no commit** — the tree is already in needs-human state and the human will commit
+  alongside their fix). Never overwrite on resume — earlier runs' sections carry context we
+  must not lose. The ONLY time you overwrite is a deliberate full re-run of an already-`done`
+  story, after explicit user confirmation; if declined, append.
+- **Chat-only** (printed at the end of every run; not written to the file): the full file
+  portion below, **plus** the PR / CI / merge / final-status lines listed underneath.
+
+**File portion — fields** (story-level outputs preserved across runs):
+- **Story:** key, branch.
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps) — omit if none.
-- **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why. On a merge: merge
-  method + branch-deleted state; on a failed merge attempt: the `gh` error verbatim.
-- **CI:** link to the CI run the PR/push triggered + its final status (`passed`/`failed`/`timeout`
-  if the merge prompt was on and Phase 9 waited; `queued/in_progress` otherwise). Omit if no
-  workflows.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.
 - **Open questions** surfaced by any step.
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
@@ -154,6 +157,17 @@ confirmation. The report contains:
   story is already `done`; list only genuine follow-ups (e.g. merging the open PR is optional and
   on the human's own time) — do not imply the merge gates `done`.
 - **Next:** the next story `story_plan.py` would pick (preview only — do NOT start it).
+
+**Chat-only — additional lines** (not committed; retrievable from git/GitHub/sprint-status later):
+- **Final status:** clean (BMAD-level flipped to `done`) vs caveated (left at `review`: draft PR /
+  recorded blocker / waived gate / CI red or timed-out). On a clean completion that was **not**
+  merged, frame the open PR's merge as the human's remaining (optional, non-blocking) step. On a
+  successful merge, say so plainly ("Merged via squash; branch deleted") — no further action.
+- **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why. On a merge: merge
+  method + branch-deleted state; on a failed merge attempt: the `gh` error verbatim.
+- **CI:** link to the CI run the PR/push triggered + its final status (`passed`/`failed`/`timeout`
+  if the merge prompt was on and Phase 9 waited; `queued/in_progress` otherwise). Omit if no
+  workflows.
 
 ## Hard-stop conditions (surface clearly, then report & exit)
 Not a BMAD project; missing required skill; no `sprint-status.yaml` / no epics; ambiguous or

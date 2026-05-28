@@ -10,6 +10,8 @@ This file is the single source for everything the orchestrator owns directly (do
 to an `ab-*` profile). The list — other docs link here by name instead of restating it:
 
 - git preflight, branching, every per-phase commit, push, PR open;
+- the Phase 9 **pre-push report write + commit** (`docs(story-{e}-{s}): pipeline report`) — the
+  story-level report file is written and committed *before* push so it ships in the PR diff;
 - the **CI wait** + draft conversion (when `git.offer_merge` is on);
 - the Phase 9 **BMAD-level status flip** on a clean completion (story file `Status:` +
   `sprint-status.yaml` → `done`) — orchestrator-owned finalize bookkeeping coupled to the git
@@ -47,7 +49,7 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 - Type per phase (see `pipeline.md` for the exact strings):
   - `chore` — pipeline start, review-passed checkpoint
   - `test` — TEA scaffolds/coverage, epic test design
-  - `docs` — story creation, epic-end docs (gate/context/retro)
+  - `docs` — story creation, epic-end docs (gate/context/retro), Phase 9 pipeline report
   - `feat` — story implementation
   - `fix` — addressing code-review findings
 - Stage the changes the phase produced and commit. Record the short sha in state (`commits[]`).

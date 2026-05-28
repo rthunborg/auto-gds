@@ -11,8 +11,10 @@ auto-bmad/                             # the BMAD standalone module (one skill)
   SKILL.md                             # orchestrator entry point
   references/                          # phase playbook, delegation, TEA policy, git, state
   assets/                              # module identity, setup, and delegate templates
-    agents/profiles.yaml               # per-profile, per-tool model + effort (source of truth)
-    agents/{claude,codex}/*.tmpl       # delegate templates render-agents.py fills in
+    agents/profiles.yaml               # source of truth: per-profile persona (description /
+                                       # role_blurb / status_example) + per-tool model + effort
+    agents/{claude,codex}/agent.tmpl   # one shared body template per tool; render-agents.py
+                                       # fills it in for each profile
   scripts/                             # dependency-free helpers, each with --self-test
     story_plan.py                      # sprint-status reader
     render-agents.py                   # generates tool-native delegate agents from profiles
@@ -60,10 +62,12 @@ locally as a test sandbox; it is gitignored — never commit it.
   delegator — it must never implement story work itself (git/PR work is the one exception it owns).
 - **Per-skill delegation prompts** live in `auto-bmad/references/delegation.md`. New BMAD skills
   get a prompt template here, never inline ad-hoc text.
-- **Agent profiles** live in `auto-bmad/assets/agents/profiles.yaml` (per-profile, per-tool model +
-  effort — the single source of truth). The tool-native `ab-*` agent files are *generated* from it
-  by `scripts/render-agents.py` and are gitignored — never hand-edit them. Add a profile only when
-  an existing one doesn't fit, then re-render (`/auto-bmad reprovision`).
+- **Agent profiles** live in `auto-bmad/assets/agents/profiles.yaml` — the single source of truth
+  for each profile's persona strings (`description` / `role_blurb` / `status_example`) **and** its
+  per-tool model + effort. The tool-native `ab-*` agent files are *generated* from it by
+  `scripts/render-agents.py` (filling one shared body template per tool —
+  `agents/{claude,codex}/agent.{md,toml}.tmpl`) and are gitignored — never hand-edit them. Add a
+  profile only when an existing one doesn't fit, then re-render (`/auto-bmad reprovision`).
 - **TEA selection rules** live in `auto-bmad/references/tea-policy.md`.
 - **Every user-facing change needs a `CHANGELOG.md` note** under `## [Unreleased]` (correct
   Keep-a-Changelog heading) in the same PR. Never bump the version files by hand — `scripts/bump-version.py`

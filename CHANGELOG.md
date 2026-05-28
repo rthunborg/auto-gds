@@ -16,9 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Phase 0 project-context probe + Phase 2 project-context bootstrap sub-step.** Auto-bmad now
-  detects a missing `project-context.md` at preflight (single `find` outside
-  `_bmad/`/`_bmad-output/`/`.bmad/`/`node_modules/`/`.venv/`, recorded as
-  `needs_project_context_bootstrap` in state) and, when missing, runs `generate-project-context`
+  detects a missing `project-context.md` at preflight — primary check at the BMAD-canonical write
+  path (`<output_folder>/project-context.md`), `find` fallback under `<project_root>` excluding
+  `node_modules/`/`.venv/`/`.git/`, mirroring the `bmad-generate-project-context` skill's own
+  discovery — recorded as `needs_project_context_bootstrap` in state. When missing, runs `generate-project-context`
   via the `project_context` profile as a new Phase 2 sub-step (committed
   `docs(project-context): bootstrap`) *before* Phase 3's create-story. Earlier behavior only
   refreshed the file at Phase 8 (epic-end), so every create-story in epic 1 of a greenfield repo —

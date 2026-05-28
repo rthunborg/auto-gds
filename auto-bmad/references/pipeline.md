@@ -33,13 +33,18 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   delegate agents are missing or stale (module updated / profiles edited), auto-reprovision and
   note it in the preflight echo + final report. Not a human stop. See `delegation-runtime.md` →
   "Resolving host & mode".
-- **Project-context probe (orchestrator):** look for a `project-context.md` anywhere in the
-  project (excluding `_bmad/`, `_bmad-output/`, `.bmad/`, `node_modules/`, `.venv/`). Use
-  `find <project_root> -name 'project-context.md' -not -path '*/_bmad/*' -not -path
-  '*/_bmad-output/*' -not -path '*/.bmad/*' -not -path '*/node_modules/*' -not -path
-  '*/.venv/*' -type f` (external binary — shell-agnostic per `CLAUDE.md` → "Shell globs").
-  Empty result → set `needs_project_context_bootstrap: true` in state; Phase 2 will bootstrap it
-  before create-story. Non-empty → set the flag `false` (the existing file is good enough; Phase 8
+- **Project-context probe (orchestrator):** match the discovery the `bmad-generate-project-context`
+  skill itself does — primary location is `<output_folder>/project-context.md` (where the skill
+  writes; `<output_folder>` comes from `_bmad/bmm/config.yaml`), fallback is any
+  `project-context.md` anywhere under `<project_root>` except build/VCS noise. Probe:
+  ```
+  test -f <output_folder>/project-context.md || \
+    find <project_root> -name 'project-context.md' -not -path '*/node_modules/*' \
+      -not -path '*/.venv/*' -not -path '*/.git/*' -type f -print -quit | grep -q .
+  ```
+  (`find` is the external binary — shell-agnostic per `CLAUDE.md` → "Shell globs".) Both checks
+  empty → set `needs_project_context_bootstrap: true` in state; Phase 2 will bootstrap it before
+  create-story. Either non-empty → set the flag `false` (the existing file is good enough; Phase 8
   still refreshes it on the last story of the epic). This predicate naturally covers two paths:
   (a) first story of the first epic on a greenfield repo, and (b) brownfield adoption mid-project
   where auto-bmad runs against an already-built codebase that never had `bmad-generate-project-context` run.

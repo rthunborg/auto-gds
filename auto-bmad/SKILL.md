@@ -113,8 +113,10 @@ invocation carried any instructions — `references/overrides.md`, then:
    `code_review_iterations`). Otherwise initialize a fresh state file in Phase 1.
 4. **Git preflight, project-context probe & triage** (per Phase 0 of the pipeline): **you run the
    git preflight and the project-context probe directly** — detect repo, clean tree, git mode,
-   base branch; then `find` for an existing `project-context.md` outside `_bmad/` / `_bmad-output/` /
-   `.bmad/` / `node_modules/` / `.venv/` (see Phase 0 for the exact `find` invocation) and record
+   base branch; then probe for an existing `project-context.md` at the BMAD-canonical write path
+   (`<output_folder>/project-context.md`) with a `find` fallback anywhere under `<project_root>`
+   except `node_modules/`/`.venv/`/`.git/` (see Phase 0 for the exact invocation — it mirrors the
+   `bmad-generate-project-context` skill's own discovery) and record
    `needs_project_context_bootstrap` in state. Then, **only if TEA enabled**, delegate the
    story-risk classification to the `tea_per_story` profile to pick per-story TEA skills. Record
    the decisions in state.

@@ -12,9 +12,10 @@ project-context bootstrap/refresh) runs in a delegated `ab-*` sub-agent. **Git/P
 deliberate exception that the orchestrator owns directly** (never delegated): preflight
 detection, branching, per-phase commits, push, and PR — it holds the full pipeline context to
 write commit/PR messages, and a round-trip to a delegate would only be slower. The Phase 0
-**project-context probe** is the same kind of orchestrator-owned detection: a single `find` for
-an existing `project-context.md` outside `_bmad/`/`_bmad-output/`/`.bmad/`/`node_modules/`/`.venv/`
-that decides whether Phase 2's bootstrap sub-step needs to run; the bootstrap itself
+**project-context probe** is the same kind of orchestrator-owned detection: a fast existence
+check at `<output_folder>/project-context.md` (the BMAD-canonical write path) plus a `find`
+fallback under `<project_root>` for any custom location, mirroring the skill's own discovery —
+it decides whether Phase 2's bootstrap sub-step needs to run; the bootstrap itself
 (`generate-project-context`) is delegated like every other BMAD skill call. The Phase 9 **clean-completion BMAD-status flip**
 (story file `Status:` + `sprint-status.yaml` → `done`) is the same kind of orchestrator-owned
 finalize bookkeeping — a one-field status write, not story work, coupled to the git finalize the

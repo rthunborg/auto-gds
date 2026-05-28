@@ -1,8 +1,8 @@
 # Delegation runtime — host detection & how to spawn a profile
 
-`delegation.md` says **what** to tell a delegate (the tool-agnostic prompt body). This file says
-**how** to actually spawn it on the current host, and how to degrade gracefully when the host
-can't do isolated, effort-tuned subagents.
+`delegation.md` says **what** to tell a delegate (the tool-agnostic prompt body); this file says
+**how** to spawn it on the current host and degrade gracefully when the host can't do isolated,
+effort-tuned subagents.
 
 Two config fields (in `{output_folder}/auto-bmad/config.yaml`, see `state-and-resume.md`) drive
 everything:
@@ -10,16 +10,14 @@ everything:
 - `delegation.mode` — `custom-subagents` | `general-subagents` | `inline`
 
 `phase_profiles` (also in config) maps each phase to a profile name (`ab-max`, `ab-xhigh`,
-`ab-high`, `ab-alt`); `profiles` holds each profile's per-tool model + effort. This file
-turns "delegate phase X" into a concrete spawn.
+`ab-high`, `ab-alt`); `profiles` holds each profile's per-tool model + effort.
 
 ## Resolving host & mode (every run)
 
 `delegation.host` and `delegation.mode` default to `auto` and are **re-detected on every run** —
 so one project, with agents provisioned for both tools, runs in Claude Code *or* Codex with no
-reconfiguration. `delegation.target_tools` is a **separate** thing: it only decides which agent
-files were generated, not which tool runs now. An explicit non-`auto` value in config forces the
-choice.
+reconfiguration. `delegation.target_tools` is **separate**: it only decides which agent files were
+generated, not which tool runs now. An explicit non-`auto` value in config forces the choice.
 
 Detect the host in this order, then pick the best tier it supports:
 1. **Claude Code** — `${CLAUDE_PLUGIN_ROOT}` is set, or a `.claude/` dir exists → `custom-subagents`.
@@ -29,8 +27,7 @@ Detect the host in this order, then pick the best tier it supports:
 If the detected host needs `custom-subagents`, **verify the agent files are present _and_ current**
 before relying on them — checking existence alone lets the generated agents drift silently after a
 module update (new templates) or a `profiles` edit. Run the freshness check, which re-renders every
-agent in memory and diffs it against the on-disk files (so it catches changed templates, edited
-profiles, an added/dropped `target_tool`, and mangled files alike):
+agent in memory and diffs it against the on-disk files:
 
 ```bash
 python3 ./scripts/render-agents.py --check --project-root "{project-root}" \
@@ -94,7 +91,7 @@ Look up the profile for the phase via `phase_profiles`, then:
   on Claude Code.
 
 In both cases, after the delegate returns: read the structured result, append Retro notes,
-checkpoint, update state — identical to today's flow.
+checkpoint, update state.
 
 ## Tier 2 — `general-subagents`
 
@@ -111,8 +108,8 @@ untuned. Everything else (sequential, structured result, retro notes, checkpoint
 
 The host has no subagents at all. Run the step **yourself, in this context**, following the
 `delegation.md` prompt body and the mapped profile's operating guidance. This is the only mode
-where the orchestrator does the step's work directly — an explicit, documented exception to the
-"only orchestrate" rule, used solely because the host offers no alternative.
+where the orchestrator does the step's work directly — used solely because the host offers no
+alternative.
 
 To keep the rest of the machinery intact:
 - Do each phase strictly in order; finish and **emit the same structured result block** (Outcome

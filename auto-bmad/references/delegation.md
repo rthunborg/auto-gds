@@ -2,16 +2,15 @@
 
 **This file is the single source of truth for what each BMAD step runs** — its exact `/bmad-*`
 command, prompt body, and the placeholders below. One entry per step, named by its heading (e.g.
-`create-story`, `dev-story`, `code-review`). `pipeline.md` references each step **by that heading
-name** and never repeats the command, so changing a command means editing here and nowhere else.
-Git/PR steps are not delegated and have no entry here — the orchestrator runs them; see
-`git-and-pr.md`.
+`create-story`); `pipeline.md` references each by heading name and never repeats the command, so a
+command changes here and nowhere else. Git/PR steps are not delegated and have no entry here — the
+orchestrator runs them; see `git-and-pr.md`.
 
 The orchestrator fills the placeholders and sends the result as the Agent prompt to the profile
 that `phase_profiles` assigns to the step's phase (see `pipeline.md` for the phase→profile-key
-mapping and `state-and-resume.md` for the config). Keep prompts **minimal** — the exact `/bmad-*`
-command + the inputs the skill needs. Every prompt ends with the shared autonomy directive (the
-delegate profiles already carry it, so the short form below is enough).
+mapping and `state-and-resume.md` for the config). Keep prompts **minimal** (command + the inputs
+the skill needs) and end each with the shared autonomy directive below — the delegate profiles
+already carry the full form, so the short version is enough.
 
 **Shared autonomy directive (append to every prompt):**
 > Run fully autonomously — answer any interactive BMAD menu/checkpoint with the sensible default

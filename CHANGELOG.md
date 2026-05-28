@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Trimmed duplicated rationale across the reference docs (no behavior change).** Collapsed
+  repeated "why" explanations to a single canonical home with pointers — the project-context
+  greenfield/brownfield gloss, the git-ownership rationale, the `profiles.yaml` single-source /
+  advisory-stamp story, the report-file chat-only rationale, and several restated facts — and
+  dropped a few changelog-style asides. Every pipeline contract (commit strings, gate conditions,
+  the shell probe, severity thresholds, draft-predicate clauses, state schema, prompt bodies) is
+  unchanged. (`auto-bmad/references/pipeline.md`, `delegation.md`, `delegation-runtime.md`,
+  `git-and-pr.md`, `state-and-resume.md`, `tea-policy.md`.)
+- **Dropped the hardcoded model names from the module-setup provisioning note.** The Step 4 note no
+  longer lists specific defaults (`opus/sonnet`, `gpt-5.5/gpt-5.4`), so `assets/agents/profiles.yaml`
+  stays the single source for model/effort and the doc can't silently drift when profiles are
+  retuned. (`auto-bmad/assets/module-setup.md`.)
+
 ## [0.6.0] - 2026-05-28
 
 ### Added

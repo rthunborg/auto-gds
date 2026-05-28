@@ -3,14 +3,13 @@
 Applies only when `tea.enabled` is true in config. Two layers:
 
 ## 1. Epic-level skills — ALWAYS ON (when TEA enabled)
-These run at epic boundaries regardless of story risk:
 - **Epic start** (`is_first_in_epic`): `bmad-testarch-test-design` (epic level).
 - **Epic end** (`is_last_in_epic`): `bmad-testarch-trace` (gate) → `bmad-testarch-nfr` →
   `bmad-testarch-test-review`.
 
 ## 2. Per-story skills — RISK-BASED (triage in Phase 0)
 `bmad-testarch-atdd` (before dev) and `bmad-testarch-automate` (after dev) are selected per
-story based on a quick risk classification. Trivial stories get neither.
+story based on a quick risk classification.
 
 ### Risk classification
 Look at the story's epic entry / acceptance criteria / described scope and score the signals:
@@ -42,8 +41,7 @@ Record the chosen set as `tea_selected` in state, with a one-line rationale (whi
 it) so the decision is visible in the report and resumable.
 
 ### Notes
-- If TEA is enabled but the story is Low risk, `tea_selected = []` and Phases 4 & 6 are skipped —
-  the story still gets full code review.
+- Low risk ⇒ `tea_selected = []` and Phases 4 & 6 are skipped — the story still gets full code review.
 - `framework` / `ci` are one-time project setup, handled (or skipped) by the first-run flow in
   `state-and-resume.md`, never per story.
 - When in doubt between two tiers, pick the higher one — under-testing high-stakes code is worse

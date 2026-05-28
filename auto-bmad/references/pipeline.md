@@ -1,18 +1,14 @@
 # Per-story pipeline
 
 The orchestrator runs these phases **in order** for a single story. Each phase: check its
-condition → delegate the named **`delegation.md` entry** (shown in backticks below, e.g.
-`create-story`) to the profile `phase_profiles` assigns to the phase (each phase below also names
-its `phase_profiles` **key**, e.g. `→ create_story`; resolve key → profile → model+effort via
-config — the mapping lives only in config, never hardcode a profile name here). `delegation.md`
-owns the exact `/bmad-*` command + prompt; spawn it for the current host/tier per
-`delegation-runtime.md` → read the result → if `blocked`/`needs-human`, stop and report → else
-append retro notes, **commit** (see `git-and-pr.md`), and update the state file (see
-`state-and-resume.md`).
-
-Note the two near-identical-but-distinct tokens per phase: the **entry name** (hyphenated, e.g.
-`create-story`) names the `delegation.md` prompt; the **profile key** (underscored, e.g.
-`create_story`) names the `phase_profiles` entry. Bold backticks below mark the entry name.
+condition → delegate the named **`delegation.md` entry** (the hyphenated name in **bold backticks**
+below, e.g. **`create-story`**) to the profile `phase_profiles` assigns to the phase (each phase
+also names its `phase_profiles` **key** — the underscored form, e.g. `→ create_story`; resolve
+key → profile → model+effort via config — the mapping lives only in config, never hardcode a
+profile name here). `delegation.md` owns the exact `/bmad-*` command + prompt; spawn it for the
+current host/tier per `delegation-runtime.md` → read the result → if `blocked`/`needs-human`, stop
+and report → else append retro notes, **commit** (see `git-and-pr.md`), and update the state file
+(see `state-and-resume.md`).
 
 **Git/PR work is orchestrator-owned, not delegated** — see `git-and-pr.md` → "Ownership" for the
 full list. The git-only phases below (0 preflight, 1 branch, 9 finalize) carry no
@@ -45,9 +41,8 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   (`find` is the external binary — shell-agnostic per `CLAUDE.md` → "Shell globs".) Both checks
   empty → set `needs_project_context_bootstrap: true` in state; Phase 2 will bootstrap it before
   create-story. Either non-empty → set the flag `false` (the existing file is good enough; Phase 8
-  still refreshes it on the last story of the epic). This predicate naturally covers two paths:
-  (a) first story of the first epic on a greenfield repo, and (b) brownfield adoption mid-project
-  where auto-bmad runs against an already-built codebase that never had `bmad-generate-project-context` run.
+  still refreshes it on the last story of the epic). This covers both greenfield first-story and
+  brownfield mid-project adoption (a codebase that never ran `bmad-generate-project-context`).
 - **Triage (only if `tea.enabled`; delegated to `tea_per_story`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_selected` (e.g. `[atdd, automate]`,
   or `[]` for trivial) in state.
@@ -71,9 +66,8 @@ no-op, recorded as skipped). Sub-steps execute in this order:
      stack scan of the existing codebase) rather than refresh an existing file.
    - Commit: `docs(project-context): bootstrap`.
    - Flip `needs_project_context_bootstrap` to `false` in state so re-invocations don't double-run.
-   - This is independent of `is_first_in_epic` / `tea.enabled`: a brownfield repo that adopts
-     auto-bmad mid-epic gets context built once on the first story it runs, and every later story
-     in the epic benefits.
+   - Gate is independent of `is_first_in_epic` / `tea.enabled` — a repo that adopts auto-bmad
+     mid-epic gets context built once, on the first story it runs.
 2. **Epic test design** *(only if `is_first_in_epic` AND `tea.enabled`)* → `tea_epic`
    - Delegate the **`testarch-test-design`** entry (epic level) for epic `{e}`.
    - Commit: `test(epic-{e}): epic-level test design`.
@@ -156,10 +150,9 @@ For iteration `i` (1-based):
      such findings can recur (and a cluster of Mediums means the change still isn't settling), so
      re-review: if `i < cap`, continue to iteration `i+1`; if `i == cap`, go to step 4.
 4. **Cap reached while the last pass was still tripping the re-review threshold (Critical/High, or
-   ≥2 Med) → ASK the user** (AskUserQuestion); do not silently proceed. Nothing is left unresolved —
-   each pass fixed its findings — but because the final pass still tripped that threshold,
-   convergence is unverified. (This is mid-pipeline — the PR doesn't happen until Phase 9, after
-   the epic-end Phase 8.) Summarize the findings the last pass fixed, then offer:
+   ≥2 Med) → ASK the user** (AskUserQuestion); do not silently proceed. Each pass fixed its
+   findings, but the final pass still tripped the threshold, so convergence is unverified.
+   Summarize the findings the last pass fixed, then offer:
    - **Run another review+fix iteration** *(recommended)* — continue beyond the cap with the
      primary reviewer (`code_review_review`) + `code_review_fix`, to verify the fixes and drive the
      findings below the re-review threshold. Repeat this ask after each extra iteration until a pass
@@ -217,8 +210,7 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
   recorded elsewhere — overrides, TEA outcomes, open questions, deferred work, blockers,
   next-story preview (see `SKILL.md` Step 3 for the exact fields). PR URL, CI link/status,
   draft reason, merge method, and the BMAD-status-flip outcome are deliberately **chat-only**
-  (Step 3 prints them) — they're retrievable from git/GitHub/sprint-status, so we don't write
-  them into a file we'd then have to re-touch after the PR/CI/merge resolve. Commit it:
+  (Step 3 prints them; rationale in `state-and-resume.md` → "reports/{key}.md"). Commit it:
   `docs(story-{e}-{s}): pipeline report`. (Orchestrator-owned, never delegated —
   `git-and-pr.md` → "Ownership".)
 - **git mode `remote`:** push the branch, open the PR, evaluate CI, and convert to draft if
@@ -249,5 +241,4 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
   in state. This is the third interactive moment in normal operation (after first-run setup and
   the Phase 7 cap; the Phase 8 trace-FAIL ask is also interactive).
 - Hand control back to the SKILL's Step 3, which **prints the final chat report** (the committed
-  file portion plus PR / CI / merge / final-status details). The file was already written +
-  committed at the top of this phase, before push.
+  file portion plus PR / CI / merge / final-status details).

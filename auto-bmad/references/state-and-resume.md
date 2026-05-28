@@ -50,14 +50,11 @@ phase_profiles: {…}        # create_story, dev_story, code_review_review,
                            # (git/PR work is run by the orchestrator directly — no delegate profile)
 ```
 
-**`assets/agents/profiles.yaml` is the single source of truth for both blocks** — the default
-model/effort (`profiles`) and the phase→profile binding (`phase_profiles`, whose keys the
-pipeline/delegation playbooks name instead of raw profile names). First run copies it here
-verbatim; this schema shows only the *shape* so the asset and the doc can never drift.
-`delegation.host`/`mode` default to `auto` and are **re-detected each run**, so the same config
-runs in Claude Code or Codex with no reconfiguration; `target_tools` only controls which agent
-files were provisioned (see `delegation-runtime.md`). Codex model names ship as real defaults;
-retune `profiles` (in the asset) if your install differs.
+**`assets/agents/profiles.yaml` is the single source of truth for both blocks** — see the
+`config.yaml` comment above; first run copies it here verbatim, shape only, so asset and doc can't
+drift. `delegation.host`/`mode` are re-detected each run and `target_tools` only controls which
+agent files were provisioned (see `delegation-runtime.md`). Codex model names ship as real
+defaults; retune `profiles` (in the asset) if your install differs.
 
 ## First-run flow (only when config.yaml is absent)
 The single interactive episode in normal operation. Always confirm `target_tools`, then offer
@@ -90,11 +87,9 @@ The single interactive episode in normal operation. Always confirm `target_tools
    true). `git.base_branch` is auto-detected, never asked.
 5. Write `config.yaml` with the seeded delegation/profiles, the confirmed `target_tools`, the
    answers, and detected `git`/`base_branch` values (Quick fills the step-4 fields with the
-   defaults above). Also stamp `profiles_source_version` with the current `module_version` read
-   from `{skill-root}/assets/module.yaml` — this is the abm version whose profile defaults seeded
-   this config; a future update can compare against it to know whether the defaults moved. The
-   stamp is advisory; never auto-overwrite the user's `profiles:` / `phase_profiles:` blocks on
-   drift detection — surface a note and let `/auto-bmad reprovision` (or a manual edit) resolve it.
+   defaults above). Also stamp `profiles_source_version` with the current `module_version` from
+   `{skill-root}/assets/module.yaml` (advisory; never auto-overwrites the user's blocks — see the
+   `config.yaml` comment above).
    **Then stop — do not start the pipeline this session.** This first-run write
    (plus any module registration done earlier this session) is the one-time setup; report what was
    configured, then tell the user how to begin the first story:
@@ -149,10 +144,9 @@ constraints: []              # caller-supplied constraints carried in via invoca
 ```
 
 Update it after every phase. Treat it as the source of truth for resume. The merge-related fields
-(`pr_merged`, `merge_method`, `merge_commit`, `branch_deleted`, `ci_status`) are emitted with
-their `false`/`null`/`unknown` defaults from the first write; Phase 9 only mutates them when it
-actually waits for CI / runs `gh pr merge` — so a parser sees the same shape on every run regardless
-of whether the merge prompt fired.
+(`pr_merged`, `merge_method`, `merge_commit`, `branch_deleted`, `ci_status`) carry their
+`false`/`null`/`unknown` defaults from the first write; Phase 9 mutates them only when it actually
+waits for CI / runs `gh pr merge`.
 
 ## Target selection & resume logic
 No-arg `/auto-bmad` chooses the target story with this precedence:
@@ -216,10 +210,9 @@ were done a certain way) that the story file alone doesn't capture.
 The per-story report is a **log**, not a single overwritten document. It carries only the
 **story-level** outputs that aren't recorded elsewhere — overrides, TEA outcomes, open
 questions, deferred work, blockers, next-story preview. PR URL, CI link/status, draft reason,
-merge method, and the BMAD-status-flip outcome are **chat-only** at end of run; we don't persist
-them here because they're already retrievable from git/GitHub/sprint-status, and keeping them
-out of the file means it can be written **once** pre-push and never re-touched after the
-PR/CI/merge resolve.
+merge method, and the BMAD-status-flip outcome are **chat-only** at end of run — already
+retrievable from git/GitHub/sprint-status, so the file is written **once** pre-push and never
+re-touched after the PR/CI/merge resolve.
 
 - On a clean path the file is written + committed in **Phase 9 before push**
   (`docs(story-{e}-{s}): pipeline report`) so it ships in the PR diff. See
@@ -264,6 +257,3 @@ empty AND the heading's own line says "(none)" — never drop the heading silent
 
 **Next:** <one line — the story `story_plan.py` would pick next; preview only>.
 ```
-
-On resumed runs the new section is appended below the prior one with the same template — never
-collapse earlier sections.

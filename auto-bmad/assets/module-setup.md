@@ -99,11 +99,10 @@ module is ready to run immediately after setup.
 
    This writes `.claude/agents/ab-*.md` and/or `.codex/agents/ab-*.toml`. Surface the JSON
    result; if it exits non-zero or reports warnings, show them.
-4. Both Claude Code and Codex profiles ship with real defaults (opus/sonnet and gpt-5.5/gpt-5.4)
-   that need no change. Model names are environment-specific, so if a tool's install exposes
-   different names the user can retune the `profiles` block in
-   `{output_folder}/auto-bmad/config.yaml` and run `/auto-bmad reprovision` — but don't flag this
-   as a required manual step.
+4. Both Claude Code and Codex profiles ship with real defaults that need no change. Model names
+   are environment-specific, so if a tool's install exposes different names the user can retune the
+   `profiles` block in `{output_folder}/auto-bmad/config.yaml` and run `/auto-bmad reprovision` —
+   but don't flag this as a required manual step.
 
 **Reprovision-only path:** if the user invoked with `reprovision` (or asked only to regenerate
 agents after editing profiles), skip config collection entirely and run just step 3 above,

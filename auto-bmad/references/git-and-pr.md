@@ -1,8 +1,8 @@
 # Git & PR conventions
 
-All git work is performed by the **orchestrator directly** — never delegated. The orchestrator
-holds the full pipeline context, so it writes the commit and PR messages itself. Nothing ever
-lands on the base branch; every phase is its own commit so the pipeline is resumable and reviewable.
+All git work is performed by the **orchestrator directly** — never delegated (see "Ownership"
+below). Nothing ever lands on the base branch; every phase is its own commit so the pipeline is
+resumable and reviewable.
 
 ## Ownership
 
@@ -14,8 +14,7 @@ to an `ab-*` profile). The list — other docs link here by name instead of rest
   story-level report file is written and committed *before* push so it ships in the PR diff;
 - the **CI wait** + draft conversion (when `git.offer_merge` is on);
 - the Phase 9 **BMAD-level status flip** on a clean completion (story file `Status:` +
-  `sprint-status.yaml` → `done`) — orchestrator-owned finalize bookkeeping coupled to the git
-  finalize the orchestrator already owns;
+  `sprint-status.yaml` → `done`);
 - the Phase 9 **merge prompt + `gh pr merge` execution** (opt-in via `git.offer_merge`,
   default on, only on a clean completion).
 
@@ -93,7 +92,7 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
   Then evaluate `ci_status` and, when warranted, **wait for in-progress checks to finish**:
   - **When to wait:** only if the merge prompt is effectively enabled this run —
     `git.offer_merge: true` AND no `skip merge-prompt` override. When the prompt is off, do not
-    wait (existing behavior: just link the run, leave `ci_status: unknown`).
+    wait — just link the run and leave `ci_status: unknown`.
   - **How to wait:** poll `gh pr checks <pr-number> --json bucket,state,name` every ~20s until no
     check is `pending`/`in_progress`, capped at `git.ci_wait_minutes` (default 30). `gh pr checks
     --watch` is acceptable as long as the call honors the cap. Don't echo per-poll noise — print
@@ -117,11 +116,10 @@ their behalf, then switches the working tree back to the base branch so the next
 clean.
 
 - **Prompt** (`AskUserQuestion`, 4 options, in this order — first is the default): **Merge commit
-  (recommended)** / Rebase and merge / Squash and merge / Don't merge. Merge commit is the
-  recommended default because it preserves every per-phase auto-bmad commit (initial dev, review
-  fixes, the pipeline-report commit) — the richest signal for an AI later running
-  `git log`/`blame`/`bisect` on the story. If a merge style is chosen, **ask a second question** —
-  Delete branch? Yes / No.
+  (recommended)** / Rebase and merge / Squash and merge / Don't merge. Merge commit is the default
+  because it preserves every per-phase auto-bmad commit — the richest signal for an AI later
+  running `git log`/`blame`/`bisect` on the story. If a merge style is chosen, **ask a second
+  question** — Delete branch? Yes / No.
 - **Execute** (only if the user picked a merge style):
   - `gh pr merge <pr-number> --merge` *(or `--rebase` / `--squash`)* `[--delete-branch]`.
   - On success: `git switch <base_branch>` then `git pull --ff-only` so the local tree matches
@@ -137,8 +135,7 @@ clean.
   (`<reason>`); merge manually.").
 
 When the prompt is **off** for this run (`git.offer_merge: false` or `skip merge-prompt`
-override), Phase 9 ends after the existing finalize bookkeeping — PR stays open for the human, as
-before this feature.
+override), Phase 9 ends after the finalize bookkeeping — PR stays open for the human.
 
 ## Mode `local`
 - No push, no PR, no merge prompt (there's nothing to merge). Leave the branch checked out. The

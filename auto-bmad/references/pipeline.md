@@ -33,6 +33,16 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   delegate agents are missing or stale (module updated / profiles edited), auto-reprovision and
   note it in the preflight echo + final report. Not a human stop. See `delegation-runtime.md` →
   "Resolving host & mode".
+- **Project-context probe (orchestrator):** look for a `project-context.md` anywhere in the
+  project (excluding `_bmad/`, `_bmad-output/`, `.bmad/`, `node_modules/`, `.venv/`). Use
+  `find <project_root> -name 'project-context.md' -not -path '*/_bmad/*' -not -path
+  '*/_bmad-output/*' -not -path '*/.bmad/*' -not -path '*/node_modules/*' -not -path
+  '*/.venv/*' -type f` (external binary — shell-agnostic per `CLAUDE.md` → "Shell globs").
+  Empty result → set `needs_project_context_bootstrap: true` in state; Phase 2 will bootstrap it
+  before create-story. Non-empty → set the flag `false` (the existing file is good enough; Phase 8
+  still refreshes it on the last story of the epic). This predicate naturally covers two paths:
+  (a) first story of the first epic on a greenfield repo, and (b) brownfield adoption mid-project
+  where auto-bmad runs against an already-built codebase that never had `bmad-generate-project-context` run.
 - **Triage (only if `tea.enabled`; delegated to `tea_per_story`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_selected` (e.g. `[atdd, automate]`,
   or `[]` for trivial) in state.
@@ -44,11 +54,26 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Write the initial state file and commit it:
   `chore(story-{e}-{s}): start auto-bmad pipeline`.
 
-## Phase 2 — Epic start  *(only if `is_first_in_epic` AND `tea.enabled`)*  → `tea_epic`
-- Delegate the **`testarch-test-design`** entry (epic level) for epic `{e}`.
-- Commit: `test(epic-{e}): epic-level test design`.
-- (If `tea.enabled` is false, skip. Non-TEA epic-start work is already handled by
-  sprint-planning having been run; nothing else is needed here.)
+## Phase 2 — Epic-start setup  *(conditional; two independently-gated sub-steps)*
+Two sub-steps that each carry their own gate; either, both, or neither may run. Mark Phase 2 as
+done in `completed_phases` if any sub-step ran (or if both gates were false — Phase 2 is then a
+no-op, recorded as skipped). Sub-steps execute in this order:
+
+1. **Project-context bootstrap** *(only if `needs_project_context_bootstrap` from Phase 0)* →
+   `project_context`
+   - Delegate the **`generate-project-context`** entry. Pass `bootstrap_mode: true` so the prompt
+     instructs the delegate to write `project-context.md` from scratch (architecture / patterns /
+     stack scan of the existing codebase) rather than refresh an existing file.
+   - Commit: `docs(project-context): bootstrap`.
+   - Flip `needs_project_context_bootstrap` to `false` in state so re-invocations don't double-run.
+   - This is independent of `is_first_in_epic` / `tea.enabled`: a brownfield repo that adopts
+     auto-bmad mid-epic gets context built once on the first story it runs, and every later story
+     in the epic benefits.
+2. **Epic test design** *(only if `is_first_in_epic` AND `tea.enabled`)* → `tea_epic`
+   - Delegate the **`testarch-test-design`** entry (epic level) for epic `{e}`.
+   - Commit: `test(epic-{e}): epic-level test design`.
+   - (If `tea.enabled` is false, skip. Non-TEA epic-start work is already handled by
+     sprint-planning having been run; nothing else is needed here.)
 
 ## Phase 3 — Create story  → `create_story`
 - Delegate the **`create-story`** entry for story {e}-{s}. The skill self-validates against its

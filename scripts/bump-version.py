@@ -3,14 +3,19 @@
 commit, and tag — the single "easy bump" for this repo.
 
 auto-bmad is a BMAD module, not an npm package, so there is no `npm version` to
-lean on. The version is duplicated in three tracked places that must stay in
+lean on. The version is duplicated in four tracked places that must stay in
 lockstep, and "publishing" is just pushing a `vX.Y.Z` git tag (the BMAD
 installer keys its upgrade detection off stable tags; the Claude plugin
 marketplace reads the manifest `version`):
 
-  1. .claude-plugin/marketplace.json   "version": "X.Y.Z"
-  2. auto-bmad/assets/module.yaml       module_version: X.Y.Z
-  3. README.md                          shields badge  version-X.Y.Z-blue
+  1. .claude-plugin/marketplace.json                  "version": "X.Y.Z"
+  2. auto-bmad/assets/module.yaml                      module_version: X.Y.Z
+  3. README.md                                         shields badge  version-X.Y.Z-blue
+  4. auto-bmad/references/state-and-resume.md          profiles_source_version: "X.Y.Z"
+     (the schema example for config.yaml — first-run stamps this field with the
+     installed module's version so a future update can detect a stale-defaults
+     snapshot; the schema example must reflect the current release so docs and
+     freshly-seeded configs agree)
 
 Usage:
   python3 scripts/bump-version.py <patch|minor|major|X.Y.Z> [--dry-run]
@@ -48,6 +53,10 @@ VERSION_FILES = [
     (".claude-plugin/marketplace.json", r'("version"\s*:\s*")(\d+\.\d+\.\d+)(")'),
     ("auto-bmad/assets/module.yaml", r"(?m)^(module_version:\s*)(\d+\.\d+\.\d+)(\s*)$"),
     ("README.md", r"(badge/version-)(\d+\.\d+\.\d+)(-blue)"),
+    # Schema example in the config.yaml block — stays in lockstep so docs match
+    # what first-run actually writes into a fresh project's config (see Step 5 of
+    # the First-run flow in state-and-resume.md).
+    ("auto-bmad/references/state-and-resume.md", r'(profiles_source_version:\s*")(\d+\.\d+\.\d+)(")'),
 ]
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
@@ -267,6 +276,11 @@ def self_test() -> int:
         ('  "version": "0.1.1",\n', VERSION_FILES[0][1], '  "version": "0.2.0",\n'),
         ("module_version: 0.1.1\n", VERSION_FILES[1][1], "module_version: 0.2.0\n"),
         ("badge/version-0.1.1-blue.svg", VERSION_FILES[2][1], "badge/version-0.2.0-blue.svg"),
+        (
+            'profiles_source_version: "0.1.1"  # abm version that seeded',
+            VERSION_FILES[3][1],
+            'profiles_source_version: "0.2.0"  # abm version that seeded',
+        ),
     ]
     for text, pat, want in samples:
         assert find_version(text, pat) == "0.1.1", f"find failed: {text!r}"

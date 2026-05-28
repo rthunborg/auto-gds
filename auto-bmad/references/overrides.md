@@ -33,7 +33,7 @@ override; it is the existing target selector.
 - `stop_before: <phase>` / `stop_after: <phase>` — end the run at that boundary, then go straight
   to the report (Step 3).
 - `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `tea`,
-  `code-review`, `retrospective`, `branch`, `merge-prompt`.
+  `code-review`, `retrospective`, `branch`, `merge-prompt`, `project-context-bootstrap`.
 - `max_review_iterations: <int>` — override `code_review.max_iterations` for this run.
 - `git_mode: local` — force local mode (no push/PR), regardless of detection.
 - `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded.
@@ -50,8 +50,13 @@ override; it is the existing target selector.
   then the only resume record.
 - **skip pr** / **git_mode local:** Phase 9 pushes/opens nothing; the branch is left in place and
   noted in the report.
-- **skip tea:** treat `tea.enabled` as false for this run — skips Phases 2, 4, 6 and the
-  epic-end TEA gates in Phase 8 (project-context + retrospective still run).
+- **skip tea:** treat `tea.enabled` as false for this run — skips Phases 4, 6, Phase 2's
+  *test-design sub-step*, and the epic-end TEA gates in Phase 8 (project-context + retrospective
+  still run; Phase 2's project-context-bootstrap sub-step is independent of TEA and still runs
+  when needed).
+- **skip project-context-bootstrap:** suppress only Phase 2's project-context bootstrap sub-step,
+  even when `needs_project_context_bootstrap` is true. Use sparingly — every create-story in the
+  epic will then run without persistent_facts injection (see Phase 0 → "Project-context probe").
 - **skip code-review:** skip Phase 7 entirely. ⚠️ Quality gate removed — flag prominently.
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
 - **skip branch:** stay on the current branch (do not create `story/...`). Only sensible with a

@@ -13,8 +13,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 0 project-context probe + Phase 2 project-context bootstrap sub-step.** Auto-bmad now
+  detects a missing `project-context.md` at preflight (single `find` outside
+  `_bmad/`/`_bmad-output/`/`.bmad/`/`node_modules/`/`.venv/`, recorded as
+  `needs_project_context_bootstrap` in state) and, when missing, runs `generate-project-context`
+  via the `project_context` profile as a new Phase 2 sub-step (committed
+  `docs(project-context): bootstrap`) *before* Phase 3's create-story. Earlier behavior only
+  refreshed the file at Phase 8 (epic-end), so every create-story in epic 1 of a greenfield repo —
+  and every create-story on a brownfield repo that adopted auto-bmad mid-project — silently
+  skipped `persistent_facts` injection. The probe predicate ("file is missing anywhere in the
+  project") naturally covers both. Phase 2 is now two independently-gated sub-steps: bootstrap
+  (probe-driven, TEA-independent) and the existing epic-level test design (still gated on
+  `is_first_in_epic AND tea.enabled`); either, both, or neither may run. New
+  `skip project-context-bootstrap` override suppresses the bootstrap for the run if needed.
+  (`auto-bmad/references/pipeline.md` Phase 0 + Phase 2, `auto-bmad/references/delegation.md`
+  generate-project-context, `auto-bmad/references/overrides.md`, `auto-bmad/SKILL.md`,
+  `auto-bmad/references/state-and-resume.md`, `CLAUDE.md`.)
+- **`create-story` now ingests the epic's accumulated retro-notes when present.** The delegation
+  prompt for Phase 3 conditionally appends a directive to read
+  `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` (if it exists and is non-empty) and treat each
+  prior story's bullets as epic-wide constraints — schema inheritance, ratified conventions,
+  things later stories MUST or MUST NOT do — reflecting them directly in the Story Context
+  (constraints / persistent_facts / test notes) rather than as a generic see-retro pointer.
+  Previously the retro-notes file was write-only until the Phase 8 retrospective; this turns it
+  into a feedback loop within the epic. Phase-tag prefix (`[Phase X — short-name]`) is pinned in
+  the delegation doc so later stories can filter by phase. (`auto-bmad/references/delegation.md`
+  create-story.)
+- **`profiles_source_version` field in `config.yaml`.** First-run setup now stamps the field with
+  the installed module's `module_version` (read from `assets/module.yaml`), so a future update can
+  detect a stale-defaults snapshot of the `profiles:` / `phase_profiles:` blocks without losing
+  user retunes. Advisory only — never auto-overwrites. `scripts/bump-version.py` is now a
+  four-file lockstep (added the schema example in `state-and-resume.md`) so the doc and freshly-seeded
+  configs agree on the current release. (`auto-bmad/references/state-and-resume.md` config.yaml
+  schema + First-run flow, `scripts/bump-version.py`.)
+
 ### Changed
 
+- **State-file schema is now a stable contract — every field is always emitted.** Previously
+  `pr_merged` / `merge_method` / `merge_commit` / `branch_deleted` / `ci_status` appeared only on
+  stories that hit a clean-completion merge; parsers had to branch on field presence. Now the
+  schema documented in `state-and-resume.md` requires every field on every write, using explicit
+  `null` / `false` / `unknown` / `[]` / `{}` for not-yet-set or not-applicable. Added
+  `updated_at` (ISO-8601 UTC) so resume can tell at a glance how stale a state file is. The doc
+  also pins the rule that state is a machine-readable contract — prose narrative belongs in
+  `reports/{key}.md`, not in YAML comments inside state. (`auto-bmad/references/state-and-resume.md`
+  state/{key}.yaml.)
+- **`reports/{key}.md` sections now follow a fixed template.** Each `## Report — <ts>` section
+  uses the same headings in the same order (Story / Branch / Pipeline status / Phases run /
+  Skipped / Overrides / TEA / Code review / Open questions / Deferred work / Needs human / Next),
+  so PR reviewers find each field in a predictable place across runs and across stories. Empty
+  sections keep their heading with "(none)" — never silently dropped. Aligns the file with the
+  Step 3 chat-output expectations in `SKILL.md`. (`auto-bmad/references/state-and-resume.md`
+  reports/{key}.md → "Section template", `auto-bmad/SKILL.md` Step 3.)
 - **Phase 9 merge prompt now defaults to "Merge commit" instead of "Squash and merge", and the
   option order is Merge commit / Rebase and merge / Squash and merge / Don't merge.** auto-bmad
   produces meaningful per-phase commits (initial dev, `fix(story-…): apply review`, the pipeline

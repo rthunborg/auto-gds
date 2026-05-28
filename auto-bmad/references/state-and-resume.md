@@ -13,6 +13,12 @@ _bmad-output/auto-bmad/
 ## config.yaml
 ```yaml
 version: 1
+profiles_source_version: "0.5.0"  # abm version whose assets/agents/profiles.yaml seeded the
+                                  # profiles + phase_profiles blocks below. Stamped at first-run
+                                  # write (and by `/auto-bmad reprovision` when it re-seeds).
+                                  # Lets a future module update detect a stale-defaults snapshot
+                                  # without losing user retunes (advisory only — never auto-overwrites
+                                  # the user's blocks).
 delegation:                # spawn mechanism — host/mode auto-detected each run
   host: auto               # auto (detect each run) | claude-code | codex | other
   mode: auto               # auto (derive from host) | custom-subagents | general-subagents | inline
@@ -84,7 +90,12 @@ The single interactive episode in normal operation. Always confirm `target_tools
    true). `git.base_branch` is auto-detected, never asked.
 5. Write `config.yaml` with the seeded delegation/profiles, the confirmed `target_tools`, the
    answers, and detected `git`/`base_branch` values (Quick fills the step-4 fields with the
-   defaults above). **Then stop — do not start the pipeline this session.** This first-run write
+   defaults above). Also stamp `profiles_source_version` with the current `module_version` read
+   from `{skill-root}/assets/module.yaml` — this is the abm version whose profile defaults seeded
+   this config; a future update can compare against it to know whether the defaults moved. The
+   stamp is advisory; never auto-overwrite the user's `profiles:` / `phase_profiles:` blocks on
+   drift detection — surface a note and let `/auto-bmad reprovision` (or a manual edit) resolve it.
+   **Then stop — do not start the pipeline this session.** This first-run write
    (plus any module registration done earlier this session) is the one-time setup; report what was
    configured, then tell the user how to begin the first story:
    - **`custom-subagents` tier (Claude Code / Codex):** the user must fully quit and relaunch the
@@ -97,18 +108,27 @@ The single interactive episode in normal operation. Always confirm `target_tools
    later runs `config.yaml` already exists, so this flow is skipped.)
 
 ## state/{key}.yaml
+The state file is a **machine-readable contract**, not a prose log. Every field listed below is
+**always emitted** with an explicit value (use `null` / `false` / `[]` / `{}` for not-yet-set or
+not-applicable — never omit a field), so parsers and human readers can rely on a stable shape.
+Prose (multi-line YAML comment narratives about what a phase did, review-iteration findings,
+etc.) belongs in `reports/{key}.md` — keep it out of state.
+
 ```yaml
 story_key: 1-2-user-auth
 epic_num: 1
 story_num: 2
 branch: story/1-2-user-auth
 status: in-progress         # in-progress | done
+updated_at: "2026-05-28T14:04:41Z"  # ISO-8601 UTC; set by the orchestrator after every phase write
 is_first_in_epic: false
 is_last_in_epic: false
+needs_project_context_bootstrap: false  # set at Phase 0; flipped to false by Phase 2's bootstrap sub-step
 git_mode: remote
+base_branch: main
 tea_selected: [atdd, automate]   # from triage; [] if trivial or TEA off
 tea_rationale: "touches auth -> High risk"
-completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md
+completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here if EITHER sub-step ran
 code_review_iterations: 1
 convergence_unverified: false  # true if the review cap was hit while Critical/High were still being found+fixed and the user chose to ship anyway (Phase 7) -> Phase 9 opens the PR as a draft
 commits: [a1b2c3d, e4f5g6h]
@@ -119,13 +139,20 @@ ci_run_url: null             # link to the CI run the PR/push triggered, if the 
 ci_status: unknown           # passed|failed|timeout|none|unknown — set only when Phase 9 waited (offer_merge on); else 'unknown'
 pr_merged: false             # true only if the user chose a merge style in Phase 9's merge prompt and `gh pr merge` succeeded
 merge_method: null           # squash|merge|rebase|null — null if not merged or prompt was skipped
+merge_commit: null           # full SHA of the merge commit on the base branch, or null
 branch_deleted: false        # true if --delete-branch was used in the successful merge
 open_questions: []
 deferred_work: []
 blockers: []                 # each: short human-action description
 overrides: {}                # this run's normalized invocation overrides (see overrides.md); {} if none
+constraints: []              # caller-supplied constraints carried in via invocation (e.g. exact-string requirements); [] if none
 ```
-Update it after every phase. Treat it as the source of truth for resume.
+
+Update it after every phase. Treat it as the source of truth for resume. The merge-related fields
+(`pr_merged`, `merge_method`, `merge_commit`, `branch_deleted`, `ci_status`) are emitted with
+their `false`/`null`/`unknown` defaults from the first write; Phase 9 only mutates them when it
+actually waits for CI / runs `gh pr merge` — so a parser sees the same shape on every run regardless
+of whether the merge prompt fired.
 
 ## Target selection & resume logic
 No-arg `/auto-bmad` chooses the target story with this precedence:
@@ -188,11 +215,11 @@ were done a certain way) that the story file alone doesn't capture.
 ## reports/{key}.md
 The per-story report is a **log**, not a single overwritten document. It carries only the
 **story-level** outputs that aren't recorded elsewhere — overrides, TEA outcomes, open
-questions, deferred work, blockers, next-story preview (exact fields in `SKILL.md` Step 3).
-PR URL, CI link/status, draft reason, merge method, and the BMAD-status-flip outcome are
-**chat-only** at end of run; we don't persist them here because they're already retrievable
-from git/GitHub/sprint-status, and keeping them out of the file means it can be written
-**once** pre-push and never re-touched after the PR/CI/merge resolve.
+questions, deferred work, blockers, next-story preview. PR URL, CI link/status, draft reason,
+merge method, and the BMAD-status-flip outcome are **chat-only** at end of run; we don't persist
+them here because they're already retrievable from git/GitHub/sprint-status, and keeping them
+out of the file means it can be written **once** pre-push and never re-touched after the
+PR/CI/merge resolve.
 
 - On a clean path the file is written + committed in **Phase 9 before push**
   (`docs(story-{e}-{s}): pipeline report`) so it ships in the PR diff. See
@@ -207,3 +234,36 @@ from git/GitHub/sprint-status, and keeping them out of the file means it can be 
 - The **only** time it's overwritten is a deliberate full re-run of an already-`done` story, and
   only after explicit user confirmation ("overwrite the existing report log for {key}?"). If the
   user declines, append instead.
+
+### Section template (use literally, in this order)
+Every `## Report — <ISO timestamp>` section uses the same headings in the same order so a PR
+reviewer always finds each field in a predictable place. Omit a heading only when its content is
+empty AND the heading's own line says "(none)" — never drop the heading silently.
+
+```markdown
+## Report — <ISO timestamp UTC>
+
+**Story:** `{key}` (epic {e}, story {s}) — {first-in-epic? / last-in-epic? / mid-epic}.
+**Branch:** `<branch>` (HEAD `<short-sha>`).
+**Pipeline status:** <one-line summary, e.g. ✅ clean completion / halted at Phase 5 (needs-human) / draft (CI red)>.
+
+**Phases run:** <comma-joined Phase N list, with profile in parens for delegated phases>.
+**Skipped:** <comma-joined Phase N list with reason in parens>.
+
+**Overrides:** <one line; "none" if no invocation overrides applied>.
+
+**TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story>.
+
+**Code review:** <iterations run; per-iteration verdict + severity counts on one line each; "skipped" if no review>.
+
+**Open questions:** <numbered list, one per line; "(none)" if empty>.
+
+**Deferred work:** <numbered list, one per line; cross-link to `<impl>/deferred-work.md` if items landed there; "(none)" if empty>.
+
+**⚠️ Needs human:** <numbered list of blockers / manual actions; "(none)" if clean>.
+
+**Next:** <one line — the story `story_plan.py` would pick next; preview only>.
+```
+
+On resumed runs the new section is appended below the prior one with the same template — never
+collapse earlier sections.

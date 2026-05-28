@@ -7,11 +7,15 @@ workflow one story at a time, on **Claude Code or Codex**. This file is guidance
 
 ## Core principle (do not violate)
 The orchestrator **delegates BMAD work and reports** — it must never implement story work or run
-`/bmad-*` skills directly. Every BMAD step (create-story, dev-story, code-review, TEA, retro)
-runs in a delegated `ab-*` sub-agent. **Git/PR work is the deliberate exception that the
-orchestrator owns directly** (never delegated): preflight detection, branching, per-phase
-commits, push, and PR — it holds the full pipeline context to write commit/PR messages, and a
-round-trip to a delegate would only be slower. The Phase 9 **clean-completion BMAD-status flip**
+`/bmad-*` skills directly. Every BMAD step (create-story, dev-story, code-review, TEA, retro,
+project-context bootstrap/refresh) runs in a delegated `ab-*` sub-agent. **Git/PR work is the
+deliberate exception that the orchestrator owns directly** (never delegated): preflight
+detection, branching, per-phase commits, push, and PR — it holds the full pipeline context to
+write commit/PR messages, and a round-trip to a delegate would only be slower. The Phase 0
+**project-context probe** is the same kind of orchestrator-owned detection: a single `find` for
+an existing `project-context.md` outside `_bmad/`/`_bmad-output/`/`.bmad/`/`node_modules/`/`.venv/`
+that decides whether Phase 2's bootstrap sub-step needs to run; the bootstrap itself
+(`generate-project-context`) is delegated like every other BMAD skill call. The Phase 9 **clean-completion BMAD-status flip**
 (story file `Status:` + `sprint-status.yaml` → `done`) is the same kind of orchestrator-owned
 finalize bookkeeping — a one-field status write, not story work, coupled to the git finalize the
 orchestrator already owns. The Phase 9 **pre-push report write + commit** (`docs(story-{e}-{s}):

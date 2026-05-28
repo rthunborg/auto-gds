@@ -38,7 +38,21 @@ delegate profiles already carry it, so the short form below is enough).
 ```
 Run `/bmad-create-story {e}-{s}` in <project_root>.
 Create the comprehensive story context file for story {e}-{s}.
+{retro_notes_hint}
 ```
+The orchestrator fills `{retro_notes_hint}` from on-disk state:
+- If `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` exists and is non-empty (earlier stories in
+  this epic have landed signal): `BEFORE drafting the story context, ALSO read
+  _bmad-output/auto-bmad/retro-notes/epic-{e}.md and treat each '## Story <key>' section's bullets
+  as constraints surfaced by earlier stories in the same epic — epic-wide gotchas, schema
+  inheritance, conventions ratified, things later stories MUST or MUST NOT do. Reflect any that
+  apply to this story directly in the Story Context (constraints, persistent_facts, or test
+  notes), not as a generic "see retro-notes" reference.`
+- Otherwise omit the line entirely (first story of the epic, or no signal yet).
+
+Phase notes in the retro file use a `[Phase X — short-name]` prefix (e.g.
+`[Phase 5 — dev-story]`, `[Phase 7 — code review]`). Preserve the prefix when appending — it
+lets later stories filter by phase if they need to.
 
 ### dev-story
 ```
@@ -132,9 +146,17 @@ epic {e}). Report quality findings + score.
 
 ### generate-project-context
 ```
-Run `/bmad-generate-project-context` in <project_root>. Update project-context.md to reflect the
-current stack, patterns, and conventions after epic {e}. Use sensible defaults for any prompt.
+Run `/bmad-generate-project-context` in <project_root>. {bootstrap_intent}
+Use sensible defaults for any prompt.
 ```
+The orchestrator fills `{bootstrap_intent}` from the calling phase:
+- Phase 2 bootstrap (no `project-context.md` exists yet): `Bootstrap project-context.md from
+  scratch by scanning the existing codebase — capture the stack, patterns, conventions, and
+  AI-rule signals that create-story (Phase 3) of THIS and subsequent stories in epic {e} will
+  consume as persistent_facts. This is the FIRST generation, not a refresh — there is no prior
+  file to merge with.`
+- Phase 8 refresh (epic-end, file already exists): `Update project-context.md to reflect the
+  current stack, patterns, and conventions after epic {e}.`
 
 ### retrospective
 ```

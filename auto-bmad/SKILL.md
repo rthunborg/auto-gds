@@ -111,9 +111,13 @@ invocation carried any instructions — `references/overrides.md`, then:
 3. **Resume check:** if a non-`done` state file exists for the chosen `story_key`, resume from
    the first phase not in `completed_phases` (and continue the review loop from
    `code_review_iterations`). Otherwise initialize a fresh state file in Phase 1.
-4. **Git preflight & triage** (per Phase 0 of the pipeline): **you run the git preflight directly**
-   — detect repo, clean tree, git mode, base branch. Then, **only if TEA enabled**, delegate the
-   story-risk classification to the `tea_per_story` profile to pick per-story TEA skills. Record the decisions in state.
+4. **Git preflight, project-context probe & triage** (per Phase 0 of the pipeline): **you run the
+   git preflight and the project-context probe directly** — detect repo, clean tree, git mode,
+   base branch; then `find` for an existing `project-context.md` outside `_bmad/` / `_bmad-output/` /
+   `.bmad/` / `node_modules/` / `.venv/` (see Phase 0 for the exact `find` invocation) and record
+   `needs_project_context_bootstrap` in state. Then, **only if TEA enabled**, delegate the
+   story-risk classification to the `tea_per_story` profile to pick per-story TEA skills. Record
+   the decisions in state.
 
 ### Step 2 — Run the pipeline
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases
@@ -145,17 +149,22 @@ exist elsewhere already (git, GitHub, sprint-status). Both are always printed to
 - **Chat-only** (printed at the end of every run; not written to the file): the full file
   portion below, **plus** the PR / CI / merge / final-status lines listed underneath.
 
-**File portion — fields** (story-level outputs preserved across runs):
-- **Story:** key, branch.
-- **Overrides:** any invocation overrides applied this run (phase window, skips, caps) — omit if none.
-- **TEA:** which skills ran and outcomes; epic gate decision if last story.
-- **Open questions** surfaced by any step.
+**File portion — fields** (story-level outputs preserved across runs; use the exact heading
+order and field labels from `references/state-and-resume.md` → "Section template" — no
+restructuring per run, so PR reviewers always find each field in the same place):
+- **Story:** key, branch (HEAD short sha).
+- **Pipeline status:** one-line summary (clean completion / halted at Phase N / draft (reason) / …).
+- **Phases run / Skipped:** the Phase N list each line, with profile in parens for delegated phases.
+- **Overrides:** any invocation overrides applied this run (phase window, skips, caps); "none" if none.
+- **TEA:** which skills ran and outcomes; epic gate decision if last story; "disabled" if `tea.enabled=false`.
+- **Code review:** iterations run; per-iteration verdict + severity counts.
+- **Open questions** surfaced by any step ("(none)" if empty — keep the heading).
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
-  `<impl>/deferred-work.md` ledger).
+  `<impl>/deferred-work.md` ledger). "(none)" if empty — keep the heading.
 - **⚠️ Needs human:** blockers / manual actions. On a **caveated** completion these are required
   before the story can be considered done (it was left at `review`). On a **clean** completion the
   story is already `done`; list only genuine follow-ups (e.g. merging the open PR is optional and
-  on the human's own time) — do not imply the merge gates `done`.
+  on the human's own time) — do not imply the merge gates `done`. "(none)" if clean.
 - **Next:** the next story `story_plan.py` would pick (preview only — do NOT start it).
 
 **Chat-only — additional lines** (not committed; retrievable from git/GitHub/sprint-status later):

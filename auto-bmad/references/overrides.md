@@ -33,7 +33,7 @@ override; it is the existing target selector.
 - `stop_before: <phase>` / `stop_after: <phase>` — end the run at that boundary, then go straight
   to the report (Step 3).
 - `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `tea`,
-  `code-review`, `retrospective`, `branch`.
+  `code-review`, `retrospective`, `branch`, `merge-prompt`.
 - `max_review_iterations: <int>` — override `code_review.max_iterations` for this run.
 - `git_mode: local` — force local mode (no push/PR), regardless of detection.
 - `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded.
@@ -56,6 +56,10 @@ override; it is the existing target selector.
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
 - **skip branch:** stay on the current branch (do not create `story/...`). Only sensible with a
   clean intent like a dry run or when the user is already on the right branch; warn otherwise.
+- **skip merge-prompt:** Phase 9 still pushes and opens the PR, but does **not** wait for CI and
+  does **not** ask whether to merge — same shape as `git.offer_merge: false`, just for this run.
+  `ci_status` is recorded as `unknown` and the existing draft-predicate clauses 1–3 (no CI gate)
+  decide draft vs non-draft. PR stays open for the human to merge on their own time.
 - **max_review_iterations / no_pr_draft:** adjust Phase 7 cap / Phase 9 draft decision.
 
 ## Prerequisite validation for `start_phase`

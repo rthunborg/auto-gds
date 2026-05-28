@@ -14,10 +14,14 @@ commits, push, and PR — it holds the full pipeline context to write commit/PR 
 round-trip to a delegate would only be slower. The Phase 9 **clean-completion BMAD-status flip**
 (story file `Status:` + `sprint-status.yaml` → `done`) is the same kind of orchestrator-owned
 finalize bookkeeping — a one-field status write, not story work, coupled to the git finalize the
-orchestrator already owns. Apart from those, the **only** time the orchestrator does step work
-itself is the `inline` delegation tier (hosts with no subagent support — see
-`delegation-runtime.md`), and even then it follows the same phase contract and structured-result
-discipline. When editing, preserve this separation.
+orchestrator already owns. The Phase 9 **merge prompt** (opt-in via `git.offer_merge`, default on)
+is another orchestrator-owned action of the same kind: auto-bmad never merges silently, but on a
+clean completion it **asks** the user to pick a merge style (squash / merge commit / rebase /
+don't merge) plus delete-branch, then runs the chosen `gh pr merge` call itself. The merge is the
+user's call; the orchestrator just executes it because it already owns git. Apart from those, the
+**only** time the orchestrator does step work itself is the `inline` delegation tier (hosts with
+no subagent support — see `delegation-runtime.md`), and even then it follows the same phase
+contract and structured-result discipline. When editing, preserve this separation.
 
 ## Delegation is tiered (the heart of the module)
 BMAD abstracts neither sub-agent delegation nor per-agent model/effort, so we supply those with

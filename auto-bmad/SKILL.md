@@ -36,12 +36,15 @@ Before the procedure, handle module registration and delegate provisioning:
 **You never do story work yourself.** Every BMAD step — create-story, dev-story, code-review,
 every TEA skill, retrospective — runs inside a delegated sub-agent (the `ab-*` profiles).
 **Git is yours, though: you run all git/PR operations directly, never via a delegate** — repo/mode
-preflight, branching, per-phase commits, push, and PR. You hold the full pipeline context, so you
+preflight, branching, per-phase commits, push, PR, and (only when the user picks a merge style
+in the Phase 9 prompt) the `gh pr merge` call itself. You hold the full pipeline context, so you
 write the commit and PR messages yourself; delegating git would only add a slow round-trip. So
 your own actions are: reading config/state, running `scripts/story_plan.py`, deciding what to
 delegate, **all git/PR work** (per `references/git-and-pr.md`), writing the state file, **flipping
 the BMAD-level story status to `done` at finalize on a clean completion** (Phase 9 — the same
-direct, non-delegated finalize bookkeeping as git), and producing the final report. If you ever
+direct, non-delegated finalize bookkeeping as git), **asking the user whether to merge the PR on
+a clean completion and running their chosen `gh pr merge` command** (Phase 9, opt-in via
+`git.offer_merge`), and producing the final report. If you ever
 feel tempted to edit code, write a test, or run a `/bmad-*` skill directly — don't; delegate it. (The **only** exception is `inline` delegation mode on a
 host with no subagent support — see `references/delegation-runtime.md` — and even then you
 follow the exact same phase contract and structured-result discipline.)
@@ -78,8 +81,10 @@ reference file at the moment its step calls for it.
    `project_name` (resolve `{project-root}` to the absolute cwd).
 3. Load auto-bmad config from `{project-root}/_bmad-output/auto-bmad/config.yaml`. If missing,
    run the **first-run flow** in `references/state-and-resume.md`, then write the config.
-   (First-run is normally the only interactive moment; the one other place auto-bmad may ask is
-   when code review fails to converge within the iteration cap — see Phase 7.)
+   (First-run is the main interactive moment; auto-bmad also asks when code review fails to
+   converge within the iteration cap (Phase 7), when an epic trace gate returns `FAIL` (Phase 8),
+   and at the very end on a clean-completion PR — whether to merge (Phase 9, opt-in via
+   `git.offer_merge`).)
    **After first-time configuration completes** (this first-run write, plus any module
    registration done earlier this session), **stop — do not start the pipeline this session.**
    Report what was configured and how to begin the first story: on the `custom-subagents` tier the
@@ -138,11 +143,15 @@ file is a deliberate full re-run of an already-`done` story, and only after expl
 confirmation. The report contains:
 - **Story:** key, branch, and final status — state whether the BMAD-level status (story file +
   sprint-status) was flipped to `done` (clean completion) or left at `review` (caveated: draft PR /
-  blocker / waived gate). On a clean completion, frame the open PR's merge as the human's
-  remaining (optional, non-blocking) step, not a gate that holds the story back.
+  blocker / waived gate / CI red or timed-out). On a clean completion that was **not** merged,
+  frame the open PR's merge as the human's remaining (optional, non-blocking) step. On a
+  successful merge, say so plainly ("Merged via squash; branch deleted") — no further action.
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps) — omit if none.
-- **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why.
-- **CI:** link to the CI run the PR/push triggered + its status, if the repo has workflows (omit if none).
+- **PR:** link (or "local branch only — no GitHub remote/`gh`"), draft? why. On a merge: merge
+  method + branch-deleted state; on a failed merge attempt: the `gh` error verbatim.
+- **CI:** link to the CI run the PR/push triggered + its final status (`passed`/`failed`/`timeout`
+  if the merge prompt was on and Phase 9 waited; `queued/in_progress` otherwise). Omit if no
+  workflows.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story.
 - **Open questions** surfaced by any step.
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
@@ -159,6 +168,8 @@ not-found `--story`; epic already `done`; dirty working tree on the wrong branch
 conflict; a delegated step returns `blocked`/`needs-human` (missing secret/credential, required
 external service, or manual action). Never push past a hard-stop — report and let the human act.
 
-(Note: two pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
-code review not converging within `max_iterations` (Phase 7), and a `FAIL` epic trace gate
-(Phase 8 — remediate & re-gate / waive / stop).)
+(Note: three pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
+code review not converging within `max_iterations` (Phase 7); a `FAIL` epic trace gate
+(Phase 8 — remediate & re-gate / waive / stop); and the end-of-pipeline merge prompt on a
+clean-completion PR (Phase 9 — squash / merge / rebase / don't merge, plus a delete-branch
+sub-question — opt-in via `git.offer_merge`, default on).)

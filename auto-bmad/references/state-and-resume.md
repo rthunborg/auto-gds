@@ -27,6 +27,8 @@ git:
   mode: auto               # auto -> detect; or force "remote" / "local"
   branch_prefix: "story/"
   base_branch: main        # auto-detected; written after first detection
+  offer_merge: true        # Phase 9: ask the user whether to merge a clean-completion PR
+  ci_wait_minutes: 30      # max wait for in-progress CI before deciding (used only when offer_merge is on)
 code_review:
   max_iterations: 3
   alternate_models: true   # odd iters use code_review_review, even iters code_review_review_secondary
@@ -123,6 +125,10 @@ gate_decision: null          # PASS|CONCERNS|FAIL|WAIVED (last story only)
 gate_iterations: 0           # Phase 8 trace-gate remediation passes run (automate+re-trace); capped by tea.gate_max_iterations; resume continues mid-loop
 pr_url: null
 ci_run_url: null             # link to the CI run the PR/push triggered, if the repo has workflows
+ci_status: unknown           # passed|failed|timeout|none|unknown — set only when Phase 9 waited (offer_merge on); else 'unknown'
+pr_merged: false             # true only if the user chose a merge style in Phase 9's merge prompt and `gh pr merge` succeeded
+merge_method: null           # squash|merge|rebase|null — null if not merged or prompt was skipped
+branch_deleted: false        # true if --delete-branch was used in the successful merge
 open_questions: []
 deferred_work: []
 blockers: []                 # each: short human-action description
@@ -153,7 +159,7 @@ reports "already complete" and stops — it never advances. To avoid this, **Pha
 BMAD-level status (story file `Status:` + the `sprint-status.yaml` entry) to `done` on a clean
 completion** (non-draft PR — see `pipeline.md` Phase 9), decoupling `done` from the human's
 merge so `story_plan.py` moves on to the next story. A **caveated** completion (draft PR / blocker
-/ waived gate) deliberately stays at `review`: it still needs a human, so it keeps re-surfacing —
+/ waived gate / CI red or timed-out) deliberately stays at `review`: it still needs a human, so it keeps re-surfacing —
 and a re-run, finding the auto-bmad state already `done`, reports it complete (per the rule below)
 rather than redoing the work.
 

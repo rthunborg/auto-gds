@@ -97,7 +97,7 @@ Run from the root of a BMAD-enabled project:
 
 - **First run in a project** asks a few one-time setup questions — confirms which AIs to provision delegate agents for (`target_tools`, re-detected from your installed skill dirs), then **Quick** (default: TEA on/off only, sensible defaults for the rest) or **Full** (also git mode/prefix + code-review iteration cap) — writes `_bmad-output/auto-bmad/config.yaml`, then **stops and asks you to start a fresh session** so the first story runs clean (configuration pollutes the context window).
 - **No-argument `/auto-bmad` resumes unfinished work first.** It picks up an interrupted auto-bmad pipeline if one exists, otherwise the next actionable story by status (`in-progress → review → ready-for-dev → backlog`) — it doesn't jump straight to a fresh backlog item. Pass a story id to target one explicitly.
-- **A clean run marks the story `done`** (story file + `sprint-status.yaml`) at the end, so the next `/auto-bmad` advances to the next story instead of re-picking the one just finished. auto-bmad opens the PR but never merges — merging is your call, no longer a gate on `done`. A run that ends as a **draft** PR (unresolved review / waived gate) or with a recorded blocker stays at `review` for you to finish.
+- **A clean run marks the story `done`** (story file + `sprint-status.yaml`) at the end, so the next `/auto-bmad` advances to the next story instead of re-picking the one just finished. On a clean completion auto-bmad **waits for in-progress CI** (cap `git.ci_wait_minutes`, default 30) and then **asks** whether to merge — Squash / Merge commit / Rebase / Don't merge, plus a delete-branch sub-question. It never merges silently; "Don't merge" leaves the PR open for you, same as before. The merge prompt is opt-out: set `git.offer_merge: false` or pass `skip merge-prompt` for a single run. A run that ends as a **draft** PR (unresolved review / waived gate / CI red or timed-out) or with a recorded blocker stays at `review` for you to finish — no merge prompt offered.
 - The pipeline is **resumable** — re-run `/auto-bmad` to continue from the last completed phase after an interruption.
 - **Code review starts on Opus** and alternates Opus/Sonnet across iterations. If Critical/High findings remain after the iteration cap (default 3), it **asks you** whether to run another pass, accept the findings and continue (the eventual PR is opened as a draft), or stop.
 - A per-story **report log** is saved to `_bmad-output/auto-bmad/reports/<story>.md` — each run appends a timestamped section (never overwritten on resume) and the report is also printed.
@@ -116,7 +116,7 @@ Run from the root of a BMAD-enabled project:
 | 6 | Expand automated coverage | `bmad-testarch-automate` | TEA on + risk-warranted |
 | 7 | Code review (Opus-first, alternating models, ≤3 iters; asks if unresolved) | `bmad-code-review` | always |
 | 8 | Gates (asks if trace fails), project context, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
-| 9 | Push, open PR, mark story `done` (clean run), final report | — | always |
+| 9 | Push, open PR, wait for CI, mark story `done` (clean run), **ask whether to merge** (clean run, opt-in), final report | — | always |
 
 Each phase ends with a conventional commit, so progress survives interruptions and is easy to review.
 
@@ -130,6 +130,7 @@ auto-bmad runs autonomously between the points below — delegated sub-agents an
 | **Module setup** | `/auto-bmad setup` (or module not yet registered) | Confirm or adjust which AIs to provision delegate agents for (defaults to the ones your BMAD install targets). |
 | **Code review didn't converge** | Phase 7 — iteration cap reached with unresolved Critical/High findings | Choose: run another review + fix pass, accept and continue (the PR is opened as a **draft**), or stop. |
 | **Epic trace gate failed** | Phase 8 — `bmad-testarch-trace` returns `FAIL` (requirements/ACs lack test coverage) | Choose: remediate & re-gate (auto-expand coverage, then re-run trace; capped, default 2), waive and continue (PR opened as a **draft** with the gaps noted), or stop. `CONCERNS` is advisory and doesn't pause. |
+| **Merge the PR?** | Phase 9 — clean completion only (no blocker, code review converged, gates passed, CI green), with `git.offer_merge: true` (default) | Choose: **Squash and merge** / **Merge commit** / **Rebase and merge** / **Don't merge**. If you pick a merge style, a follow-up asks whether to **delete the branch**. auto-bmad runs the chosen `gh pr merge`; on failure (branch protection, required reviews, etc.) it surfaces the error and leaves the PR open. Opt out with `git.offer_merge: false` or `skip merge-prompt`. |
 | **Re-running a completed story** | You target an already-`done` story | Confirm before its report log is overwritten; otherwise it won't redo the story. |
 | **Blocker / needs-human** | Any phase | Hard-stop: a missing secret/credential, a required external service or manual step, a merge/rebase conflict, a dirty tree on the wrong branch, not a BMAD project, a missing required skill, or an ambiguous/not-found `--story`. It reports exactly what's needed and never pushes past it. |
 
@@ -137,7 +138,7 @@ Use overrides (below) if you want to add your own stops — e.g. `stop before co
 
 ## Overrides
 
-Steer a single run by adding instructions to the invocation (natural language or flags) — e.g. `stop before code-review`, `start at phase 5`, `skip git commits`, `skip TEA`, `max 5 review iterations`, `git mode local`, `dry run`. The orchestrator echoes how it interpreted them and which phases will run before executing. See `references/overrides.md`.
+Steer a single run by adding instructions to the invocation (natural language or flags) — e.g. `stop before code-review`, `start at phase 5`, `skip git commits`, `skip TEA`, `skip merge-prompt`, `max 5 review iterations`, `git mode local`, `dry run`. The orchestrator echoes how it interpreted them and which phases will run before executing. See `references/overrides.md`.
 
 ## Split a story across Claude Code and Codex
 

@@ -183,30 +183,55 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
 ## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).
 - **git mode `remote`:** push the branch and open a PR via `gh pr create` (see `git-and-pr.md`).
-  Make it a **draft** if any blocker was recorded, `convergence_unverified` is `true` (the user
-  chose to accept the fixes and ship in Phase 7 despite the cap being hit while Critical/High were
-  still surfacing), or `gate_decision` is `WAIVED` (Phase 8 epic gate did not pass; see
-  `git-and-pr.md` for the authoritative predicate). PR body = conventional summary + link to the story file +
-  a checklist of open questions / deferred work / human-action items. If the repo has CI
-  workflows, also capture the triggered CI run link into `ci_run_url` (see `git-and-pr.md`) — do
-  not wait for it to finish.
+  Make it a **draft** per clauses 1–3 of the `git-and-pr.md` draft predicate at this point: any
+  blocker was recorded, `convergence_unverified` is `true` (the user chose to accept the fixes and
+  ship in Phase 7 despite the cap being hit while Critical/High were still surfacing), or
+  `gate_decision` is `WAIVED` (Phase 8 epic gate did not pass). PR body = conventional summary +
+  link to the story file + a checklist of open questions / deferred work / human-action items.
+  Capture `pr_url` and (if the repo has CI workflows) `ci_run_url`.
+- **CI wait & `ci_status`** (only if `git.offer_merge` is `true` AND no `skip merge-prompt`
+  override): poll `gh pr checks <pr-number>` up to `git.ci_wait_minutes` (default 30) and record
+  `ci_status` as `passed | failed | timeout | none`. See `git-and-pr.md` → "CI link & wait" for
+  the exact polling. **Skip the wait entirely** when the merge prompt is off — `ci_status: unknown`
+  and existing behavior holds.
+- **Draft conversion (clause 4 of the predicate):** if `ci_status` is `failed` or `timeout` AND
+  the PR was opened non-draft, convert it now: `gh pr ready --undo <pr-number>`. (Clauses 1–3
+  already locked in `--draft` at create time.)
 - **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the PR; leave the
-  branch in place and note it in the report.
-- Mark the auto-bmad state file `done` (record `pr_url`, `ci_run_url`, final `branch`, any `blockers`).
-- **Advance the BMAD-level status on a clean completion only.** auto-bmad never merges — the open
-  PR is the human's to merge on their own time, and that merge no longer gates whether the story is
-  `done`. So when this is a **clean completion** — the PR is/would be **non-draft**: no blocker
-  recorded, `convergence_unverified` is false, and `gate_decision` is not `WAIVED` (the exact
-  negation of the draft predicate in `git-and-pr.md`) — flip the story to `done` in the two
-  BMAD-level sources, so the next run advances past it instead of re-selecting the finished story:
+  branch in place and note it in the report. The CI wait and merge prompt below also don't apply
+  (nothing to wait on or merge).
+- Mark the auto-bmad state file `done` (record `pr_url`, `ci_run_url`, `ci_status`, final `branch`,
+  any `blockers`).
+- **Advance the BMAD-level status on a clean completion only.** auto-bmad merges **only** if the
+  human asks it to in the merge prompt below; it never merges silently, and the BMAD-status flip
+  doesn't depend on merging. So when this is a **clean completion** — the PR is/would be
+  **non-draft**: no blocker, `convergence_unverified` false, `gate_decision` not `WAIVED`, AND
+  `ci_status` is `passed`/`none`/`unknown` (full draft-predicate negation per `git-and-pr.md`) —
+  flip the story to `done` in the two BMAD-level sources so the next run advances past it:
   - the **story file `Status:`** field (the same one `dev-story` set to `review`) → `done`;
   - the **`<impl>/sprint-status.yaml`** entry for `{key}` → `done` (the flat `development_status:`
     map `story_plan.py` reads; change only that one line's value and preserve the rest of the file).
-  Otherwise — a **caveated completion** (draft PR, recorded blocker, or waived gate) — **leave both
-  BMAD-level sources at `review`**: the story still needs a human, so it should keep re-surfacing
-  there until they act (a re-run then finds the auto-bmad state already `done` and reports it as
-  complete rather than redoing it — see `state-and-resume.md`). This BMAD-status flip is
-  orchestrator-owned finalize bookkeeping — like the state-file write and git/PR above, it is **not**
-  a delegated step.
+  Otherwise — a **caveated completion** (draft PR, recorded blocker, waived gate, **or CI failed /
+  timed out**) — **leave both BMAD-level sources at `review`**: the story still needs a human, so
+  it should keep re-surfacing there until they act (a re-run then finds the auto-bmad state already
+  `done` and reports it as complete rather than redoing it — see `state-and-resume.md`). This
+  BMAD-status flip is orchestrator-owned finalize bookkeeping — like the state-file write and
+  git/PR above, it is **not** a delegated step.
+- **Merge prompt — ASK the user** (only if `git.offer_merge` is `true`, no `skip merge-prompt`
+  override, mode is `remote`, a PR was opened, AND this is a clean completion). The prompt is the
+  third interactive moment in normal operation (after first-run setup and the Phase 7 cap; the
+  Phase 8 trace-FAIL ask is also interactive). See `git-and-pr.md` → "Merging the PR" for the
+  exact commands and outcome wording.
+  - **Question 1** (`AskUserQuestion`, 4 options): **Squash and merge** / **Merge commit** /
+    **Rebase and merge** / **Don't merge** *(leave the PR open)*. Frame this as the optional
+    final step — the story is already `done`; this just lands the change.
+  - **Question 2** (only if a merge style was chosen): **Delete branch?** Yes / No. Default the
+    explainer toward Yes (story branches are short-lived; the merge commit preserves history).
+  - Run `gh pr merge <pr-number> --squash|--merge|--rebase [--delete-branch]`. On success, switch
+    back to the base branch and `git pull --ff-only`. On failure (branch protection, required
+    reviews, conflict, etc.), surface the `gh` error under the report's "Needs attention" and
+    leave the PR open — do not retry, do not invalidate the `done` flip.
+  - Record in state: `pr_merged: true|false`, `merge_method: squash|merge|rebase|null`,
+    `branch_deleted: true|false`. These flow into the final report.
 - Hand control back to the SKILL's Step 3, which **writes the report to
   `_bmad-output/auto-bmad/reports/{key}.md`** and prints it.

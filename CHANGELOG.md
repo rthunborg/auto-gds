@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **End-of-pipeline merge prompt (opt-in, default on).** On a clean-completion PR, Phase 9 now
+  waits for in-progress CI to finish and then **asks** the user whether to merge — **Squash and
+  merge** / **Merge commit** / **Rebase and merge** / **Don't merge** — followed by a
+  **delete-branch?** sub-question if a merge style is chosen. auto-bmad runs the chosen
+  `gh pr merge` itself (it already owns git/PR), switches the working tree back to the base branch
+  on success, and surfaces any merge failure (branch protection, required reviews, etc.) under the
+  report's "Needs attention" rather than retrying. "Don't merge" preserves the old behavior:
+  PR stays open for the human. Two new config knobs gate this: `git.offer_merge: true` (default;
+  set `false` to never be asked) and `git.ci_wait_minutes: 30` (max wait for in-progress CI). A
+  new invocation override, `skip merge-prompt`, opts out for a single run. The draft predicate
+  also gains a clause — **CI red or timed-out now leaves the story at `review`** (PR converted to
+  draft via `gh pr ready --undo`), keeping "clean completion" honest; failed/timed-out CI is
+  treated as caveated, same as a recorded blocker or waived gate. State file gains
+  `ci_status`/`pr_merged`/`merge_method`/`branch_deleted` for the report. (`pipeline.md` Phase 9,
+  `git-and-pr.md`, `state-and-resume.md`, `overrides.md`, `SKILL.md`, principle update in
+  `CLAUDE.md`, README user-facing notes.)
+
 ### Fixed
 
 - **README "Updating" no longer recommends `--action quick-update`, which silently skips auto-bmad.**

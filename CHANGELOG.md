@@ -25,7 +25,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under zsh/fish, no phantom `story-*` filename to miss. Wired into `SKILL.md` Step 1 (target
   selection + resume check) and `references/state-and-resume.md`/`pipeline.md`.
 
+### Changed
+
+- **Retuned two delegate-profile assignments for better effort-to-leverage fit.** (1)
+  `project_context` (the Phase 2 bootstrap + Phase 8 refresh of `project-context.md`) moved from
+  the Sonnet-tier `ab-alt` to the Opus-tier `ab-high` — it builds the durable AI-rules doc every
+  later story inherits as `persistent_facts`, so it's high-leverage, long-lived output that was
+  under-provisioned next to throwaway work. (2) Phase 0 story-risk triage split out of
+  `tea_per_story` into its own `tea_triage` key mapped to `ab-alt`: triage is a cheap
+  `low|med|high` classification that didn't warrant the Opus `ab-high` profile, while ATDD/automate
+  (which do) stay on `tea_per_story` → `ab-high`. No new agent files — both keys resolve to the
+  existing four profiles. **Requires `/auto-bmad reprovision`** to re-render the affected agents.
+  (`assets/agents/profiles.yaml` `phase_profiles`; `references/pipeline.md` Phase 0, `SKILL.md`
+  Step 1, `references/state-and-resume.md` key list.)
+
 ### Fixed
+
+- **Realigned the four delegate persona strings to the actual `phase_profiles` mapping.** The
+  `description`/`role_blurb`/`status_example` for `ab-max`/`ab-xhigh`/`ab-high`/`ab-alt` (baked into
+  each rendered agent file as its self-description) had drifted from what each profile is actually
+  invoked for: `ab-high` described epic gates + the retrospective it no longer runs (those are
+  `ab-xhigh`/`ab-alt`), `ab-xhigh` (the real home of `code_review_fix` and the epic gates) didn't
+  mention either, `ab-max` still claimed code-review fixes, and `ab-alt` advertised triage/ATDD/
+  automate that map elsewhere. The personas now honestly enumerate each profile's real duties under
+  the post-retune mapping, so a delegate's framing matches its task. **Requires `/auto-bmad
+  reprovision`.** (`assets/agents/profiles.yaml`; self-test assertions in `scripts/render-agents.py`
+  updated to the new distinctive tokens.)
 
 - **Resume/state probes no longer misfire on shell globs or a phantom `story-` filename prefix.**
   The orchestrator was improvising state-file checks as raw glob loops (`for f in story-1-*.yaml`),

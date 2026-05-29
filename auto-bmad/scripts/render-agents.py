@@ -343,9 +343,9 @@ def _run_self_test() -> int:
     assert profiles["ab-alt"]["claude"]["model"] == "sonnet"
     # Descriptions carry the profile-distinctive signal — sanity-check the labels.
     assert "HIGHEST-stakes" in profiles["ab-max"]["description"]
-    assert "high-stakes analysis" in profiles["ab-xhigh"]["description"]
-    assert "epic-boundary" in profiles["ab-high"]["description"]
-    assert "lower-stakes" in profiles["ab-alt"]["description"]
+    assert "deep-reasoning, high-stakes" in profiles["ab-xhigh"]["description"]
+    assert "test- and context-infrastructure" in profiles["ab-high"]["description"]
+    assert "lighter-weight" in profiles["ab-alt"]["description"]
 
     # Inline-flow-map parsing.
     inline = parse_profiles(

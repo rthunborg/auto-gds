@@ -23,8 +23,8 @@
 # Model names are environment-specific — retune above if your Codex install differs.
 profiles:
   ab-max:
-    description: "auto-bmad delegate for the HIGHEST-stakes steps (story implementation and applying code-review fixes). Invoked by the auto-bmad orchestrator; not meant for direct use."
-    role_blurb: "the highest-stakes work: implementing story code and applying code-review fixes. Correctness matters more than speed — reason hard about edge cases, regressions, and acceptance criteria."
+    description: "auto-bmad delegate for the HIGHEST-stakes step: implementing story code (`dev-story`). Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "the highest-stakes work: implementing story code in the `dev-story` phase. Correctness matters more than speed — reason hard about edge cases, regressions, and acceptance criteria."
     status_example: "any status/state the skill set (e.g. story moved to `review`), test results"
     claude:
       model: opus
@@ -34,9 +34,9 @@ profiles:
       reasoning_effort: xhigh
 
   ab-xhigh:
-    description: "auto-bmad delegate for high-stakes analysis steps (creating the story context file, and adversarial code review on the high-effort reviewer iterations). Invoked by the auto-bmad orchestrator; not meant for direct use."
-    role_blurb: "high-stakes analysis: building the comprehensive story context file (`create-story`) and running adversarial code review on the high-effort reviewer iterations. Be exhaustive and skeptical — these steps determine whether everything downstream succeeds."
-    status_example: "for reviews — the review verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low finding counts; for create-story — the story key, path, and final status"
+    description: "auto-bmad delegate for deep-reasoning, high-stakes steps: building the story context file (`create-story`), primary adversarial code review and applying the resulting fixes, and the epic-level test design + release gates (trace/NFR/test-review). Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "the deep-reasoning, high-stakes work: building the comprehensive story context file (`create-story`), running adversarial primary code review and applying the resulting fixes, and the epic-level test design + release gates (trace / NFR / test-review). Be exhaustive and skeptical — these steps determine whether everything downstream succeeds, and the gates decide whether the epic ships."
+    status_example: "for create-story — the story key, path, and final status; for reviews — the verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low finding counts; for fixes — which findings were resolved; for gate skills — the gate decision (PASS / CONCERNS / FAIL / WAIVED) and rationale"
     claude:
       model: opus
       effort: xhigh
@@ -45,9 +45,9 @@ profiles:
       reasoning_effort: xhigh
 
   ab-high:
-    description: "auto-bmad delegate for epic-boundary steps (epic-level test design, release gates trace/nfr/test-review, and the epic retrospective). Invoked by the auto-bmad orchestrator; not meant for direct use."
-    role_blurb: "epic-boundary work: epic-level test design, release-gate skills (trace / NFR / test-review), and the epic retrospective. These are judgment-heavy synthesis tasks — answer every interactive prompt yourself using the provided context and sensible judgment, and produce the complete output document."
-    status_example: "for gate skills — the gate decision (PASS / CONCERNS / FAIL / WAIVED) and rationale; for the retrospective — key action items and any next-epic prep flagged"
+    description: "auto-bmad delegate for substantive test- and context-infrastructure steps: per-story test authoring (`testarch-atdd` scaffolds, `testarch-automate` coverage), one-time test-framework/CI setup, and building/refreshing `project-context.md`. Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "substantive, well-scoped test- and context-infrastructure work: per-story test authoring (ATDD red-phase acceptance scaffolds and expanding automated coverage), the one-time test-framework + CI-pipeline setup, and building or refreshing `project-context.md` — the durable AI-rules doc every later story inherits. These are judgment-heavy — answer every interactive prompt yourself using the provided context and sensible judgment, and produce the complete output document."
+    status_example: "for test authoring/setup — tests or framework/CI scaffolded, whether they pass, coverage expanded; for project-context — the file written/refreshed and the key facts captured"
     claude:
       model: opus
       effort: high
@@ -56,9 +56,9 @@ profiles:
       reasoning_effort: high
 
   ab-alt:
-    description: "auto-bmad delegate for lower-stakes mechanical steps (story triage, ATDD scaffolds, test automation, project-context updates, and the faster-model code-review iterations). Invoked by the auto-bmad orchestrator; not meant for direct use."
-    role_blurb: "the lower-stakes, mechanical, or well-scoped work: story triage, ATDD scaffolds, test automation, updating project context, and the faster-model code-review iterations."
-    status_example: "tests passing? coverage added? PR opened/draft?"
+    description: "auto-bmad delegate for lighter-weight steps: per-story risk triage, the epic retrospective, and the faster-model secondary code-review iterations (for model diversity). Invoked by the auto-bmad orchestrator; not meant for direct use."
+    role_blurb: "the lighter-weight or diversity-oriented work: classifying per-story test risk (triage), synthesizing the epic retrospective from accumulated notes, and running the faster-model secondary code-review iterations that give the review loop model diversity."
+    status_example: "for triage — the risk level (low/med/high) and selected TEA set; for the retrospective — key action items and any next-epic prep flagged; for secondary review — the verdict and finding counts"
     claude:
       model: sonnet
       effort: high
@@ -77,7 +77,8 @@ phase_profiles:
   code_review_review: ab-xhigh           # primary reviewer (odd iterations)
   code_review_review_secondary: ab-alt   # even iterations, when code_review.alternate_models
   code_review_fix: ab-xhigh
-  tea_per_story: ab-high                 # Phase 0 triage, Phase 4 ATDD, Phase 6 automate
+  tea_triage: ab-alt                     # Phase 0 story-risk classification (cheap)
+  tea_per_story: ab-high                 # Phase 4 ATDD, Phase 6 automate
   tea_epic: ab-xhigh                     # Phase 2 epic test design, Phase 8 epic gates
   retrospective: ab-alt
-  project_context: ab-alt
+  project_context: ab-high               # Phase 2 bootstrap + Phase 8 refresh

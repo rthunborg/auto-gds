@@ -25,7 +25,7 @@ Placeholders (`{e}`/`{s}`, `{key}`, `{slug}`, `<impl>`, `<story_file>`, …) are
 
 ---
 
-## Phase 0 — Preflight & triage  *(git preflight: orchestrator; TEA triage: `tea_per_story`)*
+## Phase 0 — Preflight & triage  *(git preflight: orchestrator; TEA triage: `tea_triage`)*
 Runs during Step 1 of the SKILL procedure (before any commit).
 - **Probe discipline (applies to every orchestrator-run check here and below):** do existence /
   enumeration probes with `find`, `test`, or Python — **never a bare glob** (`ls *.x`,
@@ -58,7 +58,7 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   create-story. Either non-empty → set the flag `false` (the existing file is good enough; Phase 8
   still refreshes it on the last story of the epic). This covers both greenfield first-story and
   brownfield mid-project adoption (a codebase that never ran `bmad-generate-project-context`).
-- **Triage (only if `tea.enabled`; delegated to `tea_per_story`)**: classify the story `low | med | high` and choose the
+- **Triage (only if `tea.enabled`; delegated to `tea_triage`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_selected` (e.g. `[atdd, automate]`,
   or `[]` for trivial) in state.
 - No commit (nothing changed yet). Persist decisions to state.

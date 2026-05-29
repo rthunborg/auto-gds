@@ -121,7 +121,7 @@ invocation carried any instructions — `references/overrides.md`, then:
    except `node_modules/`/`.venv/`/`.git/` (see Phase 0 for the exact invocation — it mirrors the
    `bmad-generate-project-context` skill's own discovery) and record
    `needs_project_context_bootstrap` in state. Then, **only if TEA enabled**, delegate the
-   story-risk classification to the `tea_per_story` profile to pick per-story TEA skills. Record
+   story-risk classification to the `tea_triage` profile to pick per-story TEA skills. Record
    the decisions in state.
 
 ### Step 2 — Run the pipeline

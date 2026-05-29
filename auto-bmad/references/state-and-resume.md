@@ -45,8 +45,8 @@ code_review:
 profiles: {…}              # ab-max | ab-xhigh | ab-high | ab-alt, each:
                            #   {claude: {model, effort}, codex: {model, reasoning_effort}}
 phase_profiles: {…}        # create_story, dev_story, code_review_review,
-                           #   code_review_review_secondary, code_review_fix, tea_per_story,
-                           #   tea_epic, retrospective, project_context
+                           #   code_review_review_secondary, code_review_fix, tea_triage,
+                           #   tea_per_story, tea_epic, retrospective, project_context
                            # (git/PR work is run by the orchestrator directly — no delegate profile)
 ```
 

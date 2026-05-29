@@ -48,7 +48,20 @@ The orchestrator fills `{retro_notes_hint}` from on-disk state:
   inheritance, conventions ratified, things later stories MUST or MUST NOT do. Reflect any that
   apply to this story directly in the Story Context (constraints, persistent_facts, or test
   notes), not as a generic "see retro-notes" reference.`
-- Otherwise omit the line entirely (first story of the epic, or no signal yet).
+- Else, if this is the **first story of epic {e}** AND a prior epic `{e-1}` closed with a
+  retrospective document — locate it with `find <impl> -name 'epic-{e-1}-retro-*.md'` (BMAD writes
+  the retro there; never iterate a raw glob — see CLAUDE.md → shell-glob rule; use the newest match
+  if several, omit if none): `BEFORE drafting the story context, ALSO read the prior epic's
+  retrospective document and focus on its FORWARD-looking sections (e.g. "Next Epic Preparation",
+  "Preparation Checklist Before Epic {e}", "Conventions Ratified for All Epic {e}+ Stories", Action
+  Items). These are the epic-transition prep + conventions the just-closed epic flagged for THIS
+  epic. Fold the items that apply to this story into the Story Context (constraints,
+  persistent_facts, or test notes) — especially any "before the first story of epic {e}" prep, and
+  any "the gate/check will fail-loud on the new table → that is expected, register/extend it"
+  heads-ups — not as a generic "see the retro" reference. (Durable conventions also reach you via
+  project-context.md as persistent_facts; this feed adds the transient, epic-specific prep that
+  project-context.md does not carry.)`
+- Otherwise omit the line entirely (first story of epic 1, or no signal yet).
 
 Phase notes in the retro file use a `[Phase X — short-name]` prefix (e.g.
 `[Phase 5 — dev-story]`, `[Phase 7 — code review]`). Preserve the prefix when appending — it
@@ -169,7 +182,16 @@ The orchestrator fills `{bootstrap_intent}` from the calling phase:
   consume as persistent_facts. This is the FIRST generation, not a refresh — there is no prior
   file to merge with.`
 - Phase 8 refresh (epic-end, file already exists): `Update project-context.md to reflect the
-  current stack, patterns, and conventions after epic {e}.`
+  current stack, patterns, and conventions after epic {e}. BEFORE rewriting, read the accumulated
+  retro notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md (and scan <impl>/deferred-work.md
+  for any DURABLE constraint) and fold every durable convention, rule, or team agreement they
+  surfaced — epic-wide migration rules, naming foot-guns, required test patterns, role/grant
+  invariants — into the AI-rule facts. A blind codebase scan reconstructs visible patterns but
+  MISSES rules and agreements that aren't inferable from code alone (e.g. "every tenant table MUST
+  GRANT DML to the app role", "every validation guard ships a rejection test"); the retro notes are
+  where those live. Do NOT import transient, epic-specific prep or deferred-but-not-done items —
+  those belong to the retro's next-epic checklist and the deferred-work ledger, not to the durable
+  AI rules every future story inherits.`
 
 ### retrospective
 ```

@@ -86,6 +86,11 @@ no-op, recorded as skipped). Sub-steps execute in this order:
 ## Phase 3 — Create story  → `create_story`
 - Delegate the **`create-story`** entry for story {e}-{s}. The skill self-validates against its
   checklist and auto-fixes; do NOT add a separate validate pass.
+- The delegation is fed this epic's retro-notes + the deferred-work ledger; for the **first story
+  of an epic** (no epic-{e} notes yet) it is instead fed the prior epic's retrospective forward
+  sections, so epic-transition prep crosses the boundary (see `delegation.md` → `create-story`).
+  Durable conventions arrive separately via `project-context.md` (persistent_facts; refreshed in
+  Phase 8).
 - Capture any open questions the skill saved → retro notes + report.
 - Commit: `docs(story-{e}-{s}): create story context file`.
 
@@ -206,7 +211,13 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
      Once `gate_iterations` reaches the cap and trace is still `FAIL`, drop the Remediate option and
      re-ask with only Waive / Stop. Run nfr + test-review on every path except **Stop**.
 2. **Project context:** delegate the **`generate-project-context`** entry via the `project_context`
-   profile.
+   profile. The Phase 8 refresh is fed the epic's accumulated retro notes (+ durable items from the
+   deferred-work ledger) so its durable conventions/agreements distill into `project-context.md` —
+   the file every later story's create-story auto-loads as `persistent_facts` (`bmad-create-story`
+   `customize.toml`), and thus the channel that carries epic-N conventions into epic N+1's stories.
+   See `delegation.md` → `generate-project-context`. (A blind codebase-scan refresh drops
+   rules/agreements not inferable from code; the retro notes exist by this step, the synthesized
+   retro doc does not yet — step 3 — so notes, not the doc, are the source here.)
 3. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
    it the accumulated `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
    writes the retro doc + flips the retrospective status to `done`.

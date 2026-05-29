@@ -27,6 +27,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`auto-bmad/references/state-and-resume.md` state schema + timing note + report template,
   `auto-bmad/references/pipeline.md` per-phase loop + Phase 1 + Phase 9, `auto-bmad/SKILL.md` Step 3.)
 
+### Changed
+
+- **Epic conventions now actually cross the epic boundary.** Two carry-forward gaps are closed so a
+  retro's lessons reach the next epic's stories instead of stalling at epic close:
+  - **Phase 8 `project-context.md` refresh is no longer a blind codebase scan.** It is now fed the
+    epic's accumulated retro notes (and durable items from the deferred-work ledger) and instructed
+    to fold every durable convention/rule/team-agreement into the AI-rule facts. A code-only scan
+    reconstructs visible patterns but misses rules that aren't inferable from code (e.g. "every
+    tenant table MUST GRANT DML to the app role", "every validation guard ships a rejection test") —
+    exactly the facts that were silently dropped before. Since `bmad-create-story` auto-loads
+    `project-context.md` as `persistent_facts`, this is the channel that carries epic-N conventions
+    into epic N+1's stories. (`auto-bmad/references/delegation.md` → `generate-project-context`,
+    `auto-bmad/references/pipeline.md` Phase 8.)
+  - **First-in-epic create-story is fed the prior epic's retrospective forward sections.** The
+    `{retro_notes_hint}` is keyed to the current epic, so the first story of a new epic previously
+    got no retro signal at all (its own epic has no notes yet). It now also reads the prior epic's
+    retrospective document (located via `find <impl> -name 'epic-{e-1}-retro-*.md'`) and folds its
+    forward-looking prep — "before the first story of epic N" items and "the gate will fail-loud on
+    the new table, that's expected" heads-ups — into the Story Context. This carries the transient,
+    epic-specific prep that durable `project-context.md` does not hold.
+    (`auto-bmad/references/delegation.md` → `create-story`, `auto-bmad/references/pipeline.md` Phase 3.)
+
 ## [0.7.0] - 2026-05-29
 
 ### Added

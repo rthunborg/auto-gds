@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-29
+
 ### Added
 
 - **create-story now folds in prior deferred work.** Phase 3 gained a `{deferred_work_hint}`:
@@ -404,7 +406,8 @@ changelog and release tooling to keep versions traceable from here on.
   release helper that promotes `[Unreleased]`, syncs the version in
   `marketplace.json` + `module.yaml`, commits, and tags.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.4.0...v0.5.0

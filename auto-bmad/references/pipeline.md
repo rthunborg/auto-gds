@@ -8,7 +8,13 @@ key → profile → model+effort via config — the mapping lives only in config
 profile name here). `delegation.md` owns the exact `/bmad-*` command + prompt; spawn it for the
 current host/tier per `delegation-runtime.md` → read the result → if `blocked`/`needs-human`, stop
 and report → else append retro notes, **commit** (see `git-and-pr.md`), and update the state file
-(see `state-and-resume.md`).
+(see `state-and-resume.md`). When updating state, also record timing: read the host's `date +%s`
+just before delegating the phase and again after its commit, and add the delta to `active_seconds`
+(alongside the `updated_at` stamp) — this is what lets the report split AI-run time from
+human/idle wait (`state-and-resume.md` → timing fields). **Don't count time spent waiting on the
+user:** if the phase opens an `AskUserQuestion` (e.g. the Phase 7 decision asks or the cap prompt),
+bracket the prompt with `date +%s` and exclude that interval from the phase's delta, so the wait
+lands on human/idle, not active.
 
 **Git/PR work is orchestrator-owned, not delegated** — see `git-and-pr.md` → "Ownership" for the
 full list. The git-only phases below (0 preflight, 1 branch, 9 finalize) carry no
@@ -52,7 +58,10 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Ensure we are NOT on the base branch. Create/checkout `{branch_prefix}{e}-{s}-{slug}`
   (default `story/{e}-{s}-{slug}`). If the branch already exists (resume), check it out.
 - Write the initial state file and commit it:
-  `chore(story-{e}-{s}): start auto-bmad pipeline`.
+  `chore(story-{e}-{s}): start auto-bmad pipeline`. Stamp `started_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`)
+  and initialize `completed_at: null`, `active_seconds: 0` on this first write. On a **resume** (the
+  state file already exists), leave `started_at` and the accumulated `active_seconds` untouched —
+  they span all sessions.
 
 ## Phase 2 — Epic-start setup  *(conditional; two independently-gated sub-steps)*
 Two sub-steps that each carry their own gate; either, both, or neither may run. Mark Phase 2 as
@@ -221,8 +230,8 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
 - **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the push/PR; leave
   the branch in place (with the report commit on it) and note it in the chat report. The CI wait
   and merge prompt below don't apply.
-- Mark the auto-bmad state file `done` (record `pr_url`, `ci_run_url`, `ci_status`, final `branch`,
-  any `blockers`).
+- Mark the auto-bmad state file `done` — stamp `completed_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`) and
+  record `pr_url`, `ci_run_url`, `ci_status`, final `branch`, any `blockers`.
 - **Advance the BMAD-level status on a clean completion only.** A **clean completion** = the full
   negation of the draft predicate (see `git-and-pr.md` → "PR"); a **caveated completion** = any
   predicate clause fires (draft PR, recorded blocker, waived gate, CI failed/timed-out). On a

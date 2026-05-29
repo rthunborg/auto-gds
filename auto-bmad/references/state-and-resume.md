@@ -116,6 +116,12 @@ story_num: 2
 branch: story/1-2-user-auth
 status: in-progress         # in-progress | done
 updated_at: "2026-05-28T14:04:41Z"  # ISO-8601 UTC; set by the orchestrator after every phase write
+started_at: "2026-05-28T13:55:02Z"  # ISO-8601 UTC; stamped ONCE at the Phase 1 write, never rewritten (survives resume)
+completed_at: null          # ISO-8601 UTC; set when status flips to done (Phase 9 finalize); null while in-progress
+active_seconds: 0           # accumulated wall-clock spent EXECUTING phases (delegate runtime + the orchestrator's own
+                            #   commit/state work), summed across every session so it keeps growing on resume. Each phase:
+                            #   read `date +%s` before delegating and again after its commit, add the delta here.
+                            #   elapsed = completed_at-started_at; human/idle wait = elapsed - active_seconds.
 is_first_in_epic: false
 is_last_in_epic: false
 needs_project_context_bootstrap: false  # set at Phase 0; flipped to false by Phase 2's bootstrap sub-step
@@ -147,6 +153,17 @@ Update it after every phase. Treat it as the source of truth for resume. The mer
 (`pr_merged`, `merge_method`, `merge_commit`, `branch_deleted`, `ci_status`) carry their
 `false`/`null`/`unknown` defaults from the first write; Phase 9 mutates them only when it actually
 waits for CI / runs `gh pr merge`.
+
+The **timing** fields are orchestrator-owned (use the host's `date`): `started_at` is stamped once
+at the Phase 1 write and never touched again; `completed_at` is set only when the run flips `status`
+to `done`; `active_seconds` accumulates each phase's execution window, so it grows across resumes.
+Derive for the report: **elapsed** = `completed_at − started_at` (total, includes overnight resume
+gaps), **AI-run time** ≈ `active_seconds`, **human/idle wait** ≈ `elapsed − active_seconds`.
+The split is best-effort, not exact — it's host wall-clock, not token-compute time. Time spent
+waiting on the user does **not** count as active: when a phase opens an `AskUserQuestion` (e.g. the
+Phase 7 decision asks or cap prompt), the orchestrator brackets the prompt and excludes that
+interval from `active_seconds`, so it lands on wait. Between-phase prompts and resume gaps land on
+wait too; a story halted overnight shows a large wait dominated by the gap, not by work.
 
 ## Target selection & resume logic
 No-arg `/auto-bmad` chooses the target story with this precedence:
@@ -239,6 +256,8 @@ empty AND the heading's own line says "(none)" — never drop the heading silent
 **Story:** `{key}` (epic {e}, story {s}) — {first-in-epic? / last-in-epic? / mid-epic}.
 **Branch:** `<branch>` (HEAD `<short-sha>`).
 **Pipeline status:** <one-line summary, e.g. ✅ clean completion / halted at Phase 5 (needs-human) / draft (CI red)>.
+
+**Timing:** started <ISO>; completed <ISO, or "in progress"> — elapsed <Hh Mm> (≈<Hh Mm> AI-run, ≈<Hh Mm> human/idle wait)<; resumed N× if >1 session>.
 
 **Phases run:** <comma-joined Phase N list, with profile in parens for delegated phases>.
 **Skipped:** <comma-joined Phase N list with reason in parens>.

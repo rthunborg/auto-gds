@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-story run-time tracking with an AI-run vs human-wait split.** The state file gains three
+  orchestrator-owned timing fields: `started_at` (stamped once at the Phase 1 write, immutable
+  across resumes), `completed_at` (set when Phase 9 flips `status` to `done`; `null` while
+  in-progress), and `active_seconds` (accumulated wall-clock spent executing phases — the
+  orchestrator reads the host's `date +%s` before delegating each phase and after its commit, and
+  sums the deltas). The per-story report's new **Timing** line then shows total elapsed
+  (`completed_at − started_at`), an approximate **AI-run time** (`active_seconds`), and
+  **human/idle wait** (`elapsed − active_seconds`) — the latter dominated by interactive prompts and
+  cross-session resume gaps. The split is best-effort host wall-clock, not token-compute time.
+  (`auto-bmad/references/state-and-resume.md` state schema + timing note + report template,
+  `auto-bmad/references/pipeline.md` per-phase loop + Phase 1 + Phase 9, `auto-bmad/SKILL.md` Step 3.)
+
 ## [0.7.0] - 2026-05-29
 
 ### Added

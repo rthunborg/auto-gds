@@ -156,6 +156,8 @@ order and field labels from `references/state-and-resume.md` → "Section templa
 restructuring per run, so PR reviewers always find each field in the same place):
 - **Story:** key, branch (HEAD short sha).
 - **Pipeline status:** one-line summary (clean completion / halted at Phase N / draft (reason) / …).
+- **Timing:** `started_at`/`completed_at` (or "in progress"), total elapsed, and the best-effort
+  AI-run vs human/idle-wait split (`active_seconds` vs `elapsed − active_seconds`); note resume count if >1.
 - **Phases run / Skipped:** the Phase N list each line, with profile in parens for delegated phases.
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps); "none" if none.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story; "disabled" if `tea.enabled=false`.

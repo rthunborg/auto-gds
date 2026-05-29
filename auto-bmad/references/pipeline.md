@@ -76,8 +76,11 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   still refreshes it on the last story of the epic). This covers both greenfield first-story and
   brownfield mid-project adoption (a codebase that never ran `bmad-generate-project-context`).
 - **Triage (only if `tea.enabled`; delegated to `tea_triage`)**: classify the story `low | med | high` and choose the
-  per-story TEA set using `tea-policy.md`. Record `tea_selected` (e.g. `[atdd, automate]`,
-  or `[]` for trivial) in state.
+  per-story TEA set using `tea-policy.md`. Record `tea_risk` (`low|med|high`) and `tea_selected`
+  (e.g. `[atdd, automate]`, or `[]` for trivial) in state. Also record `epic_story_count` (stories
+  under epic `{e}`, from the sprint-status read that set `is_first/last_in_epic`) and, when
+  `tea-policy.md` §3's conditions all hold (high risk, not last-in-epic, long-enough epic), add
+  `trace-advisory` to `tea_selected` — Phase 7's tail runs it.
 - No commit (nothing changed yet). Persist decisions to state.
 
 ## Phase 1 — Branch  *(orchestrator)*
@@ -205,6 +208,24 @@ For iteration `i` (1-based):
      commits stay on the branch, nothing is pushed and no PR is opened. The last pass's findings
      are reported as `needs-human`.
    Record the user's choice and any extra iterations in state (`code_review_iterations`).
+
+### Phase 7 tail — per-story trace advisory  *(conditional; non-blocking)*  → `tea_per_story`
+Runs **once, after the review loop exits**, only if `trace-advisory ∈ tea_selected` (set in Phase 0
+— high risk, not last-in-epic, and the epic is long enough; see `tea-policy.md` → §3). Resume-safe:
+skip if `story_trace` is already non-null in state. Phase 7 lands in `completed_phases` only after
+this step (when selected) finishes, so a resume that re-enters a converged Phase 7 with
+`story_trace == null` runs just this step.
+- Delegate the **`testarch-trace (story advisory)`** entry with `<story_file>` (story scope).
+- It mirrors the epic-end trace's *output* but never its *control flow*: **no `AskUserQuestion`, no
+  remediation loop, no draft-PR forcing, no halt.** Whatever the verdict, the pipeline continues —
+  this is visibility, not a gate.
+- Record `story_trace: {verdict, uncovered: [...], ran: true}` in state. Surface any uncovered ACs
+  in the report's **TEA** line, the PR-body checklist (so the human sees the gap at review time),
+  and the epic retro notes (so the epic-end trace gate + retrospective inherit the signal). A
+  non-PASS verdict does **not** set `convergence_unverified` and does **not** add a `blockers[]`
+  entry.
+- Commit `test(story-{e}-{s}): trace coverage advisory` (the trace matrix artifact if the skill
+  wrote one, plus the state update).
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*
 Run these in order. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project

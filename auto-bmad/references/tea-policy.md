@@ -37,8 +37,32 @@ no behavior change, or pure scaffolding with no logic.
 | Medium | no | yes |
 | Low | no | no |
 
-Record the chosen set as `tea_selected` in state, with a one-line rationale (which signal drove
-it) so the decision is visible in the report and resumable.
+Record the classified level as `tea_risk` (`low|med|high`) **and** the chosen set as `tea_selected`
+in state, with a one-line rationale (which signal drove it) so the decision is visible in the report
+and resumable. (`tea_risk` is what the long-epic trace advisory below gates on — keep it explicit
+rather than re-deriving the level from `tea_selected`.)
+
+## 3. Long-epic trace advisory — per-story, NON-BLOCKING (opt-out)
+A story-scope `bmad-testarch-trace` pass that runs at the **tail of Phase 7** (after the code-review
+loop converges) to surface this story's uncovered acceptance criteria *while the dev context is
+still fresh and the PR is still open* — instead of waiting for the epic-end trace gate, which on a
+long epic can be many stories away. It is **advisory only**: it records gaps, never halts,
+remediates, asks, or forces a draft PR. The blocking gate stays at epic end (§1).
+
+Select `trace-advisory` (add it to `tea_selected`) at Phase-0 triage **iff all** of:
+- `tea.enabled` **and** `tea.story_trace_advisory.enabled` (default true), **and**
+- `tea_risk == high` — only stories where an uncovered AC is genuinely costly justify the extra pass, **and**
+- `is_last_in_epic == false` — the last story triggers the full epic-end trace gate in Phase 8
+  anyway, so an advisory there is pure duplication, **and**
+- `epic_story_count >= tea.story_trace_advisory.min_epic_stories` (default 6) — **this is the
+  long-epic gate.** The advisory's only value is shrinking the distance from "gap introduced" to
+  "gap noticed"; on a short epic that distance is already tiny (the epic-end gate is right there), so
+  it would be pure overhead. On a long epic a high-risk gap in story 2 would otherwise stay hidden
+  until the story-12 gate — context gone, PRs merged. The threshold is what makes this feature
+  **dormant on normal short epics and self-activating only on the long ones that need it.**
+
+`epic_story_count` is the count of stories under epic `{e}` from the same sprint-status read that
+sets `is_first_in_epic`/`is_last_in_epic`; record it in state alongside `tea_risk`.
 
 ### Notes
 - Low risk ⇒ `tea_selected = []` and Phases 4 & 6 are skipped — the story still gets full code review.

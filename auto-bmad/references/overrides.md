@@ -33,7 +33,8 @@ override; it is the existing target selector.
 - `stop_before: <phase>` / `stop_after: <phase>` — end the run at that boundary, then go straight
   to the report (Step 3).
 - `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `tea`,
-  `code-review`, `retrospective`, `branch`, `merge-prompt`, `project-context-bootstrap`.
+  `code-review`, `retrospective`, `branch`, `merge-prompt`, `project-context-bootstrap`,
+  `trace-advisory`.
 - `max_review_iterations: <int>` — override `code_review.max_iterations` for this run.
 - `git_mode: local` — force local mode (no push/PR), regardless of detection.
 - `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded.
@@ -59,6 +60,10 @@ override; it is the existing target selector.
   epic will then run without persistent_facts injection (see Phase 0 → "Project-context probe").
 - **skip code-review:** skip Phase 7 entirely. ⚠️ Quality gate removed — flag prominently.
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
+- **skip trace-advisory:** suppress only the Phase 7 tail per-story trace advisory for this run,
+  even when its conditions hold (high risk, long epic — see `tea-policy.md` §3). It is already
+  non-blocking, so this just removes the extra story-scope trace pass; the epic-end trace gate is
+  unaffected. (No effect unless the story would have triggered the advisory.)
 - **skip branch:** stay on the current branch (do not create `story/...`). Only sensible with a
   clean intent like a dry run or when the user is already on the right branch; warn otherwise.
 - **skip merge-prompt:** Phase 9 still pushes and opens the PR, but does **not** wait for CI and

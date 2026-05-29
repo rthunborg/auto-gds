@@ -31,6 +31,9 @@ tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
   gate_max_iterations: 2   # Phase 8 trace-gate remediation cap (automate + re-trace) before only waive/stop are offered
+  story_trace_advisory:    # per-story, non-blocking trace pass — shifts coverage-gap visibility left on LONG epics
+    enabled: true          # self-activating: dormant on short epics (see min_epic_stories), fires only on long high-risk stories
+    min_epic_stories: 6    # only runs in epics with >= this many stories; short epics rely on the epic-end gate alone
 git:
   mode: auto               # auto -> detect; or force "remote" / "local"
   branch_prefix: "story/"
@@ -131,11 +134,15 @@ is_last_in_epic: false
 needs_project_context_bootstrap: false  # set at Phase 0; flipped to false by Phase 2's bootstrap sub-step
 git_mode: remote
 base_branch: main
-tea_selected: [atdd, automate]   # from triage; [] if trivial or TEA off
+tea_risk: high                   # low|med|high from Phase 0 triage; gates per-story TEA + the long-epic trace advisory
+tea_selected: [atdd, automate]   # from triage; [] if trivial or TEA off; may also include trace-advisory (long-epic high-risk)
 tea_rationale: "touches auth -> High risk"
+epic_story_count: 12             # stories under epic {e} (from sprint-status); gates the long-epic trace advisory
 completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here if EITHER sub-step ran
 code_review_iterations: 1
 convergence_unverified: false  # true if the review cap was hit while Critical/High were still being found+fixed and the user chose to ship anyway (Phase 7) -> Phase 9 opens the PR as a draft
+story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
+                               #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
 gate_decision: null          # PASS|CONCERNS|FAIL|WAIVED (last story only)
 gate_iterations: 0           # Phase 8 trace-gate remediation passes run (automate+re-trace); capped by tea.gate_max_iterations; resume continues mid-loop
@@ -283,7 +290,7 @@ empty AND the heading's own line says "(none)" — never drop the heading silent
 
 **Overrides:** <one line; "none" if no invocation overrides applied>.
 
-**TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story>.
+**TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story; for the per-story trace advisory, its verdict + any uncovered ACs (advisory, non-blocking)>.
 
 **Code review:** <iterations run; per-iteration verdict + severity counts on one line each; "skipped" if no review>.
 

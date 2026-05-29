@@ -30,6 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the preflight echo + final report; a sub-key missing from an already-present profile is surfaced
   as `manual_review` rather than auto-rewritten. Wired into `references/pipeline.md` (Phase 0),
   `references/state-and-resume.md` (the now-functional `profiles_source_version`), and `CLAUDE.md`.
+- **Per-story trace coverage advisory for long epics** (`tea.story_trace_advisory`, on by default,
+  `min_epic_stories: 6`). A story-scope, **non-blocking** `bmad-testarch-trace` pass at the tail of
+  Phase 7 that surfaces this story's uncovered acceptance criteria while the dev context is fresh
+  and the PR is still open — instead of waiting for the epic-end trace gate, which on a long epic can
+  be many stories away. It self-activates **only** on a high-risk, not-last-in-epic story in an epic
+  of `>= min_epic_stories` stories, so it stays dormant on normal short epics (which rely on the
+  epic-end gate alone). It records gaps in state (`story_trace`), the report's **TEA** line, the
+  PR-body checklist, and the epic retro notes, but **never** halts, remediates, asks, or forces a
+  draft PR — the blocking quality gate stays at epic end. New `tea_risk` / `epic_story_count` state
+  fields back the gating, and a `skip trace-advisory` invocation override opts a single run out.
+  (`references/tea-policy.md` §3, `references/pipeline.md` Phase 0 + Phase 7 tail,
+  `references/delegation.md` `testarch-trace (story advisory)` entry, `references/overrides.md`,
+  `references/state-and-resume.md` config + state + report template.)
 
 ### Fixed
 

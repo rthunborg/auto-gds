@@ -158,6 +158,17 @@ If the verdict is not PASS, also list the specific requirements / acceptance cri
 uncovered, so the orchestrator can summarize them for the human and target remediation.
 ```
 
+### testarch-trace (story advisory)
+```
+Run `/bmad-testarch-trace` in <project_root> for story file <story_file> — STORY SCOPE: trace
+ONLY this story's acceptance criteria, not the whole epic. Build the story-level traceability
+matrix (each AC -> its covering test(s)) and report the verdict (PASS/CONCERNS/FAIL) plus the
+specific ACs left uncovered. This is an ADVISORY pass: its job is to surface coverage gaps early
+so they are visible at review time — do NOT block, remediate, or open a gate; just report.
+```
+(Same skill as the epic gate, narrowed to one story and stripped of gate semantics. The blocking
+quality gate stays at epic end — see `tea-policy.md` → "Long-epic trace advisory".)
+
 ### testarch-nfr (epic gate)
 ```
 Run `/bmad-testarch-nfr` in <project_root> for epic {e}. Audit NFR evidence

@@ -19,6 +19,7 @@ auto-bmad/                             # the BMAD standalone module (one skill)
     story_plan.py                      # sprint-status reader (picks the next/explicit story)
     state_plan.py                      # auto-bmad state-file reader (resume detection)
     render-agents.py                   # generates tool-native delegate agents from profiles
+    config_plan.py                     # detects/heals profiles<->config drift (Phase 0 self-heal)
     review_findings.py                 # reconciles code-review findings + the deferral ledger
 CHANGELOG.md                           # hand-maintained; source for release notes
 scripts/bump-version.py                # release helper (repo tooling; does NOT ship in the skill)
@@ -35,6 +36,7 @@ locally as a test sandbox; it is gitignored — never commit it.
    python3 auto-bmad/scripts/story_plan.py --self-test
    python3 auto-bmad/scripts/state_plan.py --self-test
    python3 auto-bmad/scripts/render-agents.py --self-test
+   python3 auto-bmad/scripts/config_plan.py --self-test
    python3 auto-bmad/scripts/review_findings.py --self-test
    python3 scripts/bump-version.py --self-test
    # story_plan.py also runs standalone:

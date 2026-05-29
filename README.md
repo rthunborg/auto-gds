@@ -100,7 +100,7 @@ Run from the root of a BMAD-enabled project:
 - **A clean run marks the story `done`** (story file + `sprint-status.yaml`) at the end, so the next `/auto-bmad` advances to the next story instead of re-picking the one just finished. On a clean completion auto-bmad **waits for in-progress CI** (cap `git.ci_wait_minutes`, default 30) and then **asks** whether to merge — **Merge commit (default)** / Rebase / Squash / Don't merge, plus a delete-branch sub-question. Merge commit is the default because auto-bmad's per-phase commits (initial dev, review fixes, the report commit) are the richest signal an AI later running `git log`/`blame`/`bisect` on the story can use to reconstruct what happened — squashing collapses that. It never merges silently; "Don't merge" leaves the PR open for you, same as before. The merge prompt is opt-out: set `git.offer_merge: false` or pass `skip merge-prompt` for a single run. A run that ends as a **draft** PR (unresolved review / waived gate / CI red or timed-out) or with a recorded blocker stays at `review` for you to finish — no merge prompt offered.
 - The pipeline is **resumable** — re-run `/auto-bmad` to continue from the last completed phase after an interruption.
 - **Code review starts on Opus** and alternates Opus/Sonnet across iterations. If Critical/High findings remain after the iteration cap (default 3), it **asks you** whether to run another pass, accept the findings and continue (the eventual PR is opened as a draft), or stop.
-- A per-story **report log** is saved to `_bmad-output/auto-bmad/reports/<story>.md` — each run appends a timestamped section (never overwritten on resume). On a clean run the file is **committed before push so it ships in the PR diff**; it holds the story-level outputs (overrides, TEA outcomes, timing — total elapsed plus an AI-run vs human-wait split, open questions, deferred work, blockers, next-story preview). PR / CI / merge / final-status details are printed to chat only (they're already retrievable from GitHub and the BMAD status files, so the file never needs touching after the PR/CI/merge resolve).
+- A per-story **report log** is saved to `_bmad-output/auto-bmad/reports/<story>.md` — each run appends a timestamped section (never overwritten on resume). On a clean run the file is **committed before push so it ships in the PR diff**; it holds the story-level outputs (overrides, TEA outcomes, timing — total elapsed plus an AI-run vs human-wait split, open questions, deferred work, planning drift (epic-end), blockers, next-story preview). PR / CI / merge / final-status details are printed to chat only (they're already retrievable from GitHub and the BMAD status files, so the file never needs touching after the PR/CI/merge resolve).
 - It **stops and tells you** whenever something genuinely needs a human (missing planning docs, merge conflicts, missing credentials, etc.).
 
 ## What it does per story
@@ -109,12 +109,14 @@ Run from the root of a BMAD-enabled project:
 |-------|------|-------|------|
 | 0 | Preflight, triage, first-run config | — | always |
 | 1 | Create `story/X-Y-slug` branch | — | always |
+| 2 | Bootstrap `project-context.md` (greenfield/brownfield onboarding) | `bmad-generate-project-context` | no `project-context.md` exists yet |
 | 2 | Epic-level test design | `bmad-testarch-test-design` | first story of epic, TEA on |
 | 3 | Create + self-validate story | `bmad-create-story` | always |
 | 4 | ATDD acceptance scaffolds | `bmad-testarch-atdd` | TEA on + risk-warranted |
 | 5 | Implement story | `bmad-dev-story` | always |
 | 6 | Expand automated coverage | `bmad-testarch-automate` | TEA on + risk-warranted |
 | 7 | Code review (Opus-first, alternating models, ≤3 iters; asks if unresolved) | `bmad-code-review` | always |
+| 7 | Per-story trace advisory (after review; non-blocking — surfaces uncovered ACs early) | `bmad-testarch-trace` | TEA on + risk-warranted, *not* last story of epic, long epic (≥6 stories) |
 | 8 | Gates (asks if trace fails), project context, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
 | 9 | Push, open PR, wait for CI, mark story `done` (clean run), **ask whether to merge** (clean run, opt-in), final report | — | always |
 
@@ -170,7 +172,7 @@ A plain no-arg `/auto-bmad` resumes the interrupted pipeline at the next unfinis
 
 ## Configuration
 
-`_bmad-output/auto-bmad/config.yaml` (created on first run) controls TEA on/off, git mode (PR vs local-only), branch prefix, code-review iteration cap + model alternation, the per-phase profile mapping (`phase_profiles`), and the per-tool model + effort for each delegate (`profiles`). It also records `delegation.target_tools` — the tools agents are provisioned for. Setup **defaults this to whichever AIs your BMAD install already targets** (detected from where the skill is installed — `.claude/skills` for Claude Code, `.agents/skills` for Codex) and lets you confirm or adjust. **Provision more than one and the same project works in either** — the running tool is auto-detected each run, so you never reconfigure when you switch. After editing `profiles` (e.g. to set your Codex model names), run `/auto-bmad reprovision`. See `references/state-and-resume.md` for the full schema.
+`_bmad-output/auto-bmad/config.yaml` (created on first run) controls TEA on/off (including the non-blocking long-epic per-story trace advisory, `tea.story_trace_advisory` — toggle + `min_epic_stories` threshold), git mode (PR vs local-only), branch prefix, code-review iteration cap + model alternation, the per-phase profile mapping (`phase_profiles`), and the per-tool model + effort for each delegate (`profiles`). It also records `delegation.target_tools` — the tools agents are provisioned for. Setup **defaults this to whichever AIs your BMAD install already targets** (detected from where the skill is installed — `.claude/skills` for Claude Code, `.agents/skills` for Codex) and lets you confirm or adjust. **Provision more than one and the same project works in either** — the running tool is auto-detected each run, so you never reconfigure when you switch. After editing `profiles` (e.g. to set your Codex model names), run `/auto-bmad reprovision`. See `references/state-and-resume.md` for the full schema.
 
 ## Contributing
 

@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Phase 7 reconciliation gate no longer false-fails on the reviewer's bullet format.**
+  `review_findings.py` keyed on a rigid checkbox rendering (`- [ ] [Review][Patch] …`), but the
+  `### Review Findings` shape is owned by the upstream `bmad-code-review` skill and produced by a
+  non-deterministic LLM — which legitimately renders findings as bold prose with no checkbox
+  (`- **[Review][Decision] [Med]** …`). The parser counted 0, so the gate reported
+  `reconciled: false` and forced a pointless reformat re-delegation even though the findings had
+  persisted correctly. The bullet matcher now keys only on the semantic `[Review][Type]` tag and
+  treats the checkbox, `**bold**`/`__emphasis__` markers, and trailing severity tag as optional; a
+  finding with no checkbox defaults to `open` (the safe state). The `code-review fix` delegation
+  prompt is likewise reworded to be checkbox-agnostic. (`auto-bmad/scripts/review_findings.py`,
+  `auto-bmad/references/delegation.md`.)
+
 ### Changed
 
 - **Trimmed duplicated rationale across the reference docs (no behavior change).** Collapsed

@@ -92,11 +92,11 @@ number of bullets you wrote under this story's `## Deferred from:` heading in `<
 ### code-review fix
 ```
 Run `/bmad-dev-story <story_file>` in <project_root>, focused ONLY on the open code-review
-findings under the story's `### Review Findings` section: resolve every unchecked `[Review][Patch]`
+findings under the story's `### Review Findings` section: resolve every unresolved `[Review][Patch]`
 item, plus each `[Review][Decision]` item for which a human-chosen fix direction is listed below.
-Implement each in the stated direction and check it off. NEVER invent a direction for a
-`[Review][Decision]` item with no chosen direction — leave it unchecked. Make tests pass.
-Do not commit.
+Implement each in the stated direction and mark it resolved in place (tick its `[ ]` checkbox if it
+has one). NEVER invent a direction for a `[Review][Decision]` item with no chosen direction — leave
+it unresolved. Make tests pass. Do not commit.
 
 Resolved decisions (implement exactly these): {decisions}
 ```

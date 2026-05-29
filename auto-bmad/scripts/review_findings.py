@@ -12,6 +12,12 @@ This script lets the orchestrator reconcile what the reviewer *claimed* against
 what is actually in the file, deterministically (no LLM re-read). It parses the
 ``### Review Findings`` section and counts each triage type by checked state.
 
+The *rendering* of those bullets (a `[ ]`/`[x]` checkbox, ``**bold**``/``__emphasis__``
+around the tag, a trailing `[Med]` severity) is owned by the upstream
+``bmad-code-review`` skill and produced by a non-deterministic LLM, so the parser
+keys only on the semantic ``[Review][Type]`` tag and treats everything around it
+as optional. A finding with no checkbox counts as ``open`` (the safe default).
+
 It also reconciles the durable, cross-story deferral ledger
 (``{implementation_artifacts}/deferred-work.md``): the code-review step is
 supposed to append every ``[Review][Defer]`` finding there under a
@@ -49,9 +55,21 @@ import sys
 HEADING_RE = re.compile(r"^#{2,4}\s+review\s+findings\b", re.IGNORECASE)
 # Any ATX heading at level 1-4 — used to find where the section ends.
 ANY_HEADING_RE = re.compile(r"^#{1,4}\s+\S")
-# A triage bullet: `- [ ] [Review][Patch] ...` / `* [x] [Review][Defer] ...`.
+# A triage bullet. The semantic signal is the `[Review][Type]` tag; the rendering
+# around it is owned by the upstream `bmad-code-review` skill and produced by a
+# non-deterministic LLM, so match flexibly. All of these count as one finding:
+#   - [ ] [Review][Patch] ...        (checkbox form)
+#   * [x] [Review][Defer] ...        (checked checkbox)
+#   - **[Review][Decision] [Med]** ..(bold prose, no checkbox — real BMAD output)
+#   - __[Review][Patch]__ ...        (underscore emphasis)
+# The checkbox is OPTIONAL: when absent the finding defaults to `open` (the safe
+# state — an unmarked finding is one still needing attention). Bold/emphasis
+# markers (`**`/`__`) before the tag are tolerated and ignored.
 BULLET_RE = re.compile(
-    r"^\s*[-*]\s+\[(?P<mark>[ xX])\]\s+\[Review\]\[(?P<type>Patch|Decision|Defer)\]",
+    r"^\s*[-*+]\s+"                  # list bullet
+    r"(?:\[(?P<mark>[ xX])\]\s+)?"   # optional checkbox (open/checked state)
+    r"(?:\*\*|__)?\s*"               # optional bold/emphasis marker
+    r"\[Review\]\[(?P<type>Patch|Decision|Defer)\]",
 )
 # A ledger section heading: `## Deferred from: code review of story-3.3 (2026-03-18)`.
 DEFER_HEADING_RE = re.compile(r"^#{1,4}\s+deferred\s+from:", re.IGNORECASE)
@@ -196,6 +214,24 @@ _WITH_FINDINGS = """\
 Not a finding: [Review][Patch] mentioned in prose should not count.
 """
 
+# Real `bmad-code-review` output: bold-prose bullets, no checkboxes, optional
+# severity tag — plus one already-checked item and one underscore-emphasis item.
+# The gate must count all of these and default the un-checkboxed ones to `open`.
+_WITH_BOLD_FINDINGS = """\
+# Story 1-4
+
+### Review Findings
+
+- **[Review][Decision] [Med]** Token TTL — pick 15m vs 60m, affects UX
+- **[Review][Patch] [Low]** Null deref on empty list [src/app.py:42]
+- [x] **[Review][Patch]** Off-by-one already fixed this pass [src/page.py:13]
+- __[Review][Defer]__ Pre-existing flaky test [tests/t.py:9]
+
+## Dev Notes
+
+Not a finding: **[Review][Patch]** mentioned in prose should not count.
+"""
+
 _NO_SECTION = """\
 # Story 1-3
 
@@ -259,6 +295,18 @@ def _run_self_test():
     # expect-min satisfied / shortfall.
     check("expect-min 4 ok", build_result(p1, 4)["reconciled"] is True)
     check("expect-min 5 shortfall", build_result(p1, 5)["reconciled"] is False)
+
+    # Bold-prose / no-checkbox rendering (real BMAD output) must count the same.
+    pb = write(_WITH_BOLD_FINDINGS)
+    rb = build_result(pb, None)
+    check("bold: section detected", rb["section_present"] is True)
+    check("bold: total counts 4 bullets", rb["total"] == 4)
+    check("bold: no-checkbox decision => open", rb["open_decision"] == 1)
+    check("bold: one open + one checked patch", rb["open_patch"] == 1 and rb["by_type"]["patch"]["checked"] == 1)
+    check("bold: underscore-emphasis defer => open", rb["open_defer"] == 1)
+    check("bold: prose mention in other section excluded", rb["by_type"]["patch"]["open"] == 1)
+    check("bold: expect-min 4 reconciled (was the false-fail)", build_result(pb, 4)["reconciled"] is True)
+    os.unlink(pb)
 
     # Ledger reconciliation: p1 has one [Review][Defer] finding (story 1-2).
     led_ok = write(_LEDGER_WITH_DEFER)

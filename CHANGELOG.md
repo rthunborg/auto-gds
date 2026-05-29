@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-29
+
 ### Added
 
 - **Per-story run-time tracking with an AI-run vs human-wait split.** The state file gains three
@@ -442,7 +444,8 @@ changelog and release tooling to keep versions traceable from here on.
   release helper that promotes `[Unreleased]`, syncs the version in
   `marketplace.json` + `module.yaml`, commits, and tags.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.5.0...v0.6.0

@@ -38,6 +38,7 @@ already carry the full form, so the short version is enough.
 Run `/bmad-create-story {e}-{s}` in <project_root>.
 Create the comprehensive story context file for story {e}-{s}.
 {retro_notes_hint}
+{deferred_work_hint}
 ```
 The orchestrator fills `{retro_notes_hint}` from on-disk state:
 - If `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` exists and is non-empty (earlier stories in
@@ -52,6 +53,19 @@ The orchestrator fills `{retro_notes_hint}` from on-disk state:
 Phase notes in the retro file use a `[Phase X — short-name]` prefix (e.g.
 `[Phase 5 — dev-story]`, `[Phase 7 — code review]`). Preserve the prefix when appending — it
 lets later stories filter by phase if they need to.
+
+The orchestrator also fills `{deferred_work_hint}` from on-disk state. The ledger
+`<impl>/deferred-work.md` is BMAD's own code-review/quick-dev defer sink (append-only,
+project-wide, keyed by `## Deferred from: <source> (<date>)` headings) — no BMAD or TEA skill
+reads it back, so create-story only sees it if we inject it here.
+- If `<impl>/deferred-work.md` exists and is non-empty: `ALSO read <impl>/deferred-work.md before
+  drafting the story context. It is a project-wide ledger of work earlier stories consciously
+  deferred — most entries are out of scope for this story. Identify ONLY the deferrals whose
+  subject overlaps this story's area, files, or acceptance criteria, and fold those into the Story
+  Context (constraints, persistent_facts, or test notes) so the dev agent either addresses them or
+  knowingly works around them. Do NOT copy the whole ledger, and do NOT reopen or re-defer items
+  unrelated to this story.`
+- Otherwise omit the line entirely (the ledger doesn't exist yet, or is empty).
 
 ### dev-story
 ```

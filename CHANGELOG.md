@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **create-story now folds in prior deferred work.** Phase 3 gained a `{deferred_work_hint}`:
+  when `<impl>/deferred-work.md` (BMAD's append-only code-review/quick-dev defer ledger) exists
+  and is non-empty, the orchestrator instructs the create-story delegate to read it, fold the
+  deferrals that overlap the new story's scope into the Story Context, and ignore the rest. No
+  stock BMAD or TEA skill reads that ledger, so this is the only path that carries prior
+  deferrals forward into new stories.
+
 ## [0.6.1] - 2026-05-29
 
 ### Fixed

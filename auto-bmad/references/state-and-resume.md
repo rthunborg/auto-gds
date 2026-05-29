@@ -13,7 +13,7 @@ _bmad-output/auto-bmad/
 ## config.yaml
 ```yaml
 version: 1
-profiles_source_version: "0.6.0"  # abm version whose assets/agents/profiles.yaml seeded the
+profiles_source_version: "0.6.1"  # abm version whose assets/agents/profiles.yaml seeded the
                                   # profiles + phase_profiles blocks below. Stamped at first-run
                                   # write (and by `/auto-bmad reprovision` when it re-seeds).
                                   # Lets a future module update detect a stale-defaults snapshot

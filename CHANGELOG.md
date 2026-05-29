@@ -13,6 +13,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 0 now detects and heals runtime-config drift** — the gap that let a module update's new
+  config keys silently never reach a project. The runtime `config.yaml` is seeded once at first run
+  and never re-touched by an update, so a newer asset's `profiles`/`phase_profiles` keys (e.g. the
+  `tea_triage` phase mapping added in 0.9.0) never arrived, and nothing flagged it: the only
+  freshness check (`render-agents.py --check`) diffs the four rendered agent files and **never reads
+  `phase_profiles`**, while the `profiles_source_version` stamp meant to catch this was written but
+  never read. New **`scripts/config_plan.py`** (dependency-free, `--self-test`) closes the gap on a
+  separate axis from agent-file freshness: `--check` diffs the shipped asset's
+  `profiles`/`phase_profiles` keys against the runtime config's and compares
+  `profiles_source_version` to the installed `module_version`; `--apply` performs an **additive**
+  heal — appends only the keys the config is MISSING (never overwriting a user retune) and restamps
+  the version. Phase 0 runs `--check` and auto-`--apply`s on drift (no human stop), reporting it in
+  the preflight echo + final report; a sub-key missing from an already-present profile is surfaced
+  as `manual_review` rather than auto-rewritten. Wired into `references/pipeline.md` (Phase 0),
+  `references/state-and-resume.md` (the now-functional `profiles_source_version`), and `CLAUDE.md`.
+
+### Fixed
+
+- **`/auto-bmad` no longer fails to detect that a reprovision/re-seed is required after a module
+  update.** Previously the only provisioning check (`render-agents.py --check`) reported `fresh`
+  whenever the four agent files matched the current config — even when the config itself had drifted
+  behind the shipped asset (missing `phase_profiles` keys) — and the `profiles_source_version`
+  version-drift signal was never actually compared against `module_version`. The new Phase 0
+  config-drift step (above) makes both detections real.
+
 ## [0.9.0] - 2026-05-29
 
 ### Added

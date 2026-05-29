@@ -15,10 +15,12 @@ _bmad-output/auto-bmad/
 version: 1
 profiles_source_version: "0.9.0"  # abm version whose assets/agents/profiles.yaml seeded the
                                   # profiles + phase_profiles blocks below. Stamped at first-run
-                                  # write (and by `/auto-bmad reprovision` when it re-seeds).
-                                  # Lets a future module update detect a stale-defaults snapshot
-                                  # without losing user retunes (advisory only — never auto-overwrites
-                                  # the user's blocks).
+                                  # write and re-stamped by the Phase 0 config-drift heal (and by
+                                  # `/auto-bmad reprovision`) when they re-seed. Read every run by
+                                  # scripts/config_plan.py and compared to the installed
+                                  # module_version: a newer module triggers an ADDITIVE re-seed of
+                                  # any asset keys this config is MISSING — never overwriting the
+                                  # user's retunes.
 delegation:                # spawn mechanism — host/mode auto-detected each run
   host: auto               # auto (detect each run) | claude-code | codex | other
   mode: auto               # auto (derive from host) | custom-subagents | general-subagents | inline

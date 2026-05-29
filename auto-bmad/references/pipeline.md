@@ -40,6 +40,23 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Git preflight (**orchestrator runs this directly**): is this a git repo? is the working tree
   clean? detect git mode (gh installed AND a GitHub remote → `remote`; else `local`); detect the
   base branch. Dirty tree on a non-story branch → hard-stop.
+- **Config drift heal (orchestrator; all hosts):** the runtime `config.yaml` is seeded **once** at
+  first run and is never re-touched by a module update, so a newer asset's `profiles`/`phase_profiles`
+  keys (e.g. a `tea_triage` phase mapping added in a later version) silently never reach the project —
+  and `render-agents.py --check` below can't see this, because it only diffs the four rendered agent
+  files and never reads `phase_profiles`. Reconcile deterministically:
+  ```
+  python3 {skill-root}/scripts/config_plan.py --check --config <output_folder>/auto-bmad/config.yaml
+  ```
+  (the shipped `assets/agents/profiles.yaml` + `assets/module.yaml` resolve relative to the script).
+  On `status: drift` (exit 1 — asset `profiles`/`phase_profiles` keys the config lacks, and/or
+  `profiles_source_version` older than the installed `module_version`), **auto-apply** the additive
+  heal — re-run with `--apply` — which appends only the MISSING keys (never overwriting a user
+  retune) and restamps `profiles_source_version`. Note it in the preflight echo + final report. Not
+  a human stop. Run this **before** the provisioning-freshness check below, so a re-seeded profile
+  *value* is then caught there as a stale agent file (a re-seeded `phase_profiles` key needs no
+  re-render — it maps to an existing profile). `manual_review` items (a sub-key missing from a
+  profile that already exists — rare, value-bearing) are **surfaced in the report**, not auto-written.
 - **Provisioning freshness (custom-subagents hosts):** run `render-agents.py --check`; if the
   delegate agents are missing or stale (module updated / profiles edited), auto-reprovision and
   note it in the preflight echo + final report. Not a human stop. See `delegation-runtime.md` →

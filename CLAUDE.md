@@ -70,6 +70,15 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
   Exit 0 even on an absent/empty dir — no zsh `nomatch` footgun, no phantom `story-*` glob
   (`--self-test`).
 - `auto-bmad/scripts/render-agents.py` — dependency-free agent generator (`--self-test`).
+- `auto-bmad/scripts/config_plan.py` — dependency-free detector/healer for drift between the shipped
+  `assets/agents/profiles.yaml` and a project's runtime `config.yaml`. The Phase 0 config-drift step
+  runs `--check`; on drift (asset `profiles`/`phase_profiles` keys the config lacks, or
+  `profiles_source_version` older than the installed `module_version`) it `--apply`s an **additive**
+  re-seed — appends only the MISSING keys (never overwriting a user retune) and restamps the version.
+  Closes the gap `render-agents.py --check` can't see: that check only diffs the four rendered agent
+  files and never reads `phase_profiles`, so a newer module's new phase mapping (e.g. `tea_triage`)
+  reached neither the config nor any freshness signal. A sub-key missing from an already-present
+  profile is reported as `manual_review`, not auto-written (`--self-test`).
 - `auto-bmad/scripts/review_findings.py` — dependency-free reader for a story's `### Review
   Findings` section; the Phase 7 reconciliation gate runs it to confirm the review skill actually
   persisted findings (`--expect-min N` ⇒ exit 1 on shortfall) and that every `[Review][Defer]`
@@ -96,6 +105,7 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
 python3 auto-bmad/scripts/story_plan.py --self-test
 python3 auto-bmad/scripts/state_plan.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
+python3 auto-bmad/scripts/config_plan.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test
 # Marketplace manifest is valid JSON:
 python3 -m json.tool .claude-plugin/marketplace.json >/dev/null

@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-29
+
 ### Added
 
 - **Phase 0 now detects and heals runtime-config drift** — the gap that let a module update's new
@@ -547,7 +549,8 @@ changelog and release tooling to keep versions traceable from here on.
   release helper that promotes `[Unreleased]`, syncs the version in
   `marketplace.json` + `module.yaml`, commits, and tags.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.6.1...v0.7.0

@@ -289,6 +289,8 @@ empty AND the heading's own line says "(none)" — never drop the heading silent
 
 **Deferred work:** <numbered list, one per line; cross-link to `<impl>/deferred-work.md` if items landed there; "(none)" if empty>.
 
+**Planning drift:** <epic-end only — planning assumptions the retrospective proved wrong + the recommended re-sync (document-project → generate-project-context → bmad-prd update; correct-course if structural); non-blocking, never auto-run; "(none)" if clean or not epic-end>.
+
 **⚠️ Needs human:** <numbered list of blockers / manual actions; "(none)" if clean>.
 
 **Next:** <one line — the story `story_plan.py` would pick next; preview only>.

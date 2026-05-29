@@ -168,6 +168,9 @@ restructuring per run, so PR reviewers always find each field in the same place)
 - **Open questions** surfaced by any step ("(none)" if empty — keep the heading).
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
   `<impl>/deferred-work.md` ledger). "(none)" if empty — keep the heading.
+- **Planning drift** (epic-end only): planning assumptions the retrospective proved wrong + the
+  recommended re-sync (document-project → generate-project-context → `/bmad-prd` update;
+  `/bmad-correct-course` if structural). Non-blocking, never auto-run. "(none)" if clean or not epic-end.
 - **⚠️ Needs human:** blockers / manual actions. On a **caveated** completion these are required
   before the story can be considered done (it was left at `review`). On a **clean** completion the
   story is already `done`; list only genuine follow-ups (e.g. merging the open PR is optional and

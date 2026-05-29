@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 8 now surfaces retrospective-detected *planning drift*.** When the epic retrospective
+  flags a planning assumption the build proved wrong (PRD / architecture / epic scope that no longer
+  matches the code), the orchestrator lifts it into a new **Planning drift** report field and
+  recommends the upstream re-sync path — refresh `document-project` (if `docs/` is stale) and
+  `generate-project-context`, then `/bmad-prd` (update intent) to reconcile the PRD in place;
+  `/bmad-correct-course` for structural drift. It is non-blocking and **never auto-run**: the
+  orchestrator names the step, the human decides (same posture as the existing correct-course
+  pointers). (`references/delegation.md` retrospective entry, `references/pipeline.md` Phase 8,
+  `SKILL.md` Step 3, `references/state-and-resume.md` section template.)
 - **`scripts/state_plan.py` — a deterministic reader for auto-bmad's own `state/{key}.yaml`
   files**, so resume detection calls a tool instead of improvising shell. A default scan of
   `--state-dir` reports the in-flight pipelines (`status != done`), the resume `target`

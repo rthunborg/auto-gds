@@ -199,5 +199,9 @@ Run `/bmad-retrospective` in <project_root> for epic {e}.
 You are the sole facilitator AND participant — answer all party-mode questions yourself using
 the accumulated notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md plus the story files and
 sprint-status. Produce the full retrospective document and mark the epic retrospective `done`.
+In the structured result, add a `Planning drift` line: if the retro surfaced planning assumptions
+the epic proved wrong (PRD / architecture / epic scope that no longer matches what was actually
+built), list each as one line — the artifact, what drifted, and whether it is detail-level or
+structural — so the orchestrator can recommend a re-sync. Say `none` when the build matched the plan.
 ```
 

@@ -229,7 +229,15 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
    retro doc does not yet — step 3 — so notes, not the doc, are the source here.)
 3. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
    it the accumulated `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
-   writes the retro doc + flips the retrospective status to `done`.
+   writes the retro doc + flips the retrospective status to `done`. **Planning-drift advisory:** if the
+   delegate's `Planning drift` line is non-empty — the epic proved a planning assumption wrong (PRD /
+   architecture / epic scope that no longer matches what was built) — record it in state
+   (`planning_drift`) and surface it in the report's **Planning drift** field. It is **non-blocking**
+   and **never auto-acted**: recommend the upstream re-sync — refresh the codebase docs
+   (`/bmad-document-project` only if `docs/` is stale, then `/bmad-generate-project-context`), then
+   `/bmad-prd` (update intent) to reconcile the PRD in place; for **structural** drift,
+   `/bmad-correct-course` instead. Like the Phase 7 / trace-gate correct-course pointer, name the step
+   for the user but do **not** run it — it changes planning scope and is the user's call. `none` ⇒ omit.
 
 ## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).

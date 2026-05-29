@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`scripts/state_plan.py` — a deterministic reader for auto-bmad's own `state/{key}.yaml`
+  files**, so resume detection calls a tool instead of improvising shell. A default scan of
+  `--state-dir` reports the in-flight pipelines (`status != done`), the resume `target`
+  (most-recently-updated by `updated_at`, with mtime as a tiebreaker), and any `extra_in_flight`
+  to mention; `--story-key` does an exact-path single-story check. It's dependency-free (flat-YAML
+  line reader), exits 0 even on a first-run absent/empty dir, and has a `--self-test`. This removes
+  the shell improvisation entirely (see the probe-hardening under Fixed): no raw glob loop to abort
+  under zsh/fish, no phantom `story-*` filename to miss. Wired into `SKILL.md` Step 1 (target
+  selection + resume check) and `references/state-and-resume.md`/`pipeline.md`.
+
 ### Fixed
 
 - **Resume/state probes no longer misfire on shell globs or a phantom `story-` filename prefix.**

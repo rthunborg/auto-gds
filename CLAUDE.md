@@ -63,6 +63,12 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
 - `auto-bmad/assets/module.yaml` + `module-help.csv` + `module-setup.md` — BMAD module
   identity, capability registry, and self-registration/provisioning flow.
 - `auto-bmad/scripts/story_plan.py` — dependency-free sprint-status reader (`--self-test`).
+- `auto-bmad/scripts/state_plan.py` — dependency-free reader for auto-bmad's own `state/{key}.yaml`
+  files; the orchestrator calls it for resume detection instead of hand-rolling shell. Scans
+  `--state-dir` for in-flight pipelines (`status != done`) and returns the resume `target`
+  (most-recently-updated, by `updated_at`); `--story-key` does an exact-path single-story check.
+  Exit 0 even on an absent/empty dir — no zsh `nomatch` footgun, no phantom `story-*` glob
+  (`--self-test`).
 - `auto-bmad/scripts/render-agents.py` — dependency-free agent generator (`--self-test`).
 - `auto-bmad/scripts/review_findings.py` — dependency-free reader for a story's `### Review
   Findings` section; the Phase 7 reconciliation gate runs it to confirm the review skill actually
@@ -88,6 +94,7 @@ which agent files get generated — it defaults at setup to the AIs the BMAD ins
 ```bash
 # Deterministic cores:
 python3 auto-bmad/scripts/story_plan.py --self-test
+python3 auto-bmad/scripts/state_plan.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test
 # Marketplace manifest is valid JSON:

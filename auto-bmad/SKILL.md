@@ -97,10 +97,12 @@ invocation carried any instructions — `references/overrides.md`, then:
    (core always; TEA set only if `tea.enabled`; epic-end skills if this is a last story). Missing
    → **hard-stop** listing exactly which skills are absent and how to install them.
 2. **Target story** (precedence when NO `--story` argument is given):
-   a. **Resume an interrupted pipeline first:** if any `state/*.yaml` has `status != done`,
-      that story wins — auto-bmad finishes in-flight work before starting anything new (there
-      should be at most one given "one story at a time"; if several, take the most recently
-      modified and note the others in the report).
+   a. **Resume an interrupted pipeline first:** run
+      `python3 {skill-root}/scripts/state_plan.py --state-dir <output_folder>/auto-bmad/state`.
+      If it reports `resume: true`, its `target` (the most-recently-updated in-flight story) wins —
+      auto-bmad finishes in-flight work before starting anything new (note any `extra_in_flight`
+      in the report; there should be at most one given "one story at a time"). Don't hand-roll a
+      glob loop for this — see `state-and-resume.md` → "Target selection & resume logic".
    b. Otherwise run
       `python3 {skill-root}/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>`
       to pick the next actionable story. Its precedence is `in-progress → review →
@@ -108,9 +110,10 @@ invocation carried any instructions — `references/overrides.md`, then:
       before pulling a fresh backlog item** — it does not jump straight to backlog.
    With a `--story <arg>`: pass `--story <arg>` to the script (overrides the above). Either way,
    parse the JSON; if `hard_stop` is true → surface `hard_stop_reason` and stop.
-3. **Resume check:** if a non-`done` state file exists for the chosen `story_key`, resume from
-   the first phase not in `completed_phases` (and continue the review loop from
-   `code_review_iterations`). Otherwise initialize a fresh state file in Phase 1.
+3. **Resume check:** for the chosen `story_key`, run the same reader with
+   `--story-key {story_key}` (exact-path lookup, no glob). `resume: true` ⇒ resume from the first
+   phase not in `completed_phases` (and continue the review loop from `code_review_iterations`);
+   otherwise initialize a fresh state file in Phase 1.
 4. **Git preflight, project-context probe & triage** (per Phase 0 of the pipeline): **you run the
    git preflight and the project-context probe directly** — detect repo, clean tree, git mode,
    base branch; then probe for an existing `project-context.md` at the BMAD-canonical write path

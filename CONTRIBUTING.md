@@ -13,10 +13,11 @@ auto-bmad/                             # the BMAD standalone module (one skill)
   assets/                              # module identity, setup, and delegate templates
     agents/profiles.yaml               # source of truth: per-profile persona (description /
                                        # role_blurb / status_example) + per-tool model + effort
-    agents/{claude,codex}/agent.tmpl   # one shared body template per tool; render-agents.py
-                                       # fills it in for each profile
+    agents/{claude,codex}/agent.{md,toml}.tmpl  # one shared body template per tool;
+                                       # render-agents.py fills it in for each profile
   scripts/                             # dependency-free helpers, each with --self-test
-    story_plan.py                      # sprint-status reader
+    story_plan.py                      # sprint-status reader (picks the next/explicit story)
+    state_plan.py                      # auto-bmad state-file reader (resume detection)
     render-agents.py                   # generates tool-native delegate agents from profiles
     review_findings.py                 # reconciles code-review findings + the deferral ledger
 CHANGELOG.md                           # hand-maintained; source for release notes
@@ -32,6 +33,7 @@ locally as a test sandbox; it is gitignored — never commit it.
 1. **Run the deterministic self-tests** (no Claude Code needed):
    ```bash
    python3 auto-bmad/scripts/story_plan.py --self-test
+   python3 auto-bmad/scripts/state_plan.py --self-test
    python3 auto-bmad/scripts/render-agents.py --self-test
    python3 auto-bmad/scripts/review_findings.py --self-test
    python3 scripts/bump-version.py --self-test

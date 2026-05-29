@@ -171,20 +171,19 @@ wait too; a story halted overnight shows a large wait dominated by the gap, not 
 No-arg `/auto-bmad` chooses the target story with this precedence:
 1. **Incomplete auto-bmad pipeline first.** If any `state/*.yaml` has `status != done`, that
    story is the target — finish in-flight work before starting anything new. (At most one should
-   exist; if several, take the most-recently-modified and mention the others in the report.)
+   exist; if several, take the most-recently-updated and mention the others in the report.)
    State files are named `{key}.yaml` — e.g. `1-2-user-auth.yaml`. There is **no `story-`
    prefix**: the `story-{e}-{s}` form appears only in commit/PR scopes (`docs(story-1-2): …`),
-   never in a filename, so a `story-*` glob matches nothing. Enumerate these files
-   shell-agnostically — `find` or Python, never a raw `for f in …/state/*.yaml` glob loop: the
-   state dir is empty on a first run, and an unmatched glob aborts with exit 1 under zsh/fish
-   (`nomatch`), whereas `find` yields empty output and exit 0 in every shell. List the not-`done`
-   files in one shell-safe call:
+   never in a filename. **Don't hand-roll shell for this** — call the deterministic reader:
    ```
-   find {output_folder}/auto-bmad/state -maxdepth 1 -name '*.yaml' \
-     -exec grep -L '^status: done' {} +
+   python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad/state
    ```
-   (`grep -L` prints each file lacking a `status: done` line, i.e. the in-flight ones; empty
-   output ⇒ none in flight ⇒ fall through to `story_plan.py`. Do the same in Python if preferred.)
+   Parse its JSON: `resume: true` ⇒ resume `target` (the most-recently-updated in-flight story),
+   and `extra_in_flight` lists any others to mention; `resume: false` (empty dir, absent dir, or
+   all `done`) ⇒ fall through to `story_plan.py`. The script enumerates `{state-dir}/*.yaml` and
+   reads each `status:` itself — dependency-free, exit 0 even on a first-run absent/empty dir, so
+   there's no raw-glob `nomatch` footgun and no chance of probing a phantom `story-*` name. (See
+   `CLAUDE.md` → "Shell globs" for why the hand-rolled loop was the problem.)
 2. **Else `story_plan.py`** picks the next actionable story. Its own precedence is
    `in-progress → review → ready-for-dev → backlog → retrospective`, so it resumes BMAD-level
    unfinished work before pulling a fresh `backlog` item — it does NOT jump straight to backlog.
@@ -203,10 +202,14 @@ merge so `story_plan.py` moves on to the next story. A **caveated** completion (
 and a re-run, finding the auto-bmad state already `done`, reports it complete (per the rule below)
 rather than redoing the work.
 
-Once the target `story_key` is known, check its state by the **exact** path — you already know
-`{key}`, so `test -f {output_folder}/auto-bmad/state/{key}.yaml` then read its `status:` line.
-**Never glob for it** (no `story-*`, no `{e}-{s}-*`): a glob both misnames the file (see the
-no-`story-`-prefix note above) and, unmatched, aborts under zsh/fish.
+Once the target `story_key` is known (e.g. from an explicit `--story` arg), check its state with
+the same reader — an exact `{key}` lookup, never a glob:
+```
+python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad/state --story-key {key}
+```
+`resume: true` (file exists, `status != done`) ⇒ resume; `exists: false` ⇒ start fresh; a `done`
+status ⇒ already complete (see below). The script tests the exact `{key}.yaml` path, so there's
+no glob to misname (`story-*`) or to abort under zsh/fish.
 - If `state/{key}.yaml` exists and `status != done` → **resume**: skip phases already in
   `completed_phases`, and if Phase 7 is in progress, continue the review loop from
   `code_review_iterations`. Re-detect git mode/branch (cheap) rather than trusting stale values

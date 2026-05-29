@@ -27,6 +27,12 @@ Placeholders (`{e}`/`{s}`, `{key}`, `{slug}`, `<impl>`, `<story_file>`, …) are
 
 ## Phase 0 — Preflight & triage  *(git preflight: orchestrator; TEA triage: `tea_per_story`)*
 Runs during Step 1 of the SKILL procedure (before any commit).
+- **Probe discipline (applies to every orchestrator-run check here and below):** do existence /
+  enumeration probes with `find`, `test`, or Python — **never a bare glob** (`ls *.x`,
+  `for f in *.x`). An unmatched glob aborts with exit 1 under zsh/fish (`nomatch`), whereas
+  `find`/`test` give empty output + exit 0 in every shell. And probe by real on-disk names: state
+  files are `{key}.yaml`, story files `{key}.md` — neither carries the `story-{e}-{s}` prefix
+  that only commit/PR scopes use. See `CLAUDE.md` → "Shell globs".
 - Verify required skills exist for the selected path. Missing → hard-stop.
 - Git preflight (**orchestrator runs this directly**): is this a git repo? is the working tree
   clean? detect git mode (gh installed AND a GitHub remote → `remote`; else `local`); detect the

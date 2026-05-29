@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Resume/state probes no longer misfire on shell globs or a phantom `story-` filename prefix.**
+  The orchestrator was improvising state-file checks as raw glob loops (`for f in story-1-*.yaml`),
+  which fail two ways: state files are named `{key}.yaml` (e.g. `1-2-user-auth.yaml`) with no
+  `story-` prefix — that form is a commit/PR-scope convention only — so the pattern matches
+  nothing; and an unmatched glob aborts with exit 1 under zsh/fish (`nomatch`) instead of yielding
+  an empty result. The reference docs now (a) state the real on-disk naming and ban the phantom
+  prefix, (b) give a ready-to-copy `find … -exec grep -L '^status: done' {} +` enumeration plus an
+  exact-path `test -f` per-story check, (c) reinforce `find`/`test` (not bare globs) for the
+  first-run framework/CI detection and the Phase 9 CI-workflow check, and (d) hoist a single
+  "probe discipline" rule to the top of Phase 0 so it governs every orchestrator-run probe.
+  (`auto-bmad/references/state-and-resume.md`, `auto-bmad/references/pipeline.md` Phase 0,
+  `auto-bmad/references/git-and-pr.md`.)
+
 ## [0.8.0] - 2026-05-29
 
 ### Added

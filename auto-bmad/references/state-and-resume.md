@@ -77,7 +77,9 @@ The single interactive episode in normal operation. Always confirm `target_tools
 3. **TEA (both depths):** detect the TEA skills (`bmad-testarch-*`) and ask `tea.enabled` —
    default "yes" if present, "no" if absent (don't offer yes when absent). If enabled, resolve
    `framework_ci`: detect a test-framework config (`playwright.config.*`, `cypress.config.*`,
-   `pytest`/`jest`/`vitest`) and a CI workflow (`.github/workflows/*`, `.gitlab-ci.yml`, …). Both
+   `pytest`/`jest`/`vitest`) and a CI workflow (`.github/workflows/*`, `.gitlab-ci.yml`, …) —
+   probe with `find`/`test -f`, never a bare `ls playwright.config.*` / `ls .github/workflows/*`
+   (unmatched it aborts under zsh/fish, same trap as the resume-scan above). Both
    present → `framework_ci: done` silently; missing → **ask** to run one-time
    `/bmad-testarch-framework` + `/bmad-testarch-ci` now (delegate to `ab-high`) or `skip`. Heavy,
    infra-choosing setup — never auto-run without asking.
@@ -170,10 +172,19 @@ No-arg `/auto-bmad` chooses the target story with this precedence:
 1. **Incomplete auto-bmad pipeline first.** If any `state/*.yaml` has `status != done`, that
    story is the target — finish in-flight work before starting anything new. (At most one should
    exist; if several, take the most-recently-modified and mention the others in the report.)
-   Enumerate these files shell-agnostically — `find {output_folder}/auto-bmad/state -maxdepth 1
-   -name '*.yaml'` or Python — never a raw `for f in …/state/*.yaml` glob loop: the state dir is
-   empty on a first run, and an unmatched glob aborts with exit 1 under zsh/fish (`nomatch`),
-   whereas `find` yields empty output and exit 0 in every shell.
+   State files are named `{key}.yaml` — e.g. `1-2-user-auth.yaml`. There is **no `story-`
+   prefix**: the `story-{e}-{s}` form appears only in commit/PR scopes (`docs(story-1-2): …`),
+   never in a filename, so a `story-*` glob matches nothing. Enumerate these files
+   shell-agnostically — `find` or Python, never a raw `for f in …/state/*.yaml` glob loop: the
+   state dir is empty on a first run, and an unmatched glob aborts with exit 1 under zsh/fish
+   (`nomatch`), whereas `find` yields empty output and exit 0 in every shell. List the not-`done`
+   files in one shell-safe call:
+   ```
+   find {output_folder}/auto-bmad/state -maxdepth 1 -name '*.yaml' \
+     -exec grep -L '^status: done' {} +
+   ```
+   (`grep -L` prints each file lacking a `status: done` line, i.e. the in-flight ones; empty
+   output ⇒ none in flight ⇒ fall through to `story_plan.py`. Do the same in Python if preferred.)
 2. **Else `story_plan.py`** picks the next actionable story. Its own precedence is
    `in-progress → review → ready-for-dev → backlog → retrospective`, so it resumes BMAD-level
    unfinished work before pulling a fresh `backlog` item — it does NOT jump straight to backlog.
@@ -192,7 +203,10 @@ merge so `story_plan.py` moves on to the next story. A **caveated** completion (
 and a re-run, finding the auto-bmad state already `done`, reports it complete (per the rule below)
 rather than redoing the work.
 
-Once the target `story_key` is known:
+Once the target `story_key` is known, check its state by the **exact** path — you already know
+`{key}`, so `test -f {output_folder}/auto-bmad/state/{key}.yaml` then read its `status:` line.
+**Never glob for it** (no `story-*`, no `{e}-{s}-*`): a glob both misnames the file (see the
+no-`story-`-prefix note above) and, unmatched, aborts under zsh/fish.
 - If `state/{key}.yaml` exists and `status != done` → **resume**: skip phases already in
   `completed_phases`, and if Phase 7 is in progress, continue the review loop from
   `code_review_iterations`. Re-detect git mode/branch (cheap) rather than trusting stale values

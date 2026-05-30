@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-05-30
+
 ### Changed
 
 - **Per-phase resume-state now folds into the phase commit, not its own `chore` commit** — cuts ~4
@@ -287,7 +289,8 @@ First tagged release — the matching `v0.1.1` git tag for the module already pu
 - **Distribution** via the BMAD installer (custom Git source) and a Claude plugin `marketplace.json`,
   plus a README "Updating" section, `CHANGELOG.md`, and the `scripts/bump-version.py` release helper.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.8.0...v0.9.0

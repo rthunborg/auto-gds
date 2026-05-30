@@ -46,12 +46,22 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 - Conventional Commits: `type(scope): subject`.
 - Scope is the story or epic: `story-{e}-{s}` or `epic-{e}`.
 - Type per phase (see `pipeline.md` for the exact strings):
-  - `chore` — pipeline start, review-passed checkpoint
+  - `chore` — pipeline start, review-passed checkpoint, Phase 9 finalize (mark done + BMAD status)
   - `test` — TEA scaffolds/coverage, epic test design
   - `docs` — story creation, epic-end docs (gate/context/retro), Phase 9 pipeline report
   - `feat` — story implementation
   - `fix` — addressing code-review findings
-- Stage the changes the phase produced and commit. Record the short sha in state (`commits[]`).
+- **One commit per phase — the state update folds in.** A phase mutates the project artifacts
+  *and* the auto-bmad state file (`<output_folder>/auto-bmad/state/{key}.yaml`); stage **both
+  together** and make a **single** commit. **Never** emit a standalone bookkeeping commit whose
+  only change is the state file — no `chore(story-{e}-{s}): record Phase N in pipeline state`, no
+  `chore(...): update state/timestamps`. (Phase 7's trace commit in `pipeline.md` is the worked
+  example: "the trace matrix artifact … **plus the state update**" — one commit.)
+- **Recording each commit's own sha** can't happen inside that same commit (the sha doesn't exist
+  yet), so do **not** chase it with a second commit: append the just-made phase commit's short sha
+  to `commits[]` on the **next** phase's folded-in state write (Phase 9's finalize write closes out
+  the last one). `commits[]` feeds the report only — resume keys off `completed_phases`, which the
+  folded write keeps current — so a one-phase lag in `commits[]` is harmless.
 - Keep subjects imperative and ≤ ~72 chars. The `feat` subject for dev-story comes from the
   agent's one-line summary of what it built.
 

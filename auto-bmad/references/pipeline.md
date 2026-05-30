@@ -7,9 +7,12 @@ also names its `phase_profiles` **key** — the underscored form, e.g. `→ crea
 key → profile → model+effort via config — the mapping lives only in config, never hardcode a
 profile name here). `delegation.md` owns the exact `/bmad-*` command + prompt; spawn it for the
 current host/tier per `delegation-runtime.md` → read the result → if `blocked`/`needs-human`, stop
-and report → else append retro notes, **commit** (see `git-and-pr.md`), and update the state file
-(see `state-and-resume.md`). When updating state, also record timing: read the host's `date +%s`
-just before delegating the phase and again after its commit, and add the delta to `active_seconds`
+and report → else update the state file (append retro notes, mark the phase done in
+`completed_phases`, record timing — see `state-and-resume.md`) and **commit it in the same single
+commit as the phase's artifacts** (see `git-and-pr.md` → "Commits"; **never** a standalone
+state-only commit). When updating state, also record timing: read the host's `date +%s`
+just before delegating the phase and again when it returns (just before the state write + commit),
+and add the delta to `active_seconds`
 (alongside the `updated_at` stamp) — this is what lets the report split AI-run time from
 human/idle wait (`state-and-resume.md` → timing fields). **Don't count time spent waiting on the
 user:** if the phase opens an `AskUserQuestion` (e.g. the Phase 7 decision asks or the cap prompt),
@@ -297,7 +300,10 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
   the branch in place (with the report commit on it) and note it in the chat report. The CI wait
   and merge prompt below don't apply.
 - Mark the auto-bmad state file `done` — stamp `completed_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`) and
-  record `pr_url`, `ci_run_url`, `ci_status`, final `branch`, any `blockers`.
+  record `pr_url`, `ci_run_url`, `ci_status`, final `branch`, any `blockers`. **Don't commit this
+  on its own** — it folds into the single finalize commit below (alongside the BMAD-status flip),
+  so the post-push bookkeeping is **one** commit, never a `mark done` + `record PR metadata` +
+  `record CI status` chain.
 - **Advance the BMAD-level status on a clean completion only.** A **clean completion** = the full
   negation of the draft predicate (see `git-and-pr.md` → "PR"); a **caveated completion** = any
   predicate clause fires (draft PR, recorded blocker, waived gate, CI failed/timed-out). On a
@@ -310,6 +316,12 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
   re-surfacing until a human acts (a re-run then finds the auto-bmad state already `done` and
   reports it complete rather than redoing it — see `state-and-resume.md`). This flip is
   orchestrator-owned finalize bookkeeping, **not** a delegated step (`git-and-pr.md` → "Ownership").
+  **Commit the state→`done` write and these two BMAD-status flips together as the single
+  `chore(story-{e}-{s}): finalize (mark done + BMAD status)` commit**, then push it so it lands on
+  the branch/PR. On a **caveated** completion (no BMAD flip), the lone state→`done` write is still
+  that one finalize commit. The later merge-prompt outcome (`pr_merged` / `merge_method` /
+  `branch_deleted`) is written to state but gets **no commit of its own** — the run is already
+  `done` (resume skips it) and the chat report owns merge details (`git-and-pr.md` → "Merging the PR").
 - **Merge prompt** (only on a clean completion with `git.offer_merge: true`, mode `remote`, a PR
   was opened, no `skip merge-prompt` override): ask the user how to merge and execute their choice
   per `git-and-pr.md` → "Merging the PR". Records `pr_merged` / `merge_method` / `branch_deleted`

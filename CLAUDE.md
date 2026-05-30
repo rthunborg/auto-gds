@@ -151,6 +151,20 @@ runtime concern (`/auto-bmad reprovision`), not a release artifact, so nothing r
 - Don't land a user-facing change without a `CHANGELOG.md` note under `## [Unreleased]` (right
   Keep-a-Changelog heading) in the same commit/PR. Never bump the version files by hand — use
   `scripts/bump-version.py` so all three stay in sync (see "Releasing").
+- **Changelog entries are written to be skimmed.** A reader must grasp a release from the **bold
+  lead lines alone**, in seconds. Enforce:
+  - **One change = one bullet** under one heading. Never bundle (if you're writing "three
+    reinforcing fixes", that's three bullets).
+  - **Bold headline first, ≤ ~12 words, stating the user-visible effect** ("X no longer Y"), not the
+    internal mechanism.
+  - **At most ~2 sentences of detail** after the headline — the one fact a reader needs. No
+    "Previously…/the gap was…/chicken-and-egg" debugging narrative; the *how* lives in the reference
+    docs and the commit body.
+  - **No inline file-touch lists** — git history records touched files. If a pointer genuinely
+    helps, one terse trailing parenthetical (`(pipeline.md, git-and-pr.md)`), never woven into
+    sentences.
+- **Past released `## [X.Y.Z]` sections are immutable** — apply this style to new entries only;
+  never rewrite a shipped section (`release.yml` renders the GitHub Release from it).
 
 ## Known platform facts (verified)
 - **Claude Code:** sub-agents take `model:` + `effort:` frontmatter (effort is settable ONLY

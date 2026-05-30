@@ -4,9 +4,15 @@
 _bmad/
 _bmad-output/
 .agents/
-.claude/
+# .claude/ is ignored wholesale EXCEPT the one tracked maintainer skill below.
+# (Git can't re-include a path under an excluded directory, so ignore the
+# contents of each level and re-include the chain down to the skill.)
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/auto-bmad-compat-check/
 # Generated tool-native delegate agents (rendered by scripts/render-agents.py).
-# .claude/ already covers .claude/agents/; .codex/ is the Codex equivalent.
+# .claude/* already covers .claude/agents/; .codex/ is the Codex equivalent.
 .codex/
 
 # --- OS / editor noise ---

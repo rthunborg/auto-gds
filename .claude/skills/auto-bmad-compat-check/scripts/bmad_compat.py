@@ -1,0 +1,450 @@
+#!/usr/bin/env python3
+"""bmad_compat.py — assess BMAD-METHOD version changes against auto-bmad's surface.
+
+The hard, error-prone part of "is the new BMAD release compatible?" is mechanical:
+work out which versions exist (stable vs prerelease), download the *published*
+packages, diff them, and decide which changed files actually touch the skills
+auto-bmad delegates to. This script does exactly that and emits structured JSON.
+The *judgement* — does a flagged change really break us, is a new skill worth
+adopting — is left to the caller (the SKILL.md reading this output), because that
+needs reading the real diff, not a heuristic.
+
+Two modes, and only one of them touches the network:
+
+  --report     fetch npm metadata + tarballs for baseline/stable/prerelease,
+               diff them, classify, emit JSON.  (network)
+  --self-test  exercise every pure function against fixtures.  (hermetic — no
+               network, so it is safe in CI and matches the repo's other scripts)
+
+Why diff the *published tarballs* rather than git? Because that is what users
+actually `npm install`. docs/ and tests aren't packaged, so a docs-only BMAD
+change correctly shows up here as "nothing shipped" — which is the truth for a
+runtime-compatibility question.
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import re
+import sys
+import tarfile
+import urllib.request
+from difflib import unified_diff
+from urllib.parse import urlparse
+
+REGISTRY = "https://registry.npmjs.org/bmad-method"
+# Tarball URLs are read out of the registry JSON, so pin them to https on the
+# npm host before fetching — never follow a `file://` or off-host URL even if
+# the metadata is tampered with.
+ALLOWED_HOST_SUFFIX = ".npmjs.org"
+
+# Skills that don't just run in the pipeline but *own a durable contract*
+# auto-bmad reads or writes. A change here is the highest-signal kind: it can
+# alter a file format the orchestrator parses, not just an internal step.
+CONTRACT_OWNERS = {
+    "bmad-sprint-planning": "sprint-status.yaml (status keys/shape)",
+    "bmad-sprint-status": "sprint-status.yaml (status keys/shape)",
+    "bmad-create-story": "story file (Status: field + section headings)",
+    "bmad-generate-project-context": "project-context.md (path + structure)",
+    "bmad-code-review": "### Review Findings + deferred-work ledger",
+    "bmad-retrospective": "retro notes consumed for project-context refresh",
+}
+
+# Fallback surface if the caller can't supply one from the repo. Kept small and
+# obviously-current; the real run derives the surface from references/ so this
+# never silently goes stale on its own.
+FALLBACK_SURFACE = sorted(set(CONTRACT_OWNERS) | {
+    "bmad-dev-story", "bmad-testarch-test-design", "bmad-testarch-atdd",
+    "bmad-testarch-automate", "bmad-testarch-trace", "bmad-testarch-nfr",
+    "bmad-testarch-test-review", "bmad-testarch-framework", "bmad-testarch-ci",
+})
+
+# Tokens the surface regex picks up that are not real skills.
+SURFACE_NOISE = {"bmad-output", "bmad-method", "bmad-testarch"}
+
+SKILL_SEG_RE = re.compile(r"^(?:bmad|gds)-[a-z0-9]+(?:-[a-z0-9]+)*$")
+SEMVER_RE = re.compile(r"\b(\d+)\.(\d+)\.(\d+)(?:-next\.(\d+))?\b")
+
+
+# --------------------------------------------------------------------------- #
+# Pure helpers (all covered by --self-test)                                    #
+# --------------------------------------------------------------------------- #
+
+def semver_key(version: str):
+    """Sort key honouring that a `-next` prerelease sits *below* its own final
+    release but *above* the previous patch: 6.8.0 < 6.8.1-next.0 < 6.8.1."""
+    m = SEMVER_RE.search(version)
+    if not m:
+        return (0, 0, 0, 0, 0)
+    major, minor, patch, pre = m.groups()
+    is_final = 0 if pre is not None else 1  # final outranks its prerelease
+    return (int(major), int(minor), int(patch), is_final, int(pre or 0))
+
+
+def derive_surface(refs_text: str) -> list:
+    """Extract the set of BMAD skills auto-bmad delegates to by scanning its
+    reference docs. Over-inclusion is safe (a flagged skill just gets read);
+    omission is not, so we err toward catching everything that looks like a
+    skill id and only strip known non-skill tokens."""
+    found = set(re.findall(r"bmad-[a-z0-9]+(?:-[a-z0-9]+)*", refs_text))
+    return sorted(t for t in found if t not in SURFACE_NOISE)
+
+
+def skill_name_of(path: str):
+    """Return the skill-directory segment of a package path, or None.
+    e.g. src/bmm-skills/4-implementation/bmad-create-story/SKILL.md -> bmad-create-story."""
+    for seg in path.split("/"):
+        if SKILL_SEG_RE.match(seg):
+            return seg
+    return None
+
+
+def classify_path(path: str, surface) -> dict:
+    """Decide how much a changed file matters to auto-bmad.
+
+    high  — a skill auto-bmad delegates to changed (it runs this every story)
+    low   — some other BMAD skill changed (not in the pipeline, but maybe a new
+            capability worth a look)
+    info  — a non-skill file (e.g. package.json) — version noise
+    """
+    skill = skill_name_of(path)
+    surface = set(surface)
+    if skill and skill in surface:
+        entry = {"path": path, "skill": skill, "relevance": "high",
+                 "reason": "delegated skill — runs in the auto-bmad pipeline"}
+        if skill in CONTRACT_OWNERS:
+            entry["relevance"] = "critical"
+            entry["owns_contract"] = CONTRACT_OWNERS[skill]
+            entry["reason"] = ("delegated skill that OWNS a contract auto-bmad "
+                               "parses — read the diff for format changes")
+        return entry
+    if skill:
+        return {"path": path, "skill": skill, "relevance": "low",
+                "reason": "BMAD skill not in auto-bmad's pipeline — possible new capability"}
+    return {"path": path, "skill": None, "relevance": "info",
+            "reason": "non-skill file"}
+
+
+def diff_sets(files_a: dict, files_b: dict) -> dict:
+    """Compare two {path: bytes} maps into changed / added / removed path lists."""
+    a, b = set(files_a), set(files_b)
+    changed = sorted(p for p in (a & b) if files_a[p] != files_b[p])
+    return {"changed": changed, "added": sorted(b - a), "removed": sorted(a - b)}
+
+
+def _skill_dirs(files: dict) -> dict:
+    """Map skill-name -> its SKILL.md path for every skill present in a tree."""
+    out = {}
+    for path in files:
+        if path.endswith("/SKILL.md"):
+            name = skill_name_of(path)
+            if name:
+                out[name] = path
+    return out
+
+
+def parse_description(skill_md: str):
+    """Pull the `description:` value out of a SKILL.md frontmatter block."""
+    m = re.search(r"^description:\s*(.+?)\s*$", skill_md, re.MULTILINE)
+    if not m:
+        return None
+    return m.group(1).strip().strip("'\"")
+
+
+def find_new_skills(files_a: dict, files_b: dict, since: str) -> list:
+    """Skills present in the newer tree but not the older one."""
+    a, b = _skill_dirs(files_a), _skill_dirs(files_b)
+    out = []
+    for name in sorted(set(b) - set(a)):
+        content = files_b[b[name]].decode("utf-8", "replace")
+        out.append({"name": name, "path": b[name], "since": since,
+                    "description": parse_description(content)})
+    return out
+
+
+def parse_baseline_from_readme(text: str):
+    """Read the last-verified versions out of the README compat blockquote.
+    Returns (stable, prerelease|None) — the highest plain semver and the
+    highest -next, respectively."""
+    finals, pres = [], []
+    for m in SEMVER_RE.finditer(text):
+        v = m.group(0)
+        (pres if "-next." in v else finals).append(v)
+    stable = max(finals, key=semver_key) if finals else None
+    prerelease = max(pres, key=semver_key) if pres else None
+    return stable, prerelease
+
+
+def unified(path: str, a: bytes, b: bytes, max_lines: int) -> str:
+    """A bounded unified diff for one file, or a binary-change note."""
+    try:
+        a_lines = a.decode("utf-8").splitlines(keepends=True)
+        b_lines = b.decode("utf-8").splitlines(keepends=True)
+    except UnicodeDecodeError:
+        return "(binary file changed)"
+    lines = list(unified_diff(a_lines, b_lines, fromfile="a/" + path, tofile="b/" + path))
+    if len(lines) > max_lines:
+        lines = lines[:max_lines] + [f"... (+{len(lines) - max_lines} more diff lines truncated)\n"]
+    return "".join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# Network (NOT exercised by --self-test)                                       #
+# --------------------------------------------------------------------------- #
+
+def _get(url: str, timeout: int = 30) -> bytes:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not (parsed.hostname or "").endswith(ALLOWED_HOST_SUFFIX):
+        raise SystemExit(f"refusing to fetch non-npm URL: {url!r}")
+    req = urllib.request.Request(url, headers={"User-Agent": "auto-bmad-compat-check"})
+    # nosemgrep: dynamic-urllib-use-detected -- scheme+host pinned to https npm above
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+        return r.read()
+
+
+def fetch_registry() -> dict:
+    return json.loads(_get(REGISTRY).decode("utf-8"))
+
+
+def extract_package_src(tar_bytes: bytes) -> dict:
+    """Return {path: bytes} for the runtime payload — package/src/** and
+    package.json — with the leading `package/` stripped. docs/, tests/ etc. are
+    deliberately skipped: they aren't what compatibility hinges on."""
+    out = {}
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:gz") as tf:
+        for m in tf.getmembers():
+            if not m.isfile():
+                continue
+            if m.name == "package/package.json" or m.name.startswith("package/src/"):
+                fh = tf.extractfile(m)
+                if fh is not None:
+                    out[m.name[len("package/"):]] = fh.read()
+    return out
+
+
+def _tarball_url(registry: dict, version: str) -> str:
+    try:
+        return registry["versions"][version]["dist"]["tarball"]
+    except KeyError:
+        raise SystemExit(f"version {version!r} not found on npm")
+
+
+def _tree(registry: dict, version: str) -> dict:
+    return extract_package_src(_get(_tarball_url(registry, version)))
+
+
+def _compare(label, older_v, newer_v, older, newer, surface, max_lines) -> dict:
+    sets = diff_sets(older, newer)
+    impact = []
+    for path in sets["changed"]:
+        entry = classify_path(path, surface)
+        entry["change"] = "modified"
+        if entry["relevance"] in ("critical", "high", "low"):
+            entry["diff"] = unified(path, older[path], newer[path], max_lines)
+        impact.append(entry)
+    for path in sets["added"]:
+        entry = classify_path(path, surface)
+        entry["change"] = "added"
+        impact.append(entry)
+    for path in sets["removed"]:
+        entry = classify_path(path, surface)
+        entry["change"] = "removed"
+        impact.append(entry)
+    order = {"critical": 0, "high": 1, "low": 2, "info": 3}
+    impact.sort(key=lambda e: (order[e["relevance"]], e["path"]))
+    return {
+        "label": label,
+        "from": older_v,
+        "to": newer_v,
+        "files_changed": len(sets["changed"]),
+        "files_added": len(sets["added"]),
+        "files_removed": len(sets["removed"]),
+        "impact": impact,
+        "new_skills": find_new_skills(older, newer, f"{label} ({newer_v})"),
+    }
+
+
+def build_report(baseline, surface, max_lines) -> dict:
+    registry = fetch_registry()
+    tags = registry.get("dist-tags", {})
+    stable = tags.get("latest")
+    nxt = tags.get("next")
+    # A `next` tag can lag behind a fresh stable; only treat it as a real
+    # prerelease if it actually sorts above the current stable.
+    prerelease = nxt if (nxt and semver_key(nxt) > semver_key(stable)) else None
+
+    trees = {baseline: _tree(registry, baseline), stable: _tree(registry, stable)}
+    if prerelease and prerelease not in trees:
+        trees[prerelease] = _tree(registry, prerelease)
+
+    comparisons = []
+    if baseline != stable:
+        comparisons.append(_compare("baseline_to_stable", baseline, stable,
+                                    trees[baseline], trees[stable], surface, max_lines))
+    if prerelease:
+        comparisons.append(_compare("stable_to_prerelease", stable, prerelease,
+                                    trees[stable], trees[prerelease], surface, max_lines))
+
+    return {
+        "package": "bmad-method",
+        "baseline": baseline,
+        "stable": stable,
+        "prerelease": prerelease,
+        "prerelease_tag_raw": nxt,
+        "surface_skills": surface,
+        "comparisons": comparisons,
+        "summary": _summarize(baseline, stable, prerelease, comparisons),
+    }
+
+
+def _summarize(baseline, stable, prerelease, comparisons) -> dict:
+    hits = {"critical": [], "high": [], "low": []}
+    new_skills = []
+    for c in comparisons:
+        for e in c["impact"]:
+            if e["relevance"] in hits:
+                hits[e["relevance"]].append(e["path"])
+        new_skills += [s["name"] for s in c["new_skills"]]
+    if hits["critical"] or hits["high"]:
+        verdict = "needs-attention"
+    elif hits["low"] or new_skills:
+        verdict = "review-opportunities"
+    elif baseline == stable and not prerelease:
+        verdict = "up-to-date"
+    else:
+        verdict = "compatible"
+    return {
+        "verdict": verdict,
+        "delegated_skill_changes": hits["critical"] + hits["high"],
+        "contract_owner_changes": hits["critical"],
+        "other_skill_changes": hits["low"],
+        "new_skills": sorted(set(new_skills)),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Self-test                                                                    #
+# --------------------------------------------------------------------------- #
+
+def _self_test() -> int:
+    failures = []
+
+    def check(name, cond):
+        print(f"  {'PASS' if cond else 'FAIL'}  {name}")
+        if not cond:
+            failures.append(name)
+
+    # semver ordering — the subtle prerelease rule
+    ordered = sorted(["6.8.1", "6.8.0", "6.8.1-next.0", "6.7.1"], key=semver_key)
+    check("semver: 6.7.1 < 6.8.0 < 6.8.1-next.0 < 6.8.1",
+          ordered == ["6.7.1", "6.8.0", "6.8.1-next.0", "6.8.1"])
+    check("semver: prerelease ranks above previous patch",
+          semver_key("6.8.1-next.0") > semver_key("6.8.0"))
+
+    # surface derivation strips noise, keeps real skills
+    surf = derive_surface("run /bmad-create-story and bmad-testarch-trace; _bmad-output/")
+    check("surface: keeps real skills", "bmad-create-story" in surf and "bmad-testarch-trace" in surf)
+    check("surface: drops _bmad-output noise", "bmad-output" not in surf)
+
+    # skill-name extraction from realistic package paths
+    check("skill_name: bmm nested path",
+          skill_name_of("src/bmm-skills/4-implementation/bmad-create-story/SKILL.md") == "bmad-create-story")
+    check("skill_name: core-skills path",
+          skill_name_of("src/core-skills/bmad-party-mode/SKILL.md") == "bmad-party-mode")
+    check("skill_name: non-skill path", skill_name_of("package.json") is None)
+
+    # classification tiers
+    surface = ["bmad-create-story", "bmad-dev-story"]
+    c1 = classify_path("src/x/bmad-create-story/SKILL.md", surface)
+    check("classify: contract owner -> critical", c1["relevance"] == "critical" and "owns_contract" in c1)
+    c2 = classify_path("src/x/bmad-dev-story/SKILL.md", surface)
+    check("classify: delegated non-owner -> high", c2["relevance"] == "high")
+    c3 = classify_path("src/core-skills/bmad-party-mode/SKILL.md", surface)
+    check("classify: off-pipeline skill -> low", c3["relevance"] == "low")
+    c4 = classify_path("package.json", surface)
+    check("classify: non-skill -> info", c4["relevance"] == "info")
+
+    # diff sets
+    a = {"p.json": b"1", "src/a/SKILL.md": b"x", "src/gone/SKILL.md": b"z"}
+    b = {"p.json": b"2", "src/a/SKILL.md": b"x", "src/new/SKILL.md": b"y"}
+    ds = diff_sets(a, b)
+    check("diff_sets: changed", ds["changed"] == ["p.json"])
+    check("diff_sets: added", ds["added"] == ["src/new/SKILL.md"])
+    check("diff_sets: removed", ds["removed"] == ["src/gone/SKILL.md"])
+
+    # new-skill detection + description parse
+    old = {"src/core-skills/bmad-a/SKILL.md": b"---\nname: bmad-a\n---\n"}
+    new = dict(old)
+    new["src/core-skills/bmad-b/SKILL.md"] = b"---\nname: bmad-b\ndescription: Does a new thing.\n---\n"
+    ns = find_new_skills(old, new, "prerelease")
+    check("new_skills: detects added skill", len(ns) == 1 and ns[0]["name"] == "bmad-b")
+    check("new_skills: parses description", ns[0]["description"] == "Does a new thing.")
+
+    # README baseline parse — mirrors the real compat blockquote wording
+    readme = "> **Compatibility:** tested ... up to **6.8.0** (and the **6.8.1-next.0** prerelease)."
+    stable, pre = parse_baseline_from_readme(readme)
+    check("readme: stable baseline", stable == "6.8.0")
+    check("readme: prerelease baseline", pre == "6.8.1-next.0")
+
+    # unified diff truncation
+    big = unified("f", b"a\n" * 50, b"b\n" * 50, max_lines=10)
+    check("unified: truncates", "truncated" in big)
+
+    print()
+    if failures:
+        print(f"FAILED: {len(failures)} check(s)")
+        return 1
+    print("All self-tests passed.")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# CLI                                                                          #
+# --------------------------------------------------------------------------- #
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--self-test", action="store_true", help="run hermetic checks and exit")
+    ap.add_argument("--report", action="store_true", help="fetch + diff + classify (network)")
+    ap.add_argument("--baseline", help="last-verified stable version (e.g. 6.8.0); "
+                                       "defaults to the README compat blockquote via --readme")
+    ap.add_argument("--readme", help="path to README.md to read the baseline from")
+    ap.add_argument("--refs", nargs="*", default=[],
+                    help="reference docs to derive the delegated-skill surface from")
+    ap.add_argument("--max-diff-lines", type=int, default=160,
+                    help="cap unified-diff length per file")
+    args = ap.parse_args()
+
+    if args.self_test:
+        return _self_test()
+
+    if not args.report:
+        ap.error("nothing to do: pass --report or --self-test")
+
+    baseline = args.baseline
+    if not baseline and args.readme:
+        with open(args.readme, encoding="utf-8") as fh:
+            baseline, _ = parse_baseline_from_readme(fh.read())
+    if not baseline:
+        ap.error("could not determine baseline: pass --baseline or --readme")
+
+    surface = []
+    for path in args.refs:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                surface += derive_surface(fh.read())
+        except OSError:
+            pass
+    surface = sorted(set(surface)) or FALLBACK_SURFACE
+
+    report = build_report(baseline, surface, args.max_diff_lines)
+    json.dump(report, sys.stdout, indent=2)
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

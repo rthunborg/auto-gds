@@ -107,6 +107,8 @@ python3 auto-bmad/scripts/state_plan.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
 python3 auto-bmad/scripts/config_plan.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test
+# Maintainer-only skill (tracked under .claude/ via gitignore exception; NOT shipped to users):
+python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test
 # Marketplace manifest is valid JSON:
 python3 -m json.tool .claude-plugin/marketplace.json >/dev/null
 # Module structure passes the BMAD validator (run from the repo root, which holds the one skill):
@@ -144,7 +146,10 @@ runtime concern (`/auto-bmad reprovision`), not a release artifact, so nothing r
 - Conventional Commits (`feat:`/`fix:`/`docs:`/`test:`/`chore:`/`refactor:`).
 - Never commit the local BMAD test install or generated agents — `_bmad/`, `_bmad-output/`,
   `.agents/`, `.claude/`, `.codex/` are gitignored. The published repo is module + marketplace +
-  docs only.
+  docs only. **One deliberate exception** (a `.gitignore` negation): the tracked maintainer skill
+  `.claude/skills/auto-bmad-compat-check/` — checks new BMAD releases (npm `latest`/`next`) for
+  impact on auto-bmad and offers to bump the README compat markers. It's repo tooling, not shipped
+  inside the module (like `scripts/bump-version.py`); everything else under `.claude/` stays ignored.
 - Markdown reference files are read by the orchestrator at runtime; keep them concise and
   unambiguous (they are instructions, not prose). Helper scripts stay dependency-free with a
   `--self-test`.

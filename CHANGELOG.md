@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **README now states BMAD compatibility** — a blockquote plus a `tested with BMAD 6.8.x` badge,
+  tested against the BMAD-METHOD v6 skill line. Contract-based (skill names, `sprint-status.yaml`,
+  `project-context.md` path, story `Status:`), not a pinned version, so routine BMAD patch/minor
+  updates are expected to work.
+
 ## [0.10.2] - 2026-05-30
 
 ### Changed

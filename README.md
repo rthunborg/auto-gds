@@ -1,6 +1,6 @@
 # auto-bmad
 
-[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.10.2-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.10.2-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Tested with BMAD 6.8.x](https://img.shields.io/badge/tested%20with%20BMAD-6.8.x-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**.
 
@@ -9,6 +9,8 @@ A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/B
 The orchestrator **only delegates and reports.** Every BMAD step runs inside a sub-agent, with the model and thinking effort matched to the stakes of the step (e.g. Opus/max for high-stakes implementation, a faster model for low-stakes mechanics). On **Claude Code and Codex** those delegates are real, tuned subagents (`.claude/agents` / `.codex/agents`, generated from a configurable profiles block); on a tool with generic subagents it falls back to those (untuned), and on one with none it runs steps inline — same pipeline either way.
 
 > Requires the BMAD skills it orchestrates (`bmm`, plus `tea` for the test phases) and a `_bmad/` config in your project — the installer below can add these in the same run. auto-bmad drives those skills; it does not replace them.
+
+> **Compatibility:** tested against the **[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) v6 skill line**, currently up to **6.8.0** (and the **6.8.1-next.0** prerelease).
 
 > ⚠️ **It can't save you from bad inputs.** auto-bmad automates the *workflow*, not judgment — the quality of what comes out is capped by what goes in. Vague epics, thin acceptance criteria, or a shaky architecture produce vague, untrustworthy code, just faster and more confidently. The automated code-review loop and the human-in-the-loop stops below are guardrails, not guarantees; the real leverage is clear stories and a sound design *before* you press go. Garbage in, garbage out.
 

@@ -1,15 +1,16 @@
 ---
 name: auto-bmad-compat-check
+# Maintainer/utility skill: user-invocable only (run /auto-bmad-compat-check);
+# never auto-triggered by the model, so it can't fire mid-pipeline.
+disable-model-invocation: true
 description: >
-  Check whether new BMAD-METHOD releases are compatible with auto-bmad. Use this
-  whenever the user asks to check, compare, or assess BMAD versions — stable or
-  prerelease (the npm `latest` / `next` tags), "what changed in BMAD", "is BMAD
-  6.x compatible", "should we bump the BMAD compat badge", or "are there new BMAD
-  skills/features auto-bmad could use". It reports what changed since the last
-  verified version, whether it impacts auto-bmad's pipeline, and which new
+  Maintainer tool for the auto-bmad repo itself (run it with
+  /auto-bmad-compat-check) — not for end-user BMAD projects. Checks whether new
+  BMAD-METHOD releases (the npm `latest` stable and `next` prerelease) are
+  compatible with auto-bmad: reports what changed since the last verified
+  version, whether it impacts auto-bmad's delegated-skill pipeline, and which new
   skills/features are worth adopting — then offers to update the README/CHANGELOG
-  compatibility markers. This is a maintainer tool for the auto-bmad repo itself,
-  not for end-user BMAD projects.
+  compatibility markers.
 ---
 
 # BMAD compatibility check

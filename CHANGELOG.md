@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-05-30
+
 ### Changed
 
 - **Retuned the delegate profile set to cut token cost.** Removed the `ab-max` profile (opus/`max`
@@ -569,7 +571,8 @@ changelog and release tooling to keep versions traceable from here on.
   release helper that promotes `[Unreleased]`, syncs the version in
   `marketplace.json` + `module.yaml`, commits, and tags.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.7.0...v0.8.0

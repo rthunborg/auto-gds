@@ -59,7 +59,7 @@ reference file at the moment its step calls for it.
   runs each step in an isolated delegate at the profile's tuned model + thinking/reasoning
   effort; `general-subagents` uses the host's generic subagent without effort tuning; `inline`
   runs the step in this context as a last resort. `phase_profiles` maps each phase to a profile
-  (`ab-max`/`ab-xhigh`/`ab-high`/`ab-alt`); `profiles` holds each profile's per-tool model +
+  (`ab-xhigh`/`ab-high`/`ab-alt-xhigh`/`ab-alt-high`); `profiles` holds each profile's per-tool model +
   effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`)
   are rendered at setup by `scripts/render-agents.py` from those profiles.
 - The delegate prompt is always the **exact** content from `references/delegation.md` for that

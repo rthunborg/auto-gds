@@ -13,6 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Retuned the delegate profile set to cut token cost.** Removed the `ab-max` profile (opus/`max`
+  effort, gpt-5.5/`xhigh`) — its only job, `dev_story`, was overkill at `max` effort — and folded
+  its persona into `ab-xhigh` (opus/`xhigh`), which now owns `dev_story` alongside `create_story`,
+  primary review, and the epic gates. Split the former `ab-alt` (sonnet/gpt-5.4) into two
+  effort tiers: **`ab-alt-xhigh`** (sonnet/gpt-5.4 at `xhigh`) for the model-diversity
+  `code_review_review_secondary` pass, so the secondary reviewer matches the primary reviewer's
+  reasoning depth; and **`ab-alt-high`** (sonnet/gpt-5.4 at `high`, the old `ab-alt` tuning) for the
+  genuinely light `tea_triage` and `retrospective` steps. Also moved **`code_review_fix` from
+  `ab-xhigh` to `ab-high`** (opus/`high`): applying already-identified review findings is more
+  mechanical than the adversarial hunt that surfaced them, so it doesn't need the top reasoning
+  tier. The profile set stays four (`ab-xhigh`,
+  `ab-high`, `ab-alt-xhigh`, `ab-alt-high`). **Existing projects:** run `/auto-bmad reprovision`
+  after updating to re-render the agent files; Phase-0 drift heal will append the two new `ab-alt-*`
+  profiles, but because it never overwrites existing values, any `phase_profiles` still pointing at
+  the retired `ab-max`/`ab-alt` must be repointed by hand (or re-seeded from the asset). Updated
+  `assets/agents/profiles.yaml`, `render-agents.py`/`config_plan.py` (constants + self-tests),
+  `SKILL.md`, and `references/delegation-runtime.md` / `state-and-resume.md`.
+
 ## [0.10.0] - 2026-05-29
 
 ### Added

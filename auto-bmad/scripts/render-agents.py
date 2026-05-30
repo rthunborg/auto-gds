@@ -2,7 +2,7 @@
 """Render auto-bmad's tool-native delegate agents from a profiles definition.
 
 The auto-bmad orchestrator delegates each pipeline step to one of four profiles
-(``ab-max``, ``ab-xhigh``, ``ab-high``, ``ab-alt``). Each profile carries both
+(``ab-xhigh``, ``ab-high``, ``ab-alt-xhigh``, ``ab-alt-high``). Each profile carries both
 tool-neutral persona strings (``description`` / ``role_blurb`` /
 ``status_example``) and per-tool model + thinking/reasoning effort. This script
 fills ONE shared body template per tool with those values, so the four profiles
@@ -50,7 +50,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-PROFILE_NAMES = ("ab-max", "ab-xhigh", "ab-high", "ab-alt")
+PROFILE_NAMES = ("ab-xhigh", "ab-high", "ab-alt-xhigh", "ab-alt-high")
 
 # tool -> (one shared body template, output dir + suffix, tool-specific placeholders)
 TOOLS = {
@@ -116,19 +116,19 @@ def parse_profiles(text: str) -> dict:
     Supports block style::
 
         profiles:
-          ab-max:
+          ab-xhigh:
             description: "..."
             role_blurb: "..."
             status_example: "..."
             claude:
               model: opus
-              effort: max
+              effort: xhigh
 
     and an inline flow map at the tool level::
 
         profiles:
-          ab-max:
-            claude: {model: opus, effort: max}
+          ab-xhigh:
+            claude: {model: opus, effort: xhigh}
 
     Per-profile scalar values (``description``, ``role_blurb``,
     ``status_example``, …) sit at indent 4 alongside the tool subsections; they
@@ -146,7 +146,7 @@ def parse_profiles(text: str) -> dict:
             continue
         indent = len(raw) - len(raw.lstrip(" "))
         # Indent comes from `raw`; strip any trailing comment so structural lines
-        # like `profiles:  # ...`, `ab-max:  # ...`, `claude:  # ...` (the
+        # like `profiles:  # ...`, `ab-xhigh:  # ...`, `claude:  # ...` (the
         # documented config carries these) parse the same as bare ones.
         stripped = _strip_comment(raw.strip())
 
@@ -338,61 +338,63 @@ def _run_self_test() -> int:
         assert profiles[name]["claude"].get("effort"), f"{name}.claude.effort empty"
         assert profiles[name]["codex"].get("model"), f"{name}.codex.model empty"
         assert profiles[name]["codex"].get("reasoning_effort"), f"{name}.codex.reasoning_effort empty"
-    assert profiles["ab-max"]["claude"]["model"] == "opus"
-    assert profiles["ab-max"]["claude"]["effort"] == "max"
-    assert profiles["ab-alt"]["claude"]["model"] == "sonnet"
+    assert profiles["ab-xhigh"]["claude"]["model"] == "opus"
+    assert profiles["ab-xhigh"]["claude"]["effort"] == "xhigh"
+    assert profiles["ab-alt-xhigh"]["claude"]["model"] == "sonnet"
+    assert profiles["ab-alt-xhigh"]["claude"]["effort"] == "xhigh"
+    assert profiles["ab-alt-high"]["claude"]["model"] == "sonnet"
     # Descriptions carry the profile-distinctive signal — sanity-check the labels.
-    assert "HIGHEST-stakes" in profiles["ab-max"]["description"]
-    assert "deep-reasoning, high-stakes" in profiles["ab-xhigh"]["description"]
+    assert "highest-stakes, deep-reasoning" in profiles["ab-xhigh"]["description"]
     assert "test- and context-infrastructure" in profiles["ab-high"]["description"]
-    assert "lighter-weight" in profiles["ab-alt"]["description"]
+    assert "alternate-model secondary code-review" in profiles["ab-alt-xhigh"]["description"]
+    assert "lighter-weight" in profiles["ab-alt-high"]["description"]
 
     # Inline-flow-map parsing.
     inline = parse_profiles(
-        "profiles:\n  ab-max:\n    claude: {model: haiku, effort: low}\n    codex: {model: m, reasoning_effort: minimal}\n"
+        "profiles:\n  ab-xhigh:\n    claude: {model: haiku, effort: low}\n    codex: {model: m, reasoning_effort: minimal}\n"
     )
-    assert inline["ab-max"]["claude"] == {"model": "haiku", "effort": "low"}, inline
+    assert inline["ab-xhigh"]["claude"] == {"model": "haiku", "effort": "low"}, inline
 
     # Comment + quote stripping and ignoring sibling top-level keys.
     mixed = parse_profiles(
         "tea:\n  enabled: true\n"
-        "profiles:\n  ab-max:\n    claude:\n      model: \"opus\"  # the big one\n      effort: max\n"
+        "profiles:\n  ab-xhigh:\n    claude:\n      model: \"opus\"  # the big one\n      effort: xhigh\n"
         "git:\n  mode: auto\n"
     )
-    assert mixed["ab-max"]["claude"]["model"] == "opus", mixed
-    assert mixed["ab-max"]["claude"]["effort"] == "max", mixed
+    assert mixed["ab-xhigh"]["claude"]["model"] == "opus", mixed
+    assert mixed["ab-xhigh"]["claude"]["effort"] == "xhigh", mixed
     assert "git" not in mixed and "tea" not in mixed
 
     # Per-profile scalar metadata at indent 4, alongside the tool subsections.
     scalar = parse_profiles(
         "profiles:\n"
-        "  ab-max:\n"
+        "  ab-xhigh:\n"
         "    description: \"big stakes\"\n"
         "    role_blurb: \"hard work\"\n"
         "    status_example: \"all green\"\n"
         "    claude:\n"
         "      model: opus\n"
-        "      effort: max\n"
+        "      effort: xhigh\n"
     )
-    assert scalar["ab-max"]["description"] == "big stakes", scalar
-    assert scalar["ab-max"]["role_blurb"] == "hard work", scalar
-    assert scalar["ab-max"]["status_example"] == "all green", scalar
-    assert scalar["ab-max"]["claude"]["model"] == "opus", scalar
+    assert scalar["ab-xhigh"]["description"] == "big stakes", scalar
+    assert scalar["ab-xhigh"]["role_blurb"] == "hard work", scalar
+    assert scalar["ab-xhigh"]["status_example"] == "all green", scalar
+    assert scalar["ab-xhigh"]["claude"]["model"] == "opus", scalar
 
     # Trailing comments on STRUCTURAL lines (profiles:/profile/tool), as the
     # documented runtime config carries them — must parse like bare lines.
     commented = parse_profiles(
         "profiles:                  # per-profile model + effort, PER TOOL\n"
-        "  ab-max:                  # reads to generate the agent files\n"
+        "  ab-xhigh:                # reads to generate the agent files\n"
         "    claude:                # keep block style; run reprovision after\n"
         "      model: opus\n"
-        "      effort: max\n"
+        "      effort: xhigh\n"
         "    codex:\n"
         "      model: gpt-5.5\n"
         "      reasoning_effort: high\n"
     )
-    assert commented["ab-max"]["claude"] == {"model": "opus", "effort": "max"}, commented
-    assert commented["ab-max"]["codex"]["reasoning_effort"] == "high", commented
+    assert commented["ab-xhigh"]["claude"] == {"model": "opus", "effort": "xhigh"}, commented
+    assert commented["ab-xhigh"]["codex"]["reasoning_effort"] == "high", commented
 
     # End-to-end render into a temp project root, both tools.
     with tempfile.TemporaryDirectory() as td:
@@ -401,21 +403,21 @@ def _run_self_test() -> int:
         assert result["status"] == "success", result
         assert not result["warnings"], f"unexpected warnings: {result['warnings']}"
 
-        claude_max = (root / ".claude/agents/ab-max.md").read_text(encoding="utf-8")
-        assert "model: opus" in claude_max and "effort: max" in claude_max, claude_max[:200]
-        assert "@@" not in claude_max, "unfilled placeholder in Claude output"
-        assert "name: ab-max" in claude_max
+        claude_xhigh = (root / ".claude/agents/ab-xhigh.md").read_text(encoding="utf-8")
+        assert "model: opus" in claude_xhigh and "effort: xhigh" in claude_xhigh, claude_xhigh[:200]
+        assert "@@" not in claude_xhigh, "unfilled placeholder in Claude output"
+        assert "name: ab-xhigh" in claude_xhigh
         # Metadata flowed into the body.
-        assert "HIGHEST-stakes" in claude_max, "description not substituted into Claude body"
-        assert "implementing story code" in claude_max, "role_blurb not substituted"
-        assert "story moved to `review`" in claude_max, "status_example not substituted"
+        assert "highest-stakes" in claude_xhigh, "description not substituted into Claude body"
+        assert "implementing story code" in claude_xhigh, "role_blurb not substituted"
+        assert "story moved to `review`" in claude_xhigh, "status_example not substituted"
 
-        codex_max = (root / ".codex/agents/ab-max.toml").read_text(encoding="utf-8")
-        assert 'model = "gpt-5.5"' in codex_max, codex_max[:200]
-        assert 'model_reasoning_effort = "xhigh"' in codex_max, codex_max[:200]
-        assert "@@" not in codex_max, "unfilled placeholder in Codex output"
-        assert "HIGHEST-stakes" in codex_max, "description not substituted into Codex body"
-        assert "implementing story code" in codex_max, "role_blurb not substituted (codex)"
+        codex_xhigh = (root / ".codex/agents/ab-xhigh.toml").read_text(encoding="utf-8")
+        assert 'model = "gpt-5.5"' in codex_xhigh, codex_xhigh[:200]
+        assert 'model_reasoning_effort = "xhigh"' in codex_xhigh, codex_xhigh[:200]
+        assert "@@" not in codex_xhigh, "unfilled placeholder in Codex output"
+        assert "highest-stakes" in codex_xhigh, "description not substituted into Codex body"
+        assert "implementing story code" in codex_xhigh, "role_blurb not substituted (codex)"
 
         # Cross-tool drift guard: the persona strings are identical on both
         # sides because they came from the single profiles entry. If a future
@@ -438,15 +440,15 @@ def _run_self_test() -> int:
         try:
             import tomllib  # py3.11+
 
-            parsed = tomllib.loads(codex_max)
-            assert parsed["name"] == "ab-max"
+            parsed = tomllib.loads(codex_xhigh)
+            assert parsed["name"] == "ab-xhigh"
             assert parsed["model"] == "gpt-5.5"
             assert parsed["model_reasoning_effort"] == "xhigh"
             assert parsed["developer_instructions"].strip()
-            assert "HIGHEST-stakes" in parsed["description"]
+            assert "highest-stakes" in parsed["description"]
         except ModuleNotFoundError:
             # Older Python: fall back to a structural sanity check.
-            assert codex_max.count('"""') == 2, "developer_instructions block malformed"
+            assert codex_xhigh.count('"""') == 2, "developer_instructions block malformed"
 
         # All four profiles rendered for both tools => 8 files.
         assert len(result["files_written"]) == 8, result["files_written"]
@@ -458,10 +460,10 @@ def _run_self_test() -> int:
 
         # Editing a profile makes that agent's rendered output differ -> stale.
         bumped = json.loads(json.dumps(profiles))  # deep copy
-        bumped["ab-alt"]["claude"]["model"] = "opus"
+        bumped["ab-alt-high"]["claude"]["model"] = "opus"
         chk_stale = check(bumped, ["claude-code"], templates_dir, root)
         assert chk_stale["needs_reprovision"], chk_stale
-        assert any(p.endswith("ab-alt.md") for p in chk_stale["stale"]), chk_stale
+        assert any(p.endswith("ab-alt-high.md") for p in chk_stale["stale"]), chk_stale
         assert not chk_stale["missing"], chk_stale
 
         # Editing a tool-neutral metadata key also marks both tools' outputs stale.
@@ -473,17 +475,17 @@ def _run_self_test() -> int:
         assert any(p.endswith("ab-high.toml") for p in chk_meta["stale"]), chk_meta
 
         # Deleting a generated file -> missing.
-        (root / ".claude/agents/ab-max.md").unlink()
+        (root / ".claude/agents/ab-xhigh.md").unlink()
         chk_missing = check(profiles, ["claude-code"], templates_dir, root)
         assert chk_missing["needs_reprovision"], chk_missing
-        assert any(p.endswith("ab-max.md") for p in chk_missing["missing"]), chk_missing
+        assert any(p.endswith("ab-xhigh.md") for p in chk_missing["missing"]), chk_missing
 
         # A tool dropped from target_tools leaves 'extra' files (informational,
         # not on its own a reprovision trigger). Re-render to a clean state first.
         render(profiles, ["claude-code", "codex"], templates_dir, root)
         chk_extra = check(profiles, ["claude-code"], templates_dir, root)
         assert chk_extra["status"] == "fresh", chk_extra
-        assert any(p.endswith("ab-max.toml") for p in chk_extra["extra"]), chk_extra
+        assert any(p.endswith("ab-xhigh.toml") for p in chk_extra["extra"]), chk_extra
 
         # dry-run writes nothing new.
         with tempfile.TemporaryDirectory() as td2:

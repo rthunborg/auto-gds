@@ -9,8 +9,8 @@ everything:
 - `delegation.host` — `claude-code` | `codex` | `other`
 - `delegation.mode` — `custom-subagents` | `general-subagents` | `inline`
 
-`phase_profiles` (also in config) maps each phase to a profile name (`ab-max`, `ab-xhigh`,
-`ab-high`, `ab-alt`); `profiles` holds each profile's per-tool model + effort.
+`phase_profiles` (also in config) maps each phase to a profile name (`ab-xhigh`, `ab-high`,
+`ab-alt-xhigh`, `ab-alt-high`); `profiles` holds each profile's per-tool model + effort.
 
 ## Resolving host & mode (every run)
 
@@ -74,14 +74,14 @@ Full fidelity: the delegate runs in an isolated context at the profile's tuned m
 Look up the profile for the phase via `phase_profiles`, then:
 
 - **Claude Code:** delegate with the Agent/Task tool, `subagent_type` = the profile name
-  (`ab-max` / `ab-xhigh` / `ab-high` / `ab-alt`). These resolve to the project-level
+  (`ab-xhigh` / `ab-high` / `ab-alt-xhigh` / `ab-alt-high`). These resolve to the project-level
   `.claude/agents/<name>.md` rendered at setup. (No plugin namespace prefix — they are project
   agents now.) The agent body already carries the autonomy directive; the prompt is the
   `delegation.md` body with placeholders filled.
 - **Codex:** Codex spawns a subagent only when explicitly asked, and identifies it by its
   `name`. Phrase the delegation unambiguously, e.g.:
 
-  > Use the **ab-max** agent to do the following, then report back its full structured result
+  > Use the **ab-xhigh** agent to do the following, then report back its full structured result
   > block (Outcome / Files changed / Status / Open questions / Deferred work / Blockers / Retro
   > notes):
   > <the delegation.md prompt body>

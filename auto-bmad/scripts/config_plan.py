@@ -353,7 +353,7 @@ def _run_self_test() -> int:
     for k in ("create_story", "dev_story", "tea_triage", "tea_per_story", "tea_epic", "project_context", "retrospective"):
         assert k in a_pp, f"asset phase_profiles missing {k}: {sorted(a_pp)}"
     a_prof = parse_profiles_blocks(asset_text.splitlines(keepends=True), find_block(asset_text.splitlines(keepends=True), "profiles"))
-    for name in ("ab-max", "ab-xhigh", "ab-high", "ab-alt"):
+    for name in ("ab-xhigh", "ab-high", "ab-alt-xhigh", "ab-alt-high"):
         assert name in a_prof, f"asset profiles missing {name}"
         assert "claude:model" in a_prof[name]["keys"], a_prof[name]["keys"]
         assert "codex:reasoning_effort" in a_prof[name]["keys"], a_prof[name]["keys"]
@@ -370,29 +370,29 @@ def _run_self_test() -> int:
         'delegation:\n'
         '  host: auto\n'
         'profiles:\n'
-        '  ab-max:\n'
-        '    description: "big"\n'
-        '    role_blurb: "work"\n'
-        '    status_example: "green"\n'
+        '  ab-xhigh:\n'
+        '    description: "deep"\n'
+        '    role_blurb: "deep work"\n'
+        '    status_example: "ok"\n'
         '    claude:\n'
         '      model: haiku\n'        # user RETUNE — must be preserved
         '      effort: low\n'
         '    codex:\n'
         '      model: gpt-x\n'
         '      reasoning_effort: medium\n'
-        '  ab-xhigh:\n'
-        '    description: "deep"\n'
-        '    role_blurb: "deep work"\n'
+        '  ab-high:\n'
+        '    description: "infra"\n'
+        '    role_blurb: "infra work"\n'
         '    status_example: "ok"\n'
         '    claude:\n'
         '      model: opus\n'
-        '      effort: xhigh\n'
+        '      effort: high\n'
         '    codex:\n'
         '      model: gpt-x\n'
         '      reasoning_effort: high\n'
         'phase_profiles:\n'
         '  create_story: ab-xhigh\n'
-        '  dev_story: ab-max\n'
+        '  dev_story: ab-xhigh\n'
         'git:\n'
         '  mode: auto\n'
     )
@@ -400,9 +400,9 @@ def _run_self_test() -> int:
     info = analyze(stale_cfg, asset_text, "0.8.0", "0.9.0")
     pub = _public(info)
     assert "tea_triage" in pub["missing_phase_profiles"], pub["missing_phase_profiles"]
-    assert pub["missing_phase_profiles"]["tea_triage"] == "ab-alt", pub
-    # ab-high / ab-alt absent from the stale config => flagged as whole missing profiles.
-    assert set(pub["missing_profiles"]) == {"ab-high", "ab-alt"}, pub["missing_profiles"]
+    assert pub["missing_phase_profiles"]["tea_triage"] == "ab-alt-high", pub
+    # ab-alt-xhigh / ab-alt-high absent from the stale config => flagged as whole missing profiles.
+    assert set(pub["missing_profiles"]) == {"ab-alt-xhigh", "ab-alt-high"}, pub["missing_profiles"]
     assert pub["needs_reseed"] is True, pub
     assert pub["version"]["drift"] is True and pub["version"]["config_older"] is True, pub
 
@@ -416,12 +416,12 @@ def _run_self_test() -> int:
     h_pp = parse_phase_profiles(h_lines, find_block(h_lines, "phase_profiles"))
     for k, v in a_pp.items():
         assert h_pp.get(k) == v, f"phase_profiles not healed for {k}: got {h_pp.get(k)}"
-    # User retune preserved: ab-max.claude.model stays haiku, NOT reset to the asset's opus.
+    # User retune preserved: ab-xhigh.claude.model stays haiku, NOT reset to the asset's opus.
     h_prof = parse_profiles_blocks(h_lines, find_block(h_lines, "profiles"))
-    assert set(("ab-max", "ab-xhigh", "ab-high", "ab-alt")).issubset(set(h_prof)), sorted(h_prof)
+    assert set(("ab-xhigh", "ab-high", "ab-alt-xhigh", "ab-alt-high")).issubset(set(h_prof)), sorted(h_prof)
     assert "model: haiku" in healed and "effort: low" in healed, "user retune clobbered"
     # The healed asset profiles carry their real descriptions (verbatim copy).
-    assert "lighter-weight" in healed, "ab-alt block not copied verbatim"
+    assert "lighter-weight" in healed, "ab-alt-high block not copied verbatim"
     # Other config blocks survive intact.
     assert "delegation:" in healed and "git:" in healed and "mode: auto" in healed, healed
 
@@ -440,22 +440,22 @@ def _run_self_test() -> int:
     assert info_fresh["version"]["drift"] is False, info_fresh["version"]
 
     # --- manual_review: an existing profile missing a sub-key the asset has. ---
-    # Drop ONLY ab-max's claude.effort from an otherwise-complete config.
+    # Drop ONLY ab-xhigh's claude.effort from an otherwise-complete config.
     cfg_subkey = fresh_from_asset.replace(
-        "      model: opus\n      effort: max\n", "      model: opus\n", 1
+        "      model: opus\n      effort: xhigh\n", "      model: opus\n", 1
     )
-    assert cfg_subkey != fresh_from_asset, "fixture: ab-max claude.effort line not found to drop"
+    assert cfg_subkey != fresh_from_asset, "fixture: ab-xhigh claude.effort line not found to drop"
     info3 = analyze(cfg_subkey, asset_text, "0.9.0", "0.9.0")
     assert not info3["needs_reseed"], _public(info3)  # all profiles + phase_profiles still present
     assert not info3["missing_profiles"], info3["missing_profiles"]
-    assert any(m["profile"] == "ab-max" and m["missing_key"] == "claude:effort" for m in info3["manual_review"]), info3["manual_review"]
+    assert any(m["profile"] == "ab-xhigh" and m["missing_key"] == "claude:effort" for m in info3["manual_review"]), info3["manual_review"]
     # manual_review alone is not auto-reseeded, and apply() leaves the profile untouched.
     res3 = apply(cfg_subkey, asset_text, "0.9.0", "0.9.0")
     assert not res3["reseeded_profiles"], res3
     assert "claude:effort" in {m["missing_key"] for m in res3["manual_review"]}, res3
 
     # --- version stamp absent entirely (very old config) => inserted after `version:`. ---
-    no_stamp = "version: 1\nprofiles:\n  ab-max:\n    claude:\n      model: opus\n      effort: max\n"
+    no_stamp = "version: 1\nprofiles:\n  ab-xhigh:\n    claude:\n      model: opus\n      effort: xhigh\n"
     res4 = apply(no_stamp, asset_text, None, "0.9.0")
     assert res4["version_restamped"] == {"from": None, "to": "0.9.0"}, res4["version_restamped"]
     assert re.search(r'version: 1\nprofiles_source_version: "0\.9\.0"', res4["new_text"]), res4["new_text"][:120]

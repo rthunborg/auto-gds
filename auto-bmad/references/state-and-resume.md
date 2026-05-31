@@ -13,7 +13,7 @@ _bmad-output/auto-bmad/
 ## config.yaml
 ```yaml
 version: 1
-profiles_source_version: "0.10.2"  # abm version whose assets/agents/profiles.yaml seeded the
+profiles_source_version: "0.10.3"  # abm version whose assets/agents/profiles.yaml seeded the
                                   # profiles + phase_profiles blocks below. Stamped at first-run
                                   # write and re-stamped by the Phase 0 config-drift heal (and by
                                   # `/auto-bmad reprovision`) when they re-seed. Read every run by

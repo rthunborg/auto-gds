@@ -14,11 +14,14 @@ already carry the full form, so the short version is enough.
 
 **Shared autonomy directive (append to every prompt):**
 > Run fully autonomously — answer any interactive BMAD menu/checkpoint with the sensible default
-> and never wait for human input. If something genuinely needs a human (missing secret/credential,
+> and never wait for human input. The sensible default is ALWAYS the option that completes the
+> step and persists its deliverable — never one that skips it, discards findings, or writes
+> nothing (e.g. a `no-spec` branch when a spec path was given); any step-specific instruction in
+> this prompt overrides this generic rule. If something genuinely needs a human (missing secret/credential,
 > external service, manual action, or an ambiguity that changes the outcome), STOP and report it
 > as `needs-human`. Return the structured result: Outcome, Files changed, Status, Open questions,
-> Deferred work, Blockers, Retro notes (terse — say `none` unless something is genuinely worth the
-> epic retrospective; one line per item, no recap of routine work).
+> Deferred work, Blockers, Retro notes (short and terse — say `none` unless something is genuinely 
+> worth the epic retrospective; one line per item, no recap of routine work).
 
 **Placeholders (canonical glossary — `pipeline.md` references this list, not its own copy).**
 `<...>` = a filesystem path the orchestrator resolves; `{...}` = a non-path value it fills in
@@ -90,11 +93,15 @@ moved to `review`. Do not commit or branch — the orchestrator handles git.
 ### code-review
 ```
 Run `/bmad-code-review` in <project_root>.
-SPEC BINDING (do this first): the review's spec/story file is EXACTLY <story_file>. When the
-skill resolves its review target, set its spec file to that path and run in FULL (spec) review
-mode — if it asks whether a spec/story file exists, answer yes with that path. NEVER let it fall
-into `no-spec` mode: that silently drops `[Review][Decision]` items and persists nothing.
-DIFF SOURCE: the changes on the current branch — branch diff against the base branch.
+SPEC BINDING (do this first — this OVERRIDES the appended autonomy directive's "pick the
+sensible default" rule): the review's spec is ALREADY resolved — treat the skill's own
+`{spec_file}` = <story_file> and `{review_mode}` = `full` as Tier-1 input given to you in this
+message. Do NOT ask "Is there a spec or story file?", and at NO checkpoint take a `no-spec`,
+"[N] No, let me choose", or decline branch — always keep <story_file> bound as the spec and run
+in FULL (spec) review mode. `no-spec` mode is a FAILURE here, not a fallback: it persists
+nothing to the story file and silently downgrades `[Review][Decision]` items to patch/defer.
+DIFF SOURCE (also Tier-1, so the target cascade never asks): branch diff of the current branch
+against the base branch.
 
 Persisting findings to <story_file>'s `### Review Findings` section IS the deliverable of this
 step (not the chat summary): the skill writes `[Review][Patch]`, `[Review][Decision]`, and
@@ -105,7 +112,9 @@ ledger `<impl>/deferred-work.md` (the skill's own `deferred_work_file`) — one 
 under a `## Deferred from: code review of {key} (<date>)` heading; create the file if absent. The
 skill already does this in the same findings-write step (not the interactive defer prompt), so it
 is part of this step's deliverable, not an optional extra — confirm it actually happened.
-VERIFY THEN REPORT: after the skill finishes, RE-READ <story_file> and confirm the
+VERIFY THEN REPORT: the `/bmad-code-review` chat summary is NOT your deliverable — the persisted
+`### Review Findings` section is. Do not end your turn on the skill's summary alone. After the
+skill finishes, RE-READ <story_file> and confirm the
 `### Review Findings` section exists and holds one bullet per finding you raised; likewise RE-READ
 `<impl>/deferred-work.md` and confirm each `[Review][Defer]` finding has a matching bullet there.
 If you raised findings but either is missing/incomplete, write them there yourself before returning.

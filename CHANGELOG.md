@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Code review now persists findings on the first pass** — no more wasted retry from a `no-spec`
+  run. **Upgraders:** run `/auto-bmad reprovision` to re-render the agents with the new contract.
+
 ### Added
 
 - **README now states BMAD compatibility** — a blockquote plus a `tested with BMAD 6.8.x` badge,

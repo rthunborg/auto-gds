@@ -123,6 +123,7 @@ def build_result(sprint_status_path, story_arg, impl_dir):
         "story_file": None,
         "current_status": None,
         "epic_status": None,
+        "epic_story_count": None,
         "is_first_in_epic": None,
         "is_last_in_epic": None,
         "retrospective_status": None,
@@ -180,6 +181,7 @@ def build_result(sprint_status_path, story_arg, impl_dir):
             "story_file": os.path.join(impl_dir, target["key"] + ".md") if impl_dir else target["key"] + ".md",
             "current_status": target["status"],
             "epic_status": epics.get(epic_num),
+            "epic_story_count": len(same_epic),
             "is_first_in_epic": target["story_num"] == min_story,
             "is_last_in_epic": target["story_num"] == max_story,
             "retrospective_status": retros.get(epic_num),
@@ -235,6 +237,7 @@ def _run_self_test():
     check("1-2 not first in epic", auto["is_first_in_epic"] is False)
     check("1-2 not last in epic", auto["is_last_in_epic"] is False)
     check("epic-1 status in-progress", auto["epic_status"] == "in-progress")
+    check("epic-1 story count is 3", auto["epic_story_count"] == 3)
     check("retro status optional", auto["retrospective_status"] == "optional")
     check("story_file joined", auto["story_file"] == "/impl/1-2-account-management.md")
 
@@ -249,6 +252,7 @@ def _run_self_test():
     ex2 = build_result(path, "2-1-personality-system", "/impl")
     check("2-1 first in epic", ex2["is_first_in_epic"] is True)
     check("2-1 last in epic", ex2["is_last_in_epic"] is True)
+    check("epic-2 story count is 1", ex2["epic_story_count"] == 1)
 
     # Missing file hard-stops.
     miss = build_result("/no/such/file.yaml", None, "/impl")

@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Long-epic trace advisory now triggers from a deterministic story count** — the sprint-status
+  reader emits `epic_story_count`, so the `min_epic_stories` gate is no longer eyeballed from YAML
+  (story_plan.py).
+
 ## [0.10.3] - 2026-05-31
 
 ### Fixed

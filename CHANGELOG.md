@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Report sections now carry a disposition tag and resume-aware deltas.** Each `## Report` heading
+  is tagged (`(final)` / `(final — caveated)` / `(halted — <reason>)`) and a resume section reports
+  only its own phases with a `Continues:` back-reference — so a multi-run log is skim-readable from
+  its outline and no section has to re-derive an earlier (possibly cross-tool) run's facts.
+- **Code-review severity counts use one fixed format in reports.** Pinned to
+  `Critical N / High N / Medium N / Low N` so every report section reads identically.
+
 ### Fixed
 
 - **Report files no longer leak PR/CI/merge artifacts into the committed log.** "Chat-only" is now

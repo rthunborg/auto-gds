@@ -155,11 +155,12 @@ Both are always printed to the user.
   (`docs(story-{e}-{s}): pipeline report`) so it ships in the PR — Step 3 does not re-write it
   in that case. On any path that didn't reach the Phase 9 pre-push write (a hard-stop in
   Phases 0–8, `needs-human`, or an override that ended the run early), Step 3 writes it now as
-  a fallback (append a new `## Report — <ISO timestamp>` section, preserving any earlier
-  sections; **no commit** — the tree is already in needs-human state and the human will commit
-  alongside their fix). Never overwrite on resume — earlier runs' sections carry context we
-  must not lose. The ONLY time you overwrite is a deliberate full re-run of an already-`done`
-  story, after explicit user confirmation; if declined, append.
+  a fallback (append a new `## Report — <ISO timestamp>` section — tagged `(halted — <reason>)`
+  on this pre-finalize path — preserving any earlier sections; **no commit** — the tree is already
+  in needs-human state and the human will commit alongside their fix). Never overwrite on resume —
+  earlier runs' sections carry context we must not lose. The ONLY time you overwrite is a
+  deliberate full re-run of an already-`done` story, after explicit user confirmation; if
+  declined, append.
 - **Chat-only** (printed at the end of every run; not written to the file): the full file
   portion below, **plus** the PR / CI / merge / final-status **artifact** lines listed underneath
   — these add the links/merge-method/status-flip specifics to the disposition the file's
@@ -170,12 +171,16 @@ order and field labels from `references/state-and-resume.md` → "Section templa
 restructuring per run, so PR reviewers always find each field in the same place):
 - **Story:** key, branch (HEAD short sha).
 - **Pipeline status:** one-line summary (clean completion / halted at Phase N / draft (reason) / …).
+  Also tag the `## Report` heading itself with the section's disposition — `(final)` /
+  `(final — caveated)` / `(halted — <reason>)` — so the log is skim-readable from its outline.
 - **Timing:** `started_at`/`completed_at` (or "in progress"), total elapsed, and the best-effort
   AI-run vs human/idle-wait split (`active_seconds` vs `elapsed − active_seconds`); note resume count if >1.
-- **Phases run / Skipped:** the Phase N list each line, with profile in parens for delegated phases.
+- **Phases run / Skipped:** the Phase N list each line (THIS session only — a resume reports its
+  delta, with a `Continues:` line naming the section it picks up from), profile in parens for delegated phases.
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps); "none" if none.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story; "disabled" if `tea.enabled=false`.
-- **Code review:** iterations run; per-iteration verdict + severity counts.
+- **Code review:** iterations run; per-iteration verdict + severity counts in the fixed form
+  `Critical N / High N / Medium N / Low N`.
 - **Open questions** surfaced by any step ("(none)" if empty — keep the heading).
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
   `<impl>/deferred-work.md` ledger). "(none)" if empty — keep the heading.

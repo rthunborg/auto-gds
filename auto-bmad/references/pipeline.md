@@ -284,7 +284,11 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
 - Ensure everything is committed (no dirty tree).
 - **Write the report file (before push, so it ships in the PR).** Append a new
   `## Report — <ISO timestamp>` section to `_bmad-output/auto-bmad/reports/{key}.md`,
-  preserving any earlier sections. The file holds only the **story-level** outputs that aren't
+  preserving any earlier sections. Tag the heading with this section's disposition — `(final)` on a
+  clean completion, `(final — caveated)` if the run finalized but stays at `review` — and keep the
+  section a session delta (on a resume, `Phases run` lists only the resumed phases and a
+  `Continues:` line names the section it picks up from; full vocabulary in `state-and-resume.md` →
+  "reports/{key}.md"). The file holds only the **story-level** outputs that aren't
   recorded elsewhere — overrides, TEA outcomes, open questions, deferred work, blockers,
   next-story preview (see `SKILL.md` Step 3 for the exact fields). The finalization **artifacts**
   — PR URL, CI run link, merge method + branch-deleted state, and the BMAD-status-flip outcome —

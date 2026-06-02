@@ -315,6 +315,18 @@ artifact: it belongs in the `Pipeline status` line, so it is **not** chat-only.)
 - Each run (first completion OR resume) **appends** a new `## Report — <ISO timestamp>` section,
   preserving everything already in the file. A resume must never clobber an earlier run's
   report, since prior sections may hold context (decisions, partial outcomes) we'd otherwise lose.
+- **Each section is a session delta, not a cumulative rollup.** A section reports only what
+  happened in *its* run — `Phases run` / `Skipped` cover this session alone, and a resume carries a
+  `Continues:` back-reference to the section it picks up from. Don't re-derive an earlier (possibly
+  cross-tool) run's TEA counts or review tally into a later section; each section is the record for
+  its own phases.
+- **Tag the `## Report` heading with this section's terminal disposition** so the file is
+  skim-readable from its outline — read the last tag to know where the story stands. Closed
+  vocabulary: `(final)` (clean, BMAD status flipped `done`), `(final — caveated)` (finalized but
+  left at `review`: draft PR / blocker / waived gate / CI red), `(halted — <reason>)` for a stop
+  before Phase 9 (`needs-human`, `override stop_before: <phase>`, `override stop_after: <phase>` —
+  the override tokens spelled as in `overrides.md`). Lineage is not in the tag — a prior section
+  plus the `Continues:` line already mark a resume.
 - The file is created on the first report for the story.
 - The **only** time it's overwritten is a deliberate full re-run of an already-`done` story, and
   only after explicit user confirmation ("overwrite the existing report log for {key}?"). If the
@@ -322,26 +334,27 @@ artifact: it belongs in the `Pipeline status` line, so it is **not** chat-only.)
 
 ### Section template (use literally, in this order)
 Every `## Report — <ISO timestamp>` section uses the same headings in the same order so a PR
-reviewer always finds each field in a predictable place. Omit a heading only when its content is
-empty AND the heading's own line says "(none)" — never drop the heading silently.
+reviewer always finds each field in a predictable place. Never drop a heading — when a field is
+empty, keep its heading and write `(none)` on its line.
 
 ```markdown
-## Report — <ISO timestamp UTC>
+## Report — <ISO timestamp UTC> (<disposition tag>)
 
 **Story:** `{key}` (epic {e}, story {s}) — {first-in-epic? / last-in-epic? / mid-epic}.
 **Branch:** `<branch>` (HEAD `<short-sha>`).
 **Pipeline status:** <one-line summary, e.g. ✅ clean completion / halted at Phase 5 (needs-human) / draft (CI red)>.
+**Continues:** <on a resume, the prior section's ISO timestamp + its tag, e.g. `2026-05-29T15:05:06Z (halted — override stop_before: 7)`; `(none — first run)` on a first run — keep the line either way, like every other heading>.
 
 **Timing:** started <ISO>; completed <ISO, or "in progress"> — elapsed <Hh Mm> (≈<Hh Mm> AI-run, ≈<Hh Mm> human/idle wait)<; resumed N× if >1 session>.
 
-**Phases run:** <comma-joined Phase N list, with profile in parens for delegated phases>.
-**Skipped:** <comma-joined Phase N list with reason in parens>.
+**Phases run:** <comma-joined Phase N list for THIS session, with profile in parens for delegated phases; on a resume this is the session delta — earlier phases live in the section named by `Continues:`>.
+**Skipped:** <comma-joined Phase N list with reason in parens; this session>.
 
 **Overrides:** <one line; "none" if no invocation overrides applied>.
 
 **TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story; for the per-story trace advisory, its verdict + any uncovered ACs (advisory, non-blocking)>.
 
-**Code review:** <iterations run; per-iteration verdict + severity counts on one line each; "skipped" if no review>.
+**Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; "skipped" if no review>.
 
 **Open questions:** <numbered list, one per line; "(none)" if empty>.
 

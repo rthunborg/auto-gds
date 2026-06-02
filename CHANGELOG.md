@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Epic-end archives resolved deferred work out of the active ledger.** After the project-context
+  refresh, fully-resolved entries move from `<impl>/deferred-work.md` to a sibling
+  `deferred-work-resolved.md` — so create-story stops re-folding finished work into new stories,
+  while the audit trail stays in-tree. Partial and still-open deferrals stay put.
+
 ## [0.11.1] - 2026-06-02
 
 ### Changed

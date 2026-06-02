@@ -183,7 +183,9 @@ restructuring per run, so PR reviewers always find each field in the same place)
   `Critical N / High N / Medium N / Low N`.
 - **Open questions** surfaced by any step ("(none)" if empty — keep the heading).
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
-  `<impl>/deferred-work.md` ledger). "(none)" if empty — keep the heading.
+  `<impl>/deferred-work.md` ledger). "(none)" if empty — keep the heading. On the **last story of an
+  epic**, also note how many resolved entries Phase 8 moved to the `deferred-work-resolved.md`
+  archive (e.g. "archived 6 resolved → deferred-work-resolved.md"; omit the note if none).
 - **Planning drift** (epic-end only): planning assumptions the retrospective proved wrong + the
   recommended re-sync (document-project → generate-project-context → `/bmad-prd` update;
   `/bmad-correct-course` if structural). Non-blocking, never auto-run. "(none)" if clean or not epic-end.

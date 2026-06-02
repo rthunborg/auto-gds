@@ -16,10 +16,14 @@ bookkeeping it already holds full pipeline context for. Don't "fix" these into d
 - **Phase 0 project-context probe** — an existence check that only decides whether Phase 2's
   bootstrap sub-step runs (the bootstrap itself is delegated like every other skill call).
 - **Phase 9 finalize writes** — BMAD-status flip to `done` + the pre-push pipeline-report commit.
+- **Phase 8 deferred-work archive** — at epic-end, after the project-context refresh, move
+  fully-resolved entries out of the active `<impl>/deferred-work.md` ledger into the sibling
+  `deferred-work-resolved.md` archive. No `/bmad-*` skill prunes the ledger, and the orchestrator
+  already writes this file directly at Phase 7 — so this is connective bookkeeping, not a delegate.
 
 The mechanics of these live in the reference docs — **don't restate them here**: `git-and-pr.md`
-(branching, push, PR, merge prompt) and `pipeline.md` (Phase 0 probe, Phase 9 status flip + report
-commit). The only other time the orchestrator does step work itself is the `inline` delegation tier
+(branching, push, PR, merge prompt) and `pipeline.md` (Phase 0 probe, Phase 8 deferred-work archive,
+Phase 9 status flip + report commit). The only other time the orchestrator does step work itself is the `inline` delegation tier
 (see `delegation-runtime.md`), and even then it follows the same phase contract.
 
 ## Delegation is tiered (the heart of the module)

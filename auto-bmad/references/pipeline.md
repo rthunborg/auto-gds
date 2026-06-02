@@ -232,7 +232,8 @@ this step (when selected) finishes, so a resume that re-enters a converged Phase
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*
 Run these in order. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project
-context, retrospective`. (Trace-gate remediation, if any, commits separately as it runs — step 1.)
+context, deferred-work archive, retrospective`. (Trace-gate remediation, if any, commits separately
+as it runs — step 1.)
 1. **TEA gates (only if `tea.enabled`; epic-level skills are always on here):** delegate via
    `tea_epic`, in order, the **`testarch-trace`**, then **`testarch-nfr`**, then
    **`testarch-test-review`** entries. Capture each verdict; record the gate decision in state
@@ -267,8 +268,29 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
    `customize.toml`), and thus the channel that carries epic-N conventions into epic N+1's stories.
    See `delegation.md` → `generate-project-context`. (A blind codebase-scan refresh drops
    rules/agreements not inferable from code; the retro notes exist by this step, the synthesized
-   retro doc does not yet — step 3 — so notes, not the doc, are the source here.)
-3. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
+   retro doc does not yet — step 4 — so notes, not the doc, are the source here.)
+3. **Archive resolved deferred work** *(orchestrator-direct — no `/bmad-*` skill prunes the ledger;
+   the orchestrator already writes this file at Phase 7, so this is connective bookkeeping, not a
+   delegated step. See `CLAUDE.md` → orchestrator-owned actions):* now that `project-context.md` has
+   distilled the epic's durable conventions, trim the active ledger `<impl>/deferred-work.md` so
+   create-story stops re-folding finished work into future stories. Read it; for every **bullet that
+   clearly states ALL of its deferred work is done** — keyed on a resolution *marker's meaning*, not
+   a fixed string (the phrasing varies run to run: a leading `✅`, `RESOLVED`, "resolved in
+   story …", "closed", "addressed in …") — **move** that bullet out of the active ledger and append
+   it, under a matching `## Deferred from: <source>` heading, to the sibling archive
+   `<impl>/deferred-work-resolved.md` (create it with a one-line title if absent; reuse the heading
+   there if it already exists, else add it). Then drop any active-ledger `## Deferred from:` heading
+   whose last bullet was moved; preserve the ledger's title/intro. **Keep — never move:**
+   - any entry with an open remainder — a *partial* resolution ("X portion done; Y owned by story Z"
+     still carries open work). The entry must vouch for **itself**; do not move it just because some
+     *other* entry says the remainder landed.
+   - any unmarked entry (a still-open deferral).
+   **When uncertain, keep it in the active ledger.** The asymmetry is the safety rule: a wrongly-kept
+   resolved item is merely wasteful (create-story folds a done item once), but a wrongly-moved open
+   item silently drops real follow-up work. No-op if the ledger is absent or holds no resolved entry.
+   Record the count moved in state (`deferred_work_archived`) and the report's **Deferred work**
+   field; the move lands in this phase's `docs(epic-{e})` commit.
+4. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
    it the accumulated `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
    writes the retro doc + flips the retrospective status to `done`. **Planning-drift advisory:** if the
    delegate's `Planning drift` line is non-empty — the epic proved a planning assumption wrong (PRD /

@@ -193,6 +193,7 @@ story_trace: null              # Phase 7 tail trace advisory result, or null if 
 commits: [a1b2c3d, e4f5g6h]
 gate_decision: null          # PASS|CONCERNS|FAIL|WAIVED (last story only)
 gate_iterations: 0           # Phase 8 trace-gate remediation passes run (automate+re-trace); capped by tea.gate_max_iterations; resume continues mid-loop
+deferred_work_archived: 0    # Phase 8 (last story only): count of resolved entries moved from deferred-work.md to the deferred-work-resolved.md archive
 pr_url: null
 ci_run_url: null             # link to the CI run the PR/push triggered, if the repo has workflows
 ci_status: unknown           # passed|failed|timeout|none|unknown — set only when Phase 9 waited (offer_merge on); else 'unknown'
@@ -358,7 +359,7 @@ empty, keep its heading and write `(none)` on its line.
 
 **Open questions:** <numbered list, one per line; "(none)" if empty>.
 
-**Deferred work:** <numbered list, one per line; cross-link to `<impl>/deferred-work.md` if items landed there; "(none)" if empty>.
+**Deferred work:** <numbered list, one per line; cross-link to `<impl>/deferred-work.md` if items landed there; on the last story of an epic, add a line noting how many resolved entries Phase 8 archived to `deferred-work-resolved.md` (omit if none); "(none)" if empty>.
 
 **Planning drift:** <epic-end only — planning assumptions the retrospective proved wrong + the recommended re-sync (document-project → generate-project-context → bmad-prd update; correct-course if structural); non-blocking, never auto-run; "(none)" if clean or not epic-end>.
 

@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-06-02
+
 ### Changed
 
 - **Report sections now carry a disposition tag and resume-aware deltas.** Each `## Report` heading
@@ -334,7 +336,8 @@ First tagged release — the matching `v0.1.1` git tag for the module already pu
 - **Distribution** via the BMAD installer (custom Git source) and a Claude plugin `marketplace.json`,
   plus a README "Updating" section, `CHANGELOG.md`, and the `scripts/bump-version.py` release helper.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/stefanoginella/auto-bmad/compare/v0.10.1...v0.10.2

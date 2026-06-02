@@ -286,9 +286,12 @@ context, retrospective`. (Trace-gate remediation, if any, commits separately as 
   `## Report — <ISO timestamp>` section to `_bmad-output/auto-bmad/reports/{key}.md`,
   preserving any earlier sections. The file holds only the **story-level** outputs that aren't
   recorded elsewhere — overrides, TEA outcomes, open questions, deferred work, blockers,
-  next-story preview (see `SKILL.md` Step 3 for the exact fields). PR URL, CI link/status,
-  draft reason, merge method, and the BMAD-status-flip outcome are deliberately **chat-only**
-  (Step 3 prints them; rationale in `state-and-resume.md` → "reports/{key}.md"). Commit it:
+  next-story preview (see `SKILL.md` Step 3 for the exact fields). The finalization **artifacts**
+  — PR URL, CI run link, merge method + branch-deleted state, and the BMAD-status-flip outcome —
+  are deliberately **chat-only** (Step 3 prints them; rationale in `state-and-resume.md` →
+  "reports/{key}.md"). The one-line **disposition** DOES belong in the file's `Pipeline status`
+  line — clean / caveated / halted at Phase N, and a draft's summary reason (CI red / waived gate /
+  blocker); it's a summary, not a retrievable artifact, so it is **not** chat-only. Commit it:
   `docs(story-{e}-{s}): pipeline report`. (Orchestrator-owned, never delegated —
   `git-and-pr.md` → "Ownership".)
 - **git mode `remote`:** push the branch, open the PR, evaluate CI, and convert to draft if

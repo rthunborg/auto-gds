@@ -299,10 +299,12 @@ were done a certain way) that the story file alone doesn't capture.
 ## reports/{key}.md
 The per-story report is a **log**, not a single overwritten document. It carries only the
 **story-level** outputs that aren't recorded elsewhere — overrides, TEA outcomes, open
-questions, deferred work, blockers, next-story preview. PR URL, CI link/status, draft reason,
-merge method, and the BMAD-status-flip outcome are **chat-only** at end of run — already
-retrievable from git/GitHub/sprint-status, so the file is written **once** pre-push and never
-re-touched after the PR/CI/merge resolve.
+questions, deferred work, blockers, next-story preview. The finalization **artifacts** — PR URL,
+CI run link, merge method + branch-deleted state, and the BMAD-status-flip outcome — are
+**chat-only** at end of run, already retrievable from git/GitHub/sprint-status, so the file is
+written **once** pre-push and never re-touched after the PR/CI/merge resolve. (The one-line
+**disposition** — clean / caveated / halted, and a draft's summary reason — is a summary, not an
+artifact: it belongs in the `Pipeline status` line, so it is **not** chat-only.)
 
 - On a clean path the file is written + committed in **Phase 9 before push**
   (`docs(story-{e}-{s}): pipeline report`) so it ships in the PR diff. See

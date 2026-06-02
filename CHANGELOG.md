@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Report files no longer leak PR/CI/merge artifacts into the committed log.** "Chat-only" is now
+  defined as the finalization *artifacts/links* (PR URL, CI run link, merge method + branch-deleted
+  state, status-flip outcome); the one-line pipeline *disposition* — incl. a draft's summary reason
+  — stays in the file's `Pipeline status` line. Resolves a spec contradiction that let those
+  artifacts land in the committed report.
+
 ## [0.11.0] - 2026-06-02
 
 ### Added

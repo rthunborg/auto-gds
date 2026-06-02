@@ -145,8 +145,10 @@ whose conditions don't apply (epic-start only if `is_first_in_epic`; TEA phases 
 
 ### Step 3 — Final report
 Always produce a report (even on hard-stop). The report is **split**: a story-level **file
-portion** that lands in the PR diff, and a **chat-only** wrapper for PR/CI/merge details that
-exist elsewhere already (git, GitHub, sprint-status). Both are always printed to the user.
+portion** that lands in the PR diff, and a **chat-only** wrapper for the PR/CI/merge **artifacts**
+(links, merge method, status-flip) that exist elsewhere already (git, GitHub, sprint-status). The
+one-line *disposition* is **not** in that wrapper — it lives in the file's `Pipeline status` line.
+Both are always printed to the user.
 
 - **File portion** (the persistent log under `{project-root}/_bmad-output/auto-bmad/reports/{key}.md`):
   on a clean path this file was already written + committed in Phase 9 **before push**
@@ -159,7 +161,9 @@ exist elsewhere already (git, GitHub, sprint-status). Both are always printed to
   must not lose. The ONLY time you overwrite is a deliberate full re-run of an already-`done`
   story, after explicit user confirmation; if declined, append.
 - **Chat-only** (printed at the end of every run; not written to the file): the full file
-  portion below, **plus** the PR / CI / merge / final-status lines listed underneath.
+  portion below, **plus** the PR / CI / merge / final-status **artifact** lines listed underneath
+  — these add the links/merge-method/status-flip specifics to the disposition the file's
+  `Pipeline status` line already records; they do not replace it.
 
 **File portion — fields** (story-level outputs preserved across runs; use the exact heading
 order and field labels from `references/state-and-resume.md` → "Section template" — no
@@ -184,7 +188,9 @@ restructuring per run, so PR reviewers always find each field in the same place)
   on the human's own time) — do not imply the merge gates `done`. "(none)" if clean.
 - **Next:** the next story `story_plan.py` would pick (preview only — do NOT start it).
 
-**Chat-only — additional lines** (not committed; retrievable from git/GitHub/sprint-status later):
+**Chat-only — additional lines** (not committed; the finalization **artifacts/links**, retrievable
+from git/GitHub/sprint-status later — they add the PR/CI/merge specifics on top of the disposition
+the file's `Pipeline status` line already carries; the disposition itself is not chat-only):
 - **Final status:** clean (BMAD-level flipped to `done`) vs caveated (left at `review`: draft PR /
   recorded blocker / waived gate / CI red or timed-out). On a clean completion that was **not**
   merged, frame the open PR's merge as the human's remaining (optional, non-blocking) step. On a

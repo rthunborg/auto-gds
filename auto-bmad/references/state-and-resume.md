@@ -187,7 +187,8 @@ tea_rationale: "touches auth -> High risk"
 epic_story_count: 12             # stories under epic {e} (from sprint-status); gates the long-epic trace advisory
 completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here if EITHER sub-step ran
 code_review_iterations: 1
-convergence_unverified: false  # true if the review cap was hit while Critical/High were still being found+fixed and the user chose to ship anyway (Phase 7) -> Phase 9 opens the PR as a draft
+code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating
+convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (>3 non-deferred findings, or >=1 non-deferred Critical/High) (Phase 7) -> Phase 9 opens the PR as a draft
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
@@ -220,7 +221,7 @@ Derive for the report: **elapsed** = `completed_at − started_at` (total, inclu
 gaps), **AI-run time** ≈ `active_seconds`, **human/idle wait** ≈ `elapsed − active_seconds`.
 The split is best-effort, not exact — it's host wall-clock, not token-compute time. Time spent
 waiting on the user does **not** count as active: when a phase opens an `AskUserQuestion` (e.g. the
-Phase 7 decision asks or cap prompt), the orchestrator brackets the prompt and excludes that
+Phase 7 decision asks or HITL halt), the orchestrator brackets the prompt and excludes that
 interval from `active_seconds`, so it lands on wait. Between-phase prompts and resume gaps land on
 wait too; a story halted overnight shows a large wait dominated by the gap, not by work.
 
@@ -269,8 +270,9 @@ status ⇒ already complete (see below). The script tests the exact `{key}.yaml`
 no glob to misname (`story-*`) or to abort under zsh/fish.
 - If `state/{key}.yaml` exists and `status != done` → **resume**: skip phases already in
   `completed_phases`, and if Phase 7 is in progress, continue the review loop from
-  `code_review_iterations`. Re-detect git mode/branch (cheap) rather than trusting stale values
-  if the branch is missing.
+  `code_review_iterations` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
+  HITL halt rather than re-iterating). Re-detect git mode/branch (cheap) rather than trusting stale
+  values if the branch is missing.
 - Else → start fresh (initialize the state file in Phase 1).
 - A `done` state file for the requested story → tell the user it's already complete and show the
   recorded `pr_url`; do not redo it (unless they explicitly force a re-run).
@@ -355,7 +357,7 @@ empty, keep its heading and write `(none)` on its line.
 
 **TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story; for the per-story trace advisory, its verdict + any uncovered ACs (advisory, non-blocking)>.
 
-**Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; "skipped" if no review>.
+**Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; then the end-of-loop HITL-halt outcome (continued / stopped) + any external-review feedback; "skipped" if no review>.
 
 **Open questions:** <numbered list, one per line; "(none)" if empty>.
 

@@ -16,7 +16,11 @@ to an `ab-*` profile). The list — other docs link here by name instead of rest
 - the Phase 9 **BMAD-level status flip** on a clean completion (story file `Status:` +
   `sprint-status.yaml` → `done`);
 - the Phase 9 **merge prompt + `gh pr merge` execution** (opt-in via `git.offer_merge`,
-  default on, only on a clean completion).
+  default on, only on a clean completion);
+- the Phase 7 **HITL-halt handling** — committing any external-review changes
+  (`fix(story-{e}-{s}): external review changes`) and giving the brief diff summary on **Continue**
+  (the orchestrator reads the diff directly — the one place it inspects code, a lightweight read,
+  not a delegated review; see `pipeline.md` Phase 7 step 4).
 
 Each lives here because the orchestrator holds the full pipeline context — commit/PR messages,
 state, the clean-vs-caveated decision; a round-trip to a delegate would only be slower. The
@@ -70,8 +74,8 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 - Open PR: `gh pr create --base <base_branch> --head <branch> --title "<title>" --body "<body>"`.
   Add `--draft` if **any** of these hold (the **draft predicate**):
   1. a blocker was recorded;
-  2. `convergence_unverified` is `true` (Phase 7: code review hit the cap while still finding
-     Critical/High and the user chose to ship anyway);
+  2. `convergence_unverified` is `true` (Phase 7: the review loop hit `max_iterations` while the
+     last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High);
   3. `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
      trace skill — chose to ship despite the coverage gaps);
   4. **CI is red or unknown** when the CI wait below resolves (a required check failed, or the wait

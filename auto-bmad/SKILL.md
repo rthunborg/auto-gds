@@ -50,9 +50,11 @@ write commit/PR messages yourself; delegating any of that would only add a slow 
 own actions are: reading config/state, running `scripts/story_plan.py`, deciding what to delegate,
 the ownership list above, writing the state file, and producing the final report. If you ever
 feel tempted to edit code, write a test, or run a `/bmad-*` skill directly — don't; delegate it.
-(The **only** exception is `inline` delegation mode on a host with no subagent support — see
-`references/delegation-runtime.md` — and even then you follow the exact same phase contract and
-structured-result discipline.)
+(Two carve-outs: `inline` delegation mode on a host with no subagent support — see
+`references/delegation-runtime.md`, where you run every step yourself but still follow the exact same
+phase contract and structured-result discipline; and the Phase 7 HITL halt, where on **Continue** you
+read the diff of any external-review changes directly to give a brief feedback summary — a lightweight
+read, not a delegated review.)
 
 `{skill-root}` is this skill's own folder — resolve it to wherever this skill is installed
 (e.g. `.claude/skills/auto-bmad/` or `.codex/skills/auto-bmad/`). Reference files live under
@@ -88,10 +90,10 @@ reference file at the moment its step calls for it.
    run the **first-run flow** in `references/state-and-resume.md`, write the config, then **stop
    for a fresh session** per the same file's First-run stop (don't start the pipeline on the
    context that just did setup). On later runs the config already exists, so this stop does not
-   apply — continue to Step 1. First-run is the main interactive moment; auto-bmad also asks when
-   code review fails to converge within the iteration cap (Phase 7), when an epic trace gate
-   returns `FAIL` (Phase 8), and at the very end on a clean-completion PR — whether to merge
-   (Phase 9, opt-in via `git.offer_merge`).
+   apply — continue to Step 1. First-run is the main interactive moment; auto-bmad also halts at the
+   end of the code-review loop on every run (Phase 7 — continue, optionally after an external review,
+   or stop), when an epic trace gate returns `FAIL` (Phase 8), and at the very end on a
+   clean-completion PR — whether to merge (Phase 9, opt-in via `git.offer_merge`).
 
 ### Step 1 — Preflight
 Read `references/state-and-resume.md`, `references/pipeline.md` (Phase 0), and — if the
@@ -180,7 +182,8 @@ restructuring per run, so PR reviewers always find each field in the same place)
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps); "none" if none.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story; "disabled" if `tea.enabled=false`.
 - **Code review:** iterations run; per-iteration verdict + severity counts in the fixed form
-  `Critical N / High N / Medium N / Low N`.
+  `Critical N / High N / Medium N / Low N`; the end-of-loop HITL-halt outcome (continued / stopped)
+  and any external-review feedback the orchestrator gave.
 - **Open questions** surfaced by any step ("(none)" if empty — keep the heading).
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
   `<impl>/deferred-work.md` ledger). "(none)" if empty — keep the heading. On the **last story of an
@@ -215,7 +218,8 @@ conflict; a delegated step returns `blocked`/`needs-human` (missing secret/crede
 external service, or manual action). Never push past a hard-stop — report and let the human act.
 
 (Note: three pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
-code review not converging within `max_iterations` (Phase 7); a `FAIL` epic trace gate
-(Phase 8 — remediate & re-gate / waive / stop); and the end-of-pipeline merge prompt on a
-clean-completion PR (Phase 9 — merge commit (default) / rebase / squash / don't merge, plus a
-delete-branch sub-question — opt-in via `git.offer_merge`, default on).)
+the code-review loop's end-of-loop HITL halt, asked every run (Phase 7 — continue, optionally after
+an external review, or stop); a `FAIL` epic trace gate (Phase 8 — remediate & re-gate / waive /
+stop); and the end-of-pipeline merge prompt on a clean-completion PR (Phase 9 — merge commit
+(default) / rebase / squash / don't merge, plus a delete-branch sub-question — opt-in via
+`git.offer_merge`, default on).)

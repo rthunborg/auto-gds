@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Code review always runs at least two review passes.** A clean first pass no longer exits the
+  loop early, so a second opinion — the alternate model when `code_review.alternate_models` is on —
+  always weighs in.
+- **Code review converges on a finding-count gate, not severity heuristics.** A pass exits the loop
+  when it found-and-fixed ≤ 3 non-deferred findings with no Critical/High; more than that (or any
+  non-deferred Critical/High) re-reviews, up to `code_review.max_iterations`.
+- **The code-review loop now ends at a human-in-the-loop halt on every run.** auto-bmad suggests an
+  external review (a human, another model/AI) while the pipeline is paused, then on continue
+  summarizes any changes you added before resuming (replaces the old cap-only prompt).
+
 ## [0.12.1] - 2026-06-03
 
 ### Changed

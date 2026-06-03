@@ -15,7 +15,7 @@ just before delegating the phase and again when it returns (just before the stat
 and add the delta to `active_seconds`
 (alongside the `updated_at` stamp) — this is what lets the report split AI-run time from
 human/idle wait (`state-and-resume.md` → timing fields). **Don't count time spent waiting on the
-user:** if the phase opens an `AskUserQuestion` (e.g. the Phase 7 decision asks or the cap prompt),
+user:** if the phase opens an `AskUserQuestion` (e.g. the Phase 7 decision asks or the HITL halt),
 bracket the prompt with `date +%s` and exclude that interval from the phase's delta, so the wait
 lands on human/idle, not active.
 
@@ -142,9 +142,14 @@ no-op, recorded as skipped). Sub-steps execute in this order:
 - Delegate the **`testarch-automate`** entry with `<story_file>`.
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
-## Phase 7 — Code-review loop  (≤ `code_review.max_iterations`, default 3)
-Iterate until the review **Approves** / has no remaining Critical or High findings (and at most
-one Medium), or the cap is hit. Track `code_review_iterations` in state (so resume continues mid-loop).
+## Phase 7 — Code-review loop  (always ≥ 2 reviews, ≤ `code_review.max_iterations`, default 3)
+The loop **always runs at least two review passes** — a clean first pass no longer exits early, so a
+second opinion (the alternate model, when `code_review.alternate_models` is on) always weighs in —
+then exits as soon as a pass converges or the cap is hit, and **always ends at a human-in-the-loop
+halt** (step 4). A pass **converges** when it found-and-fixed **≤ 3 non-deferred findings AND none
+were Critical or High**; it does **not** converge when it found **> 3 non-deferred findings OR ≥ 1
+non-deferred Critical/High**. Track `code_review_iterations` and `code_review_loop_done` in state
+(resume continues mid-loop, or re-opens the halt once the loop is done).
 
 For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with the primary reviewer.** When
@@ -183,37 +188,54 @@ For iteration `i` (1-based):
    (<date>)` heading — the same file the `code-review` delegate logs its own `[Review][Defer]`
    findings to. This is a direct orchestrator write, like the report and retro-notes: it owns the
    user-deferred decisions because it (not the delegate) resolved them.
-3. Read the verdict (Approve / Changes Requested / Blocked) and the Critical/High/Med/Low counts.
-   When there is fixable work — `[Review][Patch]` items, or `[Review][Decision]` items the user just
-   resolved — delegate the fix via the **`code-review fix`** entry (profile `code_review_fix`),
-   focused on those items, implementing each resolved decision in its chosen direction and checking
-   it off, then commit `fix(story-{e}-{s}): address code review (iter {i})`. What happens next depends on the **severity
-   this pass found** (the findings it just fixed, decision items included):
-   - **No findings** → commit `chore(story-{e}-{s}): code review passed (iter {i})` and exit.
-   - **At most one Med, plus any number of Low (and no Critical or High)** → the fixes are in and
-     nothing high-risk surfaced; exit the loop and continue the pipeline (no need to ask).
-   - **Any Critical or High, OR two or more Med** → they were fixed, but the fix is unverified and
-     such findings can recur (and a cluster of Mediums means the change still isn't settling), so
-     re-review: if `i < cap`, continue to iteration `i+1`; if `i == cap`, go to step 4.
-4. **Cap reached while the last pass was still tripping the re-review threshold (Critical/High, or
-   ≥2 Med) → ASK the user** (AskUserQuestion); do not silently proceed. Each pass fixed its
-   findings, but the final pass still tripped the threshold, so convergence is unverified.
-   Summarize the findings the last pass fixed, then offer:
-   - **Run another review+fix iteration** *(recommended)* — continue beyond the cap with the
-     primary reviewer (`code_review_review`) + `code_review_fix`, to verify the fixes and drive the
-     findings below the re-review threshold. Repeat this ask after each extra iteration until a pass
-     comes back clean or below threshold (no Critical/High and ≤1 Med), or the user stops.
-   - **Accept the fixes and continue the pipeline** — trust the fixes already applied; set
-     `convergence_unverified: true` in state, then proceed normally to Phase 8 (if last story) and
-     Phase 9. Because that flag is set, Phase 9 opens the PR as a **draft** (or, in local mode,
-     just notes it).
+3. **Fix, then classify the pass.** Read the verdict (Approve / Changes Requested / Blocked) and the
+   Critical/High/Med/Low counts. When there is fixable work — `[Review][Patch]` items, or
+   `[Review][Decision]` items the user just resolved to fix — delegate the fix via the
+   **`code-review fix`** entry (profile `code_review_fix`), focused on those items, implementing each
+   resolved decision in its chosen direction and checking it off, then commit
+   `fix(story-{e}-{s}): address code review (iter {i})`. A pass with **no fixable findings** instead
+   commits the checkpoint `chore(story-{e}-{s}): code review passed (iter {i})`.
+
+   Now classify the pass by its **non-deferred findings** — every finding it raised that was NOT
+   routed to `[Review][Defer]` (the `[Review][Patch]` items plus the `[Review][Decision]` items the
+   user chose to fix; use **the file's** reconciled counts from step 1, not the chat report). The
+   pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were Critical or
+   High** (a *deferred* Critical/High is a logged human decision and does not block convergence).
+   Drive the loop:
+   - **`i == 1`** → **always continue to iteration 2**, whatever this pass found. The second review
+     is mandatory; a clean first pass no longer exits here.
+   - **`i ≥ 2` and the pass converged** → exit the loop.
+   - **`i ≥ 2`, not converged, `i < max_iterations`** → continue to iteration `i+1`.
+   - **`i ≥ 2`, not converged, `i == max_iterations`** → exit the loop **unconverged**: set
+     `convergence_unverified: true` (Phase 9 then opens the PR as a draft — `git-and-pr.md` draft
+     predicate clause 2).
+   On any exit, set `code_review_loop_done: true`, then go to step 4.
+   (Edge: if `code_review.max_iterations` is `1` the second review can't run — the loop takes its
+   single pass and exits; note it in the report. At the default cap of 3 the loop runs 2–3 passes.)
+4. **HITL halt — ASK the user, on every loop exit.** The loop *always* ends here (converged or
+   capped); this single human checkpoint replaces the old cap-only prompt. Summarize: iterations
+   run, each pass's verdict + `Critical N / High N / Medium N / Low N` counts, the total non-deferred
+   findings found-and-fixed, and whether the loop converged or hit the cap unconverged
+   (`convergence_unverified`). **Recommend an external review while the pipeline is paused** — a
+   human, another model/AI, or a separate tool, reviewing the branch's changes — because even a
+   converged exit's final fix pass is itself unverified. Then ask (`AskUserQuestion`):
+   - **Continue** *(recommended)* — resume the pipeline. **First check for new changes since the
+     halt** (new commits and/or a dirty working tree from the external review). If there are any, the
+     orchestrator **reads the diff itself and gives a brief feedback summary** (what changed, anything
+     notable) — a lightweight inline read, **not** a delegated review: the one carve-out from "never
+     handle/review code yourself" (`git-and-pr.md` → "Ownership") — then commits them
+     `fix(story-{e}-{s}): external review changes` and continues. If nothing changed, just continue.
    - **Stop the pipeline now** — skip the remaining phases, go straight to the report (Step 3);
-     commits stay on the branch, nothing is pushed and no PR is opened. The last pass's findings
-     are reported as `needs-human`.
-   Record the user's choice and any extra iterations in state (`code_review_iterations`).
+     commits stay on the branch, nothing is pushed and no PR is opened. If the loop exited
+     unconverged, report its last pass's findings as `needs-human`.
+   Record the choice, the external-review feedback (if any), and any extra commits in state + the
+   report. **Bracket this prompt with `date +%s`** so the (possibly long) external-review wait lands
+   on human/idle, not `active_seconds` (see top of this file). Phase 7 enters `completed_phases` only
+   after this halt resolves (and the tail below, when selected).
 
 ### Phase 7 tail — per-story trace advisory  *(conditional; non-blocking)*  → `tea_per_story`
-Runs **once, after the review loop exits**, only if `trace-advisory ∈ tea_selected` (set in Phase 0
+Runs **once on the Continue path, after the review loop and its HITL halt resolve**, only if
+`trace-advisory ∈ tea_selected` (set in Phase 0
 — high risk, not last-in-epic, and the epic is long enough; see `tea-policy.md` → §3). Resume-safe:
 skip if `story_trace` is already non-null in state. Phase 7 lands in `completed_phases` only after
 this step (when selected) finishes, so a resume that re-enters a converged Phase 7 with
@@ -243,7 +265,7 @@ as it runs — step 1.)
      (already a documented human waiver — see `git-and-pr.md`).
    - `CONCERNS` → advisory; continue silently, but record it and surface it in the report + PR body.
      It does **not** halt or force a draft.
-   - `FAIL` → **ASK the user** (AskUserQuestion; mirrors the Phase 7 cap prompt — this is not a
+   - `FAIL` → **ASK the user** (AskUserQuestion; mirrors the Phase 7 HITL halt — this is not a
      silent hard-stop). Summarize the uncovered requirements/ACs the trace flagged, then offer:
      - **Remediate & re-gate** *(recommended; offered only while `gate_iterations <
        tea.gate_max_iterations`, default 2)* — delegate the **`testarch-automate`** entry at **epic

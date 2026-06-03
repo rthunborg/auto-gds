@@ -16,12 +16,11 @@ already carry the full form, so the short version is enough.
 > Run fully autonomously — answer any interactive BMAD menu/checkpoint with the sensible default
 > and never wait for human input. The sensible default is ALWAYS the option that completes the
 > step and persists its deliverable — never one that skips it, discards findings, or writes
-> nothing (e.g. a `no-spec` branch when a spec path was given); any step-specific instruction in
-> this prompt overrides this generic rule. If something genuinely needs a human (missing secret/credential,
-> external service, manual action, or an ambiguity that changes the outcome), STOP and report it
-> as `needs-human`. Return the structured result: Outcome, Files changed, Status, Open questions,
-> Deferred work, Blockers, Retro notes (short and terse — say `none` unless something is genuinely 
-> worth the epic retrospective; one line per item, no recap of routine work).
+> nothing. If something genuinely needs a human (missing secret/credential, external service, 
+> manual action, or an ambiguity that changes the outcome), STOP and report it as `needs-human`. 
+> Return the structured result: Outcome, Files changed, Status, Open questions, Deferred work, 
+> Blockers, Retro notes (short and terse — say `none` unless something is genuinely worth the 
+> epic retrospective; one line per item, no recap of routine work).
 
 **Placeholders (canonical glossary — `pipeline.md` references this list, not its own copy).**
 `<...>` = a filesystem path the orchestrator resolves; `{...}` = a non-path value it fills in
@@ -92,37 +91,19 @@ moved to `review`. Do not commit or branch — the orchestrator handles git.
 
 ### code-review
 ```
-Run `/bmad-code-review` in <project_root>.
-SPEC BINDING (do this first — this OVERRIDES the appended autonomy directive's "pick the
-sensible default" rule): the review's spec is ALREADY resolved — treat the skill's own
-`{spec_file}` = <story_file> and `{review_mode}` = `full` as Tier-1 input given to you in this
-message. Do NOT ask "Is there a spec or story file?", and at NO checkpoint take a `no-spec`,
-"[N] No, let me choose", or decline branch — always keep <story_file> bound as the spec and run
-in FULL (spec) review mode. `no-spec` mode is a FAILURE here, not a fallback: it persists
-nothing to the story file and silently downgrades `[Review][Decision]` items to patch/defer.
-DIFF SOURCE (also Tier-1, so the target cascade never asks): branch diff of the current branch
-against the base branch.
+Run `/bmad-code-review` in <project_root>, reviewing the current branch's diff against the base
+branch, with <story_file> as the spec/story file. 
 
-Persisting findings to <story_file>'s `### Review Findings` section IS the deliverable of this
-step (not the chat summary): the skill writes `[Review][Patch]`, `[Review][Decision]`, and
-`[Review][Defer]` items there. The story file already has a Tasks/Subtasks section, so the append
-must happen.
-DEFERRAL LEDGER: every `[Review][Defer]` finding must ALSO be appended to the durable, cross-story
-ledger `<impl>/deferred-work.md` (the skill's own `deferred_work_file`) — one bullet per deferral
-under a `## Deferred from: code review of {key} (<date>)` heading; create the file if absent. The
-skill already does this in the same findings-write step (not the interactive defer prompt), so it
-is part of this step's deliverable, not an optional extra — confirm it actually happened.
-VERIFY THEN REPORT: the `/bmad-code-review` chat summary is NOT your deliverable — the persisted
-`### Review Findings` section is. Do not end your turn on the skill's summary alone. After the
-skill finishes, RE-READ <story_file> and confirm the
-`### Review Findings` section exists and holds one bullet per finding you raised; likewise RE-READ
-`<impl>/deferred-work.md` and confirm each `[Review][Defer]` finding has a matching bullet there.
-If you raised findings but either is missing/incomplete, write them there yourself before returning.
-Report the verdict (Approve / Changes Requested / Blocked), the Critical/High/Med/Low severity
-counts, the count of open `[Review][Decision]` items (they need a human call — see `pipeline.md`
-Phase 7), a final line `Findings persisted: <N>` = the number of `[Review][*]` bullets
-actually present in <story_file> after your re-read, AND a line `Deferrals logged: <W>` = the
-number of bullets you wrote under this story's `## Deferred from:` heading in `<impl>/deferred-work.md`.
+PERSIST the findings in the story file's `### Review Findings` section (add it if missing) as 
+`[Review][Patch|Decision|Defer]` bullets, and copy every `[Review][Defer]` to the cross-story 
+ledger `<impl>/deferred-work.md` (its own `deferred_work_file`) under a `## Deferred from: 
+code review of {key} (<date>)` heading — create that file if absent.
+
+Do not end on the skill's summary alone. Report: verdict (Approve / Changes Requested / Blocked);
+Critical/High/Med/Low counts; the count of open `[Review][Decision]` items (a human call — see
+`pipeline.md` Phase 7); `Findings persisted: <N>` = `[Review][*]` bullets now in <story_file>;
+`Deferrals logged: <W>` = bullets you added under this story's `## Deferred from:` heading in
+`<impl>/deferred-work.md`.
 ```
 
 ### code-review fix
@@ -196,22 +177,11 @@ Run `/bmad-generate-project-context` in <project_root>. {bootstrap_intent}
 Use sensible defaults for any prompt.
 ```
 The orchestrator fills `{bootstrap_intent}` from the calling phase:
-- Phase 2 bootstrap (no `project-context.md` exists yet): `Bootstrap project-context.md from
-  scratch by scanning the existing codebase — capture the stack, patterns, conventions, and
-  AI-rule signals that create-story (Phase 3) of THIS and subsequent stories in epic {e} will
-  consume as persistent_facts. This is the FIRST generation, not a refresh — there is no prior
-  file to merge with.`
+- Phase 2 bootstrap (no `project-context.md` exists yet): `Create project context for the first time`
 - Phase 8 refresh (epic-end, file already exists): `Update project-context.md to reflect the
   current stack, patterns, and conventions after epic {e}. BEFORE rewriting, read the accumulated
   retro notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md (and scan <impl>/deferred-work.md
-  for any DURABLE constraint) and fold every durable convention, rule, or team agreement they
-  surfaced — epic-wide migration rules, naming foot-guns, required test patterns, role/grant
-  invariants — into the AI-rule facts. A blind codebase scan reconstructs visible patterns but
-  MISSES rules and agreements that aren't inferable from code alone (e.g. "every tenant table MUST
-  GRANT DML to the app role", "every validation guard ships a rejection test"); the retro notes are
-  where those live. Do NOT import transient, epic-specific prep or deferred-but-not-done items —
-  those belong to the retro's next-epic checklist and the deferred-work ledger, not to the durable
-  AI rules every future story inherits.`
+  for any DURABLE constraint).`
 
 ### retrospective
 ```

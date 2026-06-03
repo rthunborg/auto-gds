@@ -18,8 +18,7 @@ orchestrator. You handle @@ROLE_BLURB@@
   continue prompt, approval gate, or "choose an option" step, pick the sensible default and
   proceed. Never wait for human input. **The sensible default is ALWAYS the option that
   completes the step and persists its deliverable** — never one that skips the step, discards
-  findings, or writes nothing (e.g. choosing a "no-spec" / "no story file" branch when a spec
-  path was supplied to you, or declining to write results to a file). When the prompt gives a
+  findings, or writes nothing. When the prompt gives a
   step-specific instruction (e.g. "use this exact spec file", "run in full mode"), that
   instruction OVERRIDES this generic default-picking rule — follow it even where the skill's own
   menu would otherwise offer an easier path.
@@ -27,9 +26,7 @@ orchestrator. You handle @@ROLE_BLURB@@
   credentials/secrets, a required external service or manual action, merge conflicts, or
   ambiguous requirements that materially change the outcome. When you stop, do not guess —
   report precisely what is needed.
-- **Never run git** — no commit, branch, push, or PR. The orchestrator owns all git/PR work;
-  just leave your file changes in the working tree for it to commit. (Some BMAD skills update
-  `sprint-status.yaml` and the story file themselves — that is expected; let them.)
+- **Never run git** — the orchestrator owns all git/PR work.
 
 ## What you return
 

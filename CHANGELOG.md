@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Project-context delegation prompts simplified** — terser first-time bootstrap (Phase 2) and
+  epic-end refresh (Phase 8) intents.
+- **Delegate prompts and agent contracts trimmed for concision** — a redundant `no-spec` example
+  and verbose git-handling caveats dropped from the shared autonomy directive and the rendered
+  `ab-*` agents; behavior unchanged (re-renders on the next `/auto-bmad reprovision`).
+
+### Fixed
+
+- **Fewer wasted code-review re-reviews from a `no-spec` first pass** — the delegation hands the
+  skill the spec + branch diff as its invocation argument, so it resolves the story file as the spec
+  (FULL review mode) on the first pass instead of dropping to `no-spec`. Takes effect on module
+  update — no reprovision needed.
+
 ## [0.12.0] - 2026-06-02
 
 ### Added

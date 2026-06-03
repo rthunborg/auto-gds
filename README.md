@@ -120,7 +120,7 @@ Run from the root of a BMAD-enabled project:
 | 6 | Expand automated coverage | `bmad-testarch-automate` | TEA on + risk-warranted |
 | 7 | Code review (Opus-first, alternating models, ≤3 iters; asks if unresolved) | `bmad-code-review` | always |
 | 7 | Per-story trace advisory (after review; non-blocking — surfaces uncovered ACs early) | `bmad-testarch-trace` | TEA on + risk-warranted, *not* last story of epic, long epic (≥6 stories) |
-| 8 | Gates (asks if trace fails), project context, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
+| 8 | Gates (asks if trace fails), project context, archive resolved deferred work, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
 | 9 | Push, open PR, wait for CI, mark story `done` (clean run), **ask whether to merge** (clean run, opt-in), final report | — | always |
 
 Each phase ends with a conventional commit, so progress survives interruptions and is easy to review.

@@ -8,9 +8,10 @@ description: >
   /auto-bmad-compat-check) — not for end-user BMAD projects. Checks whether new
   BMAD-METHOD releases (the npm `latest` stable and `next` prerelease) are
   compatible with auto-bmad: reports what changed since the last verified
-  version, whether it impacts auto-bmad's delegated-skill pipeline, and which new
-  skills/features are worth adopting — then offers to update the README/CHANGELOG
-  compatibility markers.
+  version (diffing the published packages and cross-referencing the BMAD repo's
+  release notes and post-stable commits), whether it impacts auto-bmad's
+  delegated-skill pipeline, and which new skills/features are worth adopting —
+  then offers to update the README/CHANGELOG compatibility markers.
 ---
 
 # BMAD compatibility check
@@ -29,7 +30,8 @@ the baseline version and the set of skills auto-bmad depends on).
 A dependency-free helper does the mechanical, error-prone part — resolving
 versions, downloading and diffing the published tarballs, and classifying every
 changed file against auto-bmad's surface. Your job is the judgement it can't do:
-reading the flagged diffs and deciding whether a change *actually* affects us.
+reading the flagged diffs, cross-checking the repo's release notes and
+post-stable commits (Step 3), and deciding whether a change *actually* affects us.
 
 ### Step 1 — run the helper
 
@@ -59,14 +61,43 @@ Each changed file is tagged by how much it can affect auto-bmad:
 |-----------|---------|-------------|
 | **critical** | A delegated skill that *owns a contract auto-bmad parses* changed (e.g. `bmad-create-story` → story `Status:` field; `bmad-sprint-*` → `sprint-status.yaml`; `bmad-generate-project-context` → `project-context.md`; `bmad-code-review` → `### Review Findings`). | **Read the diff.** Decide if the file *format/structure* auto-bmad reads actually changed. Cross-check the parser it would break: `scripts/story_plan.py`, `review_findings.py`, `state_plan.py`. |
 | **high** | A delegated skill changed, but not one that owns a parsed contract (e.g. `bmad-dev-story`, the `bmad-testarch-*` family). | Skim the diff for changed invocation flags/modes or removed capabilities auto-bmad's delegation prompts assume (`references/delegation.md`). |
-| **low** | A BMAD skill auto-bmad does **not** use changed, or a brand-new skill appeared. | Not a compatibility risk. Assess only as a *new-capability* opportunity (Step 3). |
+| **low** | A BMAD skill auto-bmad does **not** use changed, or a brand-new skill appeared. | Not a compatibility risk. Assess only as a *new-capability* opportunity (Step 4). |
 | **info** | Non-skill file (e.g. `package.json`). | Version noise — ignore. |
 
 Remember the package excludes `docs/` and tests, so a docs-only BMAD release
 correctly shows as "nothing shipped" — that's a real *no runtime impact*, not a
 gap in the check.
 
-### Step 3 — assess new skills/features
+### Step 3 — cross-check the BMAD repo history
+
+The tarball diff is authoritative for **what file formats shipped**, but blind to
+two things that decide compatibility just as much: changes the maintainers *flag*
+as breaking, and anything under `tools/` (the installer) — which the published
+package excludes. Read the repo to close both gaps. This **complements** the
+diff; don't re-narrate it.
+
+Repo `bmad-code-org/BMAD-METHOD` — tags are `vX.Y.Z`, default branch `main`.
+
+- **baseline → stable — release notes.** Enumerate every release newer than the
+  baseline up to and including the stable (`gh release list`, then
+  `gh release view v<X.Y.Z> --repo bmad-code-org/BMAD-METHOD --json body`) — not
+  just `v<stable>`, since the baseline can lag a minor or more. Look for the
+  **💥 Breaking Changes / deprecations** callout and for installer/`tools/`
+  **🐛 Fixes** the payload diff can't surface. Cross-check any installer note
+  against `CLAUDE.md` "Known platform facts" — the README "Updating" guidance
+  keys off exactly these.
+- **stable → prerelease — post-stable commits.** The `next` prerelease carries
+  no git tag, so read the commits on `main` since the last stable tag:
+  `gh api repos/bmad-code-org/BMAD-METHOD/compare/v<stable>...main --jq
+  '.commits[].commit.message'`. These are *what's landed since the last stable,
+  heading toward the next release* — not necessarily the exact `next` build. A
+  `src/`-touching commit is already in the diff; its value here is the **intent**
+  behind it. The payoff is the **`tools/`-only** commits the package never carries.
+
+If `gh` is unauthenticated or offline, say so and **fall through to the
+tarball-only verdict** — this step sharpens judgement, it isn't a gate.
+
+### Step 4 — assess new skills/features
 
 For every entry in each comparison's `new_skills` (and any `low`/off-pipeline
 change that looks like a genuinely new capability), ask concretely: **which
@@ -89,13 +120,17 @@ Produce this exact template in chat:
 - Current prerelease (npm `next`): <prerelease, or "none ahead of stable">
 
 ## What changed
-<grouped by comparison; bold the delegated/contract changes; one line each.
-For docs-only or off-pipeline churn, say so plainly.>
+<grouped by comparison; bold the delegated/contract changes; one line each. Draw
+on the Step 3 release notes (stable) and post-stable commits (prerelease) for the
+*why*. For docs-only or off-pipeline churn, say so plainly.>
 
 ## Impact on auto-bmad
 - **Verdict:** none / low / needs-attention / breaking
 - <specifics, citing the file + what you concluded from its diff. If a
   contract-owner changed, state explicitly whether the parsed format moved.>
+- <repo cross-check (Step 3): any maintainer-flagged breaking change or
+  deprecation, and any `tools/` installer change — note whether it touches
+  auto-bmad's delegation or the README "Updating" guidance.>
 
 ## New skills/features worth considering
 - <skill → concrete auto-bmad phase it could improve, or "nothing actionable">
@@ -106,7 +141,7 @@ For docs-only or off-pipeline churn, say so plainly.>
 
 Lead with the verdict; a maintainer should grasp it in seconds.
 
-## Step 4 — offer to update the markers (only if compatible)
+## Step 5 — offer to update the markers (only if compatible)
 
 If the verdict is clean (no `critical`/`high` change that actually breaks a
 contract), **offer** to update the compatibility markers — never write silently:
@@ -131,9 +166,9 @@ is exactly what this skill automates.
 - The `next` tag can lag a fresh stable release; the script only treats it as a
   prerelease when it actually sorts above `latest` (and reports the raw tag).
 - Tarball diffing is authoritative for "what shipped" but won't catch a BMAD
-  *installer* behavior change (those live in `tools/`, not the skill payload). If
-  the user is asking about install/update flow specifically, fall back to
-  `gh`-comparing the BMAD repo and the installer notes in `CLAUDE.md`.
+  *installer* behavior change (those live in `tools/`, not the skill payload) —
+  which is exactly why Step 3 reads the release notes and post-stable commits.
+  Weigh any installer finding against the install/update notes in `CLAUDE.md`.
 - `python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test`
   validates the classification logic offline — run it if you change the script.
 ```

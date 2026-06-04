@@ -17,10 +17,11 @@ to an `ab-*` profile). The list — other docs link here by name instead of rest
   `sprint-status.yaml` → `done`);
 - the Phase 9 **merge prompt + `gh pr merge` execution** (opt-in via `git.offer_merge`,
   default on, only on a clean completion);
-- the Phase 7 **HITL-halt handling** — committing any external-review changes
-  (`fix(story-{e}-{s}): external review changes`) and giving the brief diff summary on **Continue**
-  (the orchestrator reads the diff directly — the one place it inspects code, a lightweight read,
-  not a delegated review; see `pipeline.md` Phase 7 step 4).
+- the Phase 7 **HITL-halt handling** — detecting external-review changes (a git-only check, never a
+  code read), committing them (`fix(story-{e}-{s}): external review changes`), and re-opening the halt
+  after the re-review. The **re-review of those changes is delegated**, not orchestrator-owned — it's a
+  normal `code-review` pass on the alternate reviewer; the orchestrator no longer inspects code on
+  **Continue** (see `pipeline.md` Phase 7 step 4).
 
 Each lives here because the orchestrator holds the full pipeline context — commit/PR messages,
 state, the clean-vs-caveated decision; a round-trip to a delegate would only be slower. The
@@ -75,7 +76,9 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
   Add `--draft` if **any** of these hold (the **draft predicate**):
   1. a blocker was recorded;
   2. `convergence_unverified` is `true` (Phase 7: the review loop hit `max_iterations` while the
-     last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High);
+     last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High;
+     **or** a post-halt re-review of external changes surfaced meaningful findings the user chose to
+     **Ignore & continue**, or its Fix & re-review rounds hit the cap — see `pipeline.md` Phase 7 step 4);
   3. `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
      trace skill — chose to ship despite the coverage gaps);
   4. **CI is red or unknown** when the CI wait below resolves (a required check failed, or the wait

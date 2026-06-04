@@ -20,14 +20,15 @@ bookkeeping it already holds full pipeline context for. Don't "fix" these into d
   fully-resolved entries out of the active `<impl>/deferred-work.md` ledger into the sibling
   `deferred-work-resolved.md` archive. No `/bmad-*` skill prunes the ledger, and the orchestrator
   already writes this file directly at Phase 7 — so this is connective bookkeeping, not a delegate.
-- **Phase 7 HITL-halt feedback** — at the end-of-loop human halt, when the user added
-  external-review changes, the orchestrator reads that diff directly to give a brief feedback
-  summary before continuing (a lightweight read, **not** a delegated review — the one place it
-  inspects code under any tier) and commits it like any other phase.
+- **Phase 7 external-change handling** — at the end-of-loop human halt, the orchestrator detects any
+  external-review changes with a **git-only check** (never a code read), commits them, and re-opens
+  the halt. The **re-review of those changes is delegated** like every other review (the alternate
+  reviewer) and its findings gate the re-halt — it is emphatically **not** an inline read. The
+  orchestrator no longer inspects code at any tier; keep it that way.
 
 The mechanics of these live in the reference docs — **don't restate them here**: `git-and-pr.md`
-(branching, push, PR, merge prompt) and `pipeline.md` (Phase 0 probe, Phase 7 HITL-halt feedback,
-Phase 8 deferred-work archive, Phase 9 status flip + report commit). The only other time the
+(branching, push, PR, merge prompt) and `pipeline.md` (Phase 0 probe, Phase 7 external-change
+handling, Phase 8 deferred-work archive, Phase 9 status flip + report commit). The only other time the
 orchestrator does delegated step work itself is the `inline` delegation tier (see
 `delegation-runtime.md`), and even then it follows the same phase contract.
 

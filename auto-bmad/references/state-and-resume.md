@@ -188,7 +188,8 @@ epic_story_count: 12             # stories under epic {e} (from sprint-status); 
 completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here if EITHER sub-step ran
 code_review_iterations: 1
 code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating
-convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (>3 non-deferred findings, or >=1 non-deferred Critical/High) (Phase 7) -> Phase 9 opens the PR as a draft
+external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue; capped by code_review.max_iterations; 0 if none
+convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (>3 non-deferred findings, or >=1 non-deferred Critical/High) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings the user chose to Ignore & continue, or its Fix & re-review rounds hit the cap -> Phase 9 opens the PR as a draft
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
@@ -271,8 +272,9 @@ no glob to misname (`story-*`) or to abort under zsh/fish.
 - If `state/{key}.yaml` exists and `status != done` → **resume**: skip phases already in
   `completed_phases`, and if Phase 7 is in progress, continue the review loop from
   `code_review_iterations` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
-  HITL halt rather than re-iterating). Re-detect git mode/branch (cheap) rather than trusting stale
-  values if the branch is missing.
+  HITL halt rather than re-iterating — the re-opened halt re-runs its git-only change check, so a
+  post-halt external-change re-review resumes naturally from `external_review_iterations`). Re-detect
+  git mode/branch (cheap) rather than trusting stale values if the branch is missing.
 - Else → start fresh (initialize the state file in Phase 1).
 - A `done` state file for the requested story → tell the user it's already complete and show the
   recorded `pr_url`; do not redo it (unless they explicitly force a re-run).
@@ -357,7 +359,7 @@ empty, keep its heading and write `(none)` on its line.
 
 **TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story; for the per-story trace advisory, its verdict + any uncovered ACs (advisory, non-blocking)>.
 
-**Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; then the end-of-loop HITL-halt outcome (continued / stopped) + any external-review feedback; "skipped" if no review>.
+**Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; then the end-of-loop HITL-halt outcome (continued / stopped); and, if external-review changes triggered a post-halt re-review, its rounds + verdict/counts and the user's fix / fix-and-re-review / ignore decision; "skipped" if no review>.
 
 **Open questions:** <numbered list, one per line; "(none)" if empty>.
 

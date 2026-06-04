@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **External-review changes are now re-reviewed, not just summarized.** On **Continue** at the Phase 7
+  halt, auto-bmad delegates a fresh whole-story review (the alternate model) of anything you changed
+  while paused — gated on findings read from the story file — and re-opens the halt offering
+  fix / fix-and-re-review / ignore when they're meaningful (> 3 findings or any Critical/High). The
+  orchestrator no longer reads the diff itself.
+
 ## [0.13.0] - 2026-06-03
 
 ### Changed

@@ -219,19 +219,50 @@ For iteration `i` (1-based):
    (`convergence_unverified`). **Recommend an external review while the pipeline is paused** — a
    human, another model/AI, or a separate tool, reviewing the branch's changes — because even a
    converged exit's final fix pass is itself unverified. Then ask (`AskUserQuestion`):
-   - **Continue** *(recommended)* — resume the pipeline. **First check for new changes since the
-     halt** (new commits and/or a dirty working tree from the external review). If there are any, the
-     orchestrator **reads the diff itself and gives a brief feedback summary** (what changed, anything
-     notable) — a lightweight inline read, **not** a delegated review: the one carve-out from "never
-     handle/review code yourself" (`git-and-pr.md` → "Ownership") — then commits them
-     `fix(story-{e}-{s}): external review changes` and continues. If nothing changed, just continue.
+   - **Continue** *(recommended)* — resume the pipeline. **First check (git only — the orchestrator
+     never reads the code) for new changes since the halt**: new commits and/or a dirty working tree
+     from the external review. **If nothing changed, just continue.** If there are changes, commit
+     them `fix(story-{e}-{s}): external review changes`, then **delegate a fresh whole-story
+     re-review** — this **replaces** the old "orchestrator reads the diff itself and summarizes it"
+     carve-out; the orchestrator no longer inspects code at any tier:
+     - **Re-review (delegated, not an inline read).** Delegate the **`code-review`** entry to the
+       `code_review_review_secondary` profile — the alternate model, an independent second pair of
+       eyes on the human's changes — current branch diff vs base with `<story_file>` as spec, exactly
+       like a loop pass. Apply the **same reconciliation gate** as step 1 (`review_findings.py`; one
+       re-delegate on non-persist, else `needs-human`). Increment `external_review_iterations`.
+     - **Gate on the FILE, not the chat.** Read the `### Review Findings` counts via
+       `review_findings.py` (never the reviewer's chat report). The changes are **meaningful** iff
+       this review's non-deferred findings are **> 3 OR include ≥ 1 Critical/High** (the loop's
+       non-convergence rule, step 3). **Not meaningful** (≤ 3 non-deferred, none Critical/High) →
+       commit the checkpoint `chore(story-{e}-{s}): re-review external changes` and continue, no
+       re-halt.
+     - **Meaningful → re-open this same halt.** Commit the persisted findings
+       `chore(story-{e}-{s}): re-review external changes`, then **ask again** (`AskUserQuestion`),
+       summarizing the new findings (verdict + `Critical N / High N / Medium N / Low N` + the
+       non-deferred count). For any fixing option, resolve open `[Review][Decision]` items first
+       (step 2). Offer:
+       - **Fix & re-review** *(recommended)* — delegate the **`code-review fix`** entry (profile
+         `code_review_fix`) on the new findings, commit `fix(story-{e}-{s}): address external-change
+         review`, then **loop back to Re-review** so the fix is itself verified and the user lands at
+         the halt again. Cap the rounds at `code_review.max_iterations`; on the cap, drop this option
+         and re-ask with the rest, setting `convergence_unverified: true`.
+       - **Fix only** — delegate the same fix and commit, then continue without re-reviewing (the fix
+         stays unverified, like a converged exit's final fix pass).
+       - **Ignore & continue** — proceed with the findings unaddressed: they stay open in
+         `<story_file>`, surface in the report + PR `Needs attention` checklist, and set
+         `convergence_unverified: true` so Phase 9 ships a **draft** (a human waiver of real findings,
+         mirroring the Phase 8 gate waiver).
+       - **Stop now** — as the **Stop the pipeline now** option below; report the open findings as
+         `needs-human`.
    - **Stop the pipeline now** — skip the remaining phases, go straight to the report (Step 3);
      commits stay on the branch, nothing is pushed and no PR is opened. If the loop exited
      unconverged, report its last pass's findings as `needs-human`.
-   Record the choice, the external-review feedback (if any), and any extra commits in state + the
-   report. **Bracket this prompt with `date +%s`** so the (possibly long) external-review wait lands
-   on human/idle, not `active_seconds` (see top of this file). Phase 7 enters `completed_phases` only
-   after this halt resolves (and the tail below, when selected).
+   Record the choice, the external-change re-review outcome (if it ran — `external_review_iterations`,
+   each round's verdict + counts, and the user's fix/ignore decision), and any extra commits in state +
+   the report. **Bracket every prompt here with `date +%s`** — the original ask and any re-opened halt
+   — so the (possibly long) external-review waits land on human/idle, not `active_seconds` (see top of
+   this file). Phase 7 enters `completed_phases` only after this halt resolves (and the tail below,
+   when selected).
 
 ### Phase 7 tail — per-story trace advisory  *(conditional; non-blocking)*  → `tea_per_story`
 Runs **once on the Continue path, after the review loop and its HITL halt resolve**, only if

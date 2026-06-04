@@ -1,8 +1,8 @@
-# auto-bmad
+# auto-bmad — hands-off BMAD stories, human-in-the-loop where it counts
 
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.13.0-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Tested with BMAD 6.8.x](https://img.shields.io/badge/tested%20with%20BMAD-6.8.x-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**.
+A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**, with **[human-in-the-loop checkpoints](#human-in-the-loop-stops)** at the decisions that matter.
 
 `auto-bmad` chains the core BMM skills (`create-story` → `dev-story` → `code-review`) and the optional TEA (Test Architect) skills into a single resumable pipeline. It detects the next story from `sprint-status.yaml` (or takes one as an argument), runs every step in an isolated git branch with conventional-commit checkpoints, opens a PR, and finishes with a report of the PR link, open questions, deferred work, and anything that needs your attention — then stops so **you** decide when to start the next story.
 

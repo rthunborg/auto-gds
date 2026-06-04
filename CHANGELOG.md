@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A perfectly clean first code review now exits without a second pass.** When the first review pass
+  finds 0 non-deferred findings, the loop skips the mandatory second opinion and goes straight to the
+  human-in-the-loop halt; any first pass with ≥ 1 non-deferred finding still pulls the second review.
+
 ## [0.13.1] - 2026-06-04
 
 ### Changed

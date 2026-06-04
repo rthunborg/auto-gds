@@ -142,11 +142,13 @@ no-op, recorded as skipped). Sub-steps execute in this order:
 - Delegate the **`testarch-automate`** entry with `<story_file>`.
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
-## Phase 7 — Code-review loop  (always ≥ 2 reviews, ≤ `code_review.max_iterations`, default 3)
-The loop **always runs at least two review passes** — a clean first pass no longer exits early, so a
-second opinion (the alternate model, when `code_review.alternate_models` is on) always weighs in —
-then exits as soon as a pass converges or the cap is hit, and **always ends at a human-in-the-loop
-halt** (step 4). A pass **converges** when it found-and-fixed **≤ 3 non-deferred findings AND none
+## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 3; ≥ 2 unless the first pass is perfectly clean)
+The loop runs **at least two review passes — unless the first pass is perfectly clean** (found **0
+non-deferred findings**), in which case it exits after that single pass. Any first pass with **≥ 1**
+non-deferred finding still pulls a mandatory second opinion (the alternate model, when
+`code_review.alternate_models` is on) — then the loop exits as soon as a pass converges or the cap is
+hit, and **always ends at a human-in-the-loop halt** (step 4). A pass **converges** when it
+found-and-fixed **≤ 3 non-deferred findings AND none
 were Critical or High**; it does **not** converge when it found **> 3 non-deferred findings OR ≥ 1
 non-deferred Critical/High**. Track `code_review_iterations` and `code_review_loop_done` in state
 (resume continues mid-loop, or re-opens the halt once the loop is done).
@@ -202,8 +204,12 @@ For iteration `i` (1-based):
    pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were Critical or
    High** (a *deferred* Critical/High is a logged human decision and does not block convergence).
    Drive the loop:
-   - **`i == 1`** → **always continue to iteration 2**, whatever this pass found. The second review
-     is mandatory; a clean first pass no longer exits here.
+   - **`i == 1` and the pass found 0 non-deferred findings** → **exit the loop** (perfectly clean —
+     the second opinion is skipped; this is the only first-pass early exit). The pass trivially
+     converged, so `convergence_unverified` stays false.
+   - **`i == 1` with ≥ 1 non-deferred finding** → **continue to iteration 2**, whatever else it found.
+     The second review is mandatory the moment the first pass surfaces anything actionable (even a
+     single ≤ 3-finding pass that would otherwise converge).
    - **`i ≥ 2` and the pass converged** → exit the loop.
    - **`i ≥ 2`, not converged, `i < max_iterations`** → continue to iteration `i+1`.
    - **`i ≥ 2`, not converged, `i == max_iterations`** → exit the loop **unconverged**: set
@@ -211,7 +217,8 @@ For iteration `i` (1-based):
      predicate clause 2).
    On any exit, set `code_review_loop_done: true`, then go to step 4.
    (Edge: if `code_review.max_iterations` is `1` the second review can't run — the loop takes its
-   single pass and exits; note it in the report. At the default cap of 3 the loop runs 2–3 passes.)
+   single pass and exits; note it in the report. At the default cap of 3 the loop runs 1–3 passes —
+   1 when the first pass is perfectly clean, otherwise 2–3.)
 4. **HITL halt — ASK the user, on every loop exit.** The loop *always* ends here (converged or
    capped); this single human checkpoint replaces the old cap-only prompt. Summarize: iterations
    run, each pass's verdict + `Critical N / High N / Medium N / Low N` counts, the total non-deferred

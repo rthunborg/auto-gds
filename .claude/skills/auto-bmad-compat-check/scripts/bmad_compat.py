@@ -11,8 +11,10 @@ needs reading the real diff, not a heuristic.
 
 Two modes, and only one of them touches the network:
 
-  --report     fetch npm metadata + tarballs for baseline/stable/prerelease,
-               diff them, classify, emit JSON.  (network)
+  --report     fetch npm metadata + tarballs and diff each line *incrementally* —
+               last-checked stable -> current stable, and last-checked prerelease
+               -> current prerelease — so only what is genuinely new since the
+               last check is surfaced. classify, emit JSON.  (network)
   --self-test  exercise every pure function against fixtures.  (hermetic — no
                network, so it is safe in CI and matches the repo's other scripts)
 
@@ -177,6 +179,26 @@ def parse_baseline_from_readme(text: str):
     return stable, prerelease
 
 
+def prerelease_anchor(stable, prev_prerelease, prerelease):
+    """Pick the 'from' version for the prerelease diff, or None to skip it.
+
+    We only want what's *genuinely new* in the prerelease line since the last
+    check — never re-surfacing anything already covered by the stable diff or the
+    prerelease we last signed off on. So anchor at the highest version we've
+    already accounted for: the current stable, or the last-checked prerelease when
+    it still sits above stable (semver_key ranks a final above its own -next, so a
+    prerelease that has since *graduated* to stable drops below the stable floor
+    and is correctly covered by the stable diff, not re-reported here). Skip
+    entirely when the live prerelease isn't above that floor — it graduated, or
+    hasn't moved since the last check."""
+    if not prerelease:
+        return None
+    floor = stable
+    if prev_prerelease and semver_key(prev_prerelease) > semver_key(floor):
+        floor = prev_prerelease
+    return floor if semver_key(prerelease) > semver_key(floor) else None
+
+
 def unified(path: str, a: bytes, b: bytes, max_lines: int) -> str:
     """A bounded unified diff for one file, or a binary-change note."""
     try:
@@ -224,6 +246,11 @@ def extract_package_src(tar_bytes: bytes) -> dict:
     return out
 
 
+def _has_version(registry: dict, version: str) -> bool:
+    """Whether npm still publishes this exact version (prereleases can be pulled)."""
+    return version in registry.get("versions", {})
+
+
 def _tarball_url(registry: dict, version: str) -> str:
     try:
         return registry["versions"][version]["dist"]["tarball"]
@@ -266,7 +293,7 @@ def _compare(label, older_v, newer_v, older, newer, surface, max_lines) -> dict:
     }
 
 
-def build_report(baseline, surface, max_lines) -> dict:
+def build_report(baseline, prev_prerelease, surface, max_lines) -> dict:
     registry = fetch_registry()
     tags = registry.get("dist-tags", {})
     stable = tags.get("latest")
@@ -276,30 +303,48 @@ def build_report(baseline, surface, max_lines) -> dict:
     prerelease = nxt if (nxt and semver_key(nxt) > semver_key(stable)) else None
 
     trees = {baseline: _tree(registry, baseline), stable: _tree(registry, stable)}
-    if prerelease and prerelease not in trees:
-        trees[prerelease] = _tree(registry, prerelease)
 
     comparisons = []
+    # Stable line: only what's new since the last-checked stable.
     if baseline != stable:
-        comparisons.append(_compare("baseline_to_stable", baseline, stable,
+        comparisons.append(_compare("prev_stable_to_stable", baseline, stable,
                                     trees[baseline], trees[stable], surface, max_lines))
-    if prerelease:
-        comparisons.append(_compare("stable_to_prerelease", stable, prerelease,
-                                    trees[stable], trees[prerelease], surface, max_lines))
+
+    # Prerelease line: only what's new since the last-checked prerelease (or the
+    # current stable, whichever is higher — see prerelease_anchor).
+    pre_anchor = prerelease_anchor(stable, prev_prerelease, prerelease)
+    pre_anchor_note = None
+    if pre_anchor and pre_anchor != stable and not _has_version(registry, pre_anchor):
+        # A -next.N prerelease is ephemeral and may have been unpublished since we
+        # last recorded it. Don't crash — fall back to the stable anchor and say so.
+        pre_anchor_note = (f"last-checked prerelease {pre_anchor} is no longer published on "
+                           f"npm; anchored the prerelease diff at stable {stable} instead")
+        pre_anchor = stable  # prerelease > prev_prerelease > stable, so it's still above this floor
+    if pre_anchor and prerelease:  # prerelease is non-None whenever pre_anchor is set
+        if pre_anchor not in trees:
+            trees[pre_anchor] = _tree(registry, pre_anchor)
+        if prerelease not in trees:
+            trees[prerelease] = _tree(registry, prerelease)
+        label = ("stable_to_prerelease" if pre_anchor == stable
+                 else "prev_prerelease_to_prerelease")
+        comparisons.append(_compare(label, pre_anchor, prerelease,
+                                    trees[pre_anchor], trees[prerelease], surface, max_lines))
 
     return {
         "package": "bmad-method",
         "baseline": baseline,
+        "prev_prerelease": prev_prerelease,
         "stable": stable,
         "prerelease": prerelease,
         "prerelease_tag_raw": nxt,
+        "prerelease_anchor_note": pre_anchor_note,
         "surface_skills": surface,
         "comparisons": comparisons,
-        "summary": _summarize(baseline, stable, prerelease, comparisons),
+        "summary": _summarize(comparisons),
     }
 
 
-def _summarize(baseline, stable, prerelease, comparisons) -> dict:
+def _summarize(comparisons) -> dict:
     hits = {"critical": [], "high": [], "low": []}
     new_skills = []
     for c in comparisons:
@@ -311,7 +356,8 @@ def _summarize(baseline, stable, prerelease, comparisons) -> dict:
         verdict = "needs-attention"
     elif hits["low"] or new_skills:
         verdict = "review-opportunities"
-    elif baseline == stable and not prerelease:
+    elif not comparisons:
+        # Nothing new on either line since the last check.
         verdict = "up-to-date"
     else:
         verdict = "compatible"
@@ -388,6 +434,24 @@ def _self_test() -> int:
     check("readme: stable baseline", stable == "6.8.0")
     check("readme: prerelease baseline", pre == "6.8.1-next.0")
 
+    # prerelease anchoring — only diff what's genuinely new since the last check
+    check("anchor: no live prerelease -> skip",
+          prerelease_anchor("6.8.0", "6.8.1-next.2", None) is None)
+    check("anchor: unchanged since last check -> skip",
+          prerelease_anchor("6.8.0", "6.8.1-next.2", "6.8.1-next.2") is None)
+    check("anchor: new prerelease on same line -> anchor at last-checked prerelease",
+          prerelease_anchor("6.8.0", "6.8.1-next.2", "6.8.1-next.3") == "6.8.1-next.2")
+    check("anchor: prerelease graduated + new line -> anchor at stable (no double-report)",
+          prerelease_anchor("6.8.1", "6.8.1-next.2", "6.8.2-next.1") == "6.8.1")
+    check("anchor: no prior prerelease recorded -> anchor at stable",
+          prerelease_anchor("6.8.0", None, "6.8.1-next.1") == "6.8.0")
+
+    # version availability — drives the graceful degrade when a recorded
+    # prerelease has since been unpublished (anchor falls back to stable)
+    reg = {"versions": {"6.8.0": {}, "6.8.1-next.2": {}}}
+    check("has_version: present", _has_version(reg, "6.8.0"))
+    check("has_version: pulled prerelease", not _has_version(reg, "6.8.1-next.1"))
+
     # unified diff truncation
     big = unified("f", b"a\n" * 50, b"b\n" * 50, max_lines=10)
     check("unified: truncates", "truncated" in big)
@@ -411,7 +475,9 @@ def main() -> int:
     ap.add_argument("--report", action="store_true", help="fetch + diff + classify (network)")
     ap.add_argument("--baseline", help="last-verified stable version (e.g. 6.8.0); "
                                        "defaults to the README compat blockquote via --readme")
-    ap.add_argument("--readme", help="path to README.md to read the baseline from")
+    ap.add_argument("--prev-prerelease", help="last-checked prerelease (e.g. 6.8.1-next.2); "
+                                              "defaults to the README compat blockquote via --readme")
+    ap.add_argument("--readme", help="path to README.md to read the baselines from")
     ap.add_argument("--refs", nargs="*", default=[],
                     help="reference docs to derive the delegated-skill surface from")
     ap.add_argument("--max-diff-lines", type=int, default=160,
@@ -425,9 +491,13 @@ def main() -> int:
         ap.error("nothing to do: pass --report or --self-test")
 
     baseline = args.baseline
-    if not baseline and args.readme:
+    prev_prerelease = args.prev_prerelease
+    if args.readme and (not baseline or not prev_prerelease):
         with open(args.readme, encoding="utf-8") as fh:
-            baseline, _ = parse_baseline_from_readme(fh.read())
+            r_stable, r_pre = parse_baseline_from_readme(fh.read())
+        baseline = baseline or r_stable
+        if prev_prerelease is None:
+            prev_prerelease = r_pre
     if not baseline:
         ap.error("could not determine baseline: pass --baseline or --readme")
 
@@ -440,7 +510,7 @@ def main() -> int:
             pass
     surface = sorted(set(surface)) or FALLBACK_SURFACE
 
-    report = build_report(baseline, surface, args.max_diff_lines)
+    report = build_report(baseline, prev_prerelease, surface, args.max_diff_lines)
     json.dump(report, sys.stdout, indent=2)
     print()
     return 0

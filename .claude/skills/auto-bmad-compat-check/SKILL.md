@@ -23,7 +23,15 @@ This skill answers both, grounded in the *published* npm package (what users
 actually install) rather than guesswork.
 
 Run it from the **root of the auto-bmad repo** (it reads the repo to find both
-the baseline version and the set of skills auto-bmad depends on).
+the baseline versions and the set of skills auto-bmad depends on).
+
+It checks **incrementally**: each line is diffed only from where you last left
+off — last-checked stable → current stable, and last-checked prerelease →
+current prerelease — so a run only ever surfaces what is *genuinely new since the
+last check*, never re-litigating churn you already signed off on. The store for
+"where you last left off" is the **README compat blockquote itself** (it records
+both versions); Step 5's marker update is what advances that baseline for next
+time. There is no separate state file to drift.
 
 ## How it works
 
@@ -41,16 +49,24 @@ python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py \
   > /tmp/bmad-compat.json
 ```
 
-- **Baseline** = the last-verified versions, parsed from the README compat
-  blockquote (the exact stable + prerelease we last signed off on).
+- **Baseline** = the last-checked versions (stable *and* prerelease), parsed from
+  the README compat blockquote — the exact pair we last signed off on.
 - **Surface** = the BMAD skills auto-bmad delegates to, derived live from
   `auto-bmad/references/*.md` so it never goes stale as the pipeline evolves.
-- The script fetches the npm `latest` (stable) and `next` (prerelease) versions,
-  diffs `baseline → stable` and `stable → prerelease`, and emits JSON with a
-  `summary` plus per-file `impact` entries (each carrying a bounded unified
-  `diff` for the changes that matter).
+- The script fetches the npm `latest` (stable) and `next` (prerelease) versions
+  and diffs **incrementally**: `prev_stable → stable`, and the prerelease line
+  from the higher of `{current stable, last-checked prerelease}` → current
+  prerelease. So when the prerelease line moves `next.1 → next.2`, you see *only*
+  `next.1 → next.2`, not the whole `stable → next.2`. A comparison is **omitted
+  entirely** when nothing is new on that line (same stable, or the prerelease
+  hasn't moved / has graduated to stable) — an empty `comparisons` list means
+  `up-to-date`. Output is JSON with a `summary` plus per-file `impact` entries
+  (each carrying a bounded unified `diff` for the changes that matter).
 
-If it can't determine the baseline, pass `--baseline X.Y.Z` explicitly. If the
+If it can't determine a baseline from the README, pass `--baseline X.Y.Z` and/or
+`--prev-prerelease X.Y.Z-next.N` explicitly. If a recorded prerelease has since
+been unpublished from npm, the script degrades gracefully — it re-anchors that
+line at the current stable and records why in `prerelease_anchor_note`. If the
 network is unavailable it exits with a clear error — say so and stop.
 
 ### Step 2 — read the classification
@@ -86,13 +102,15 @@ Repo `bmad-code-org/BMAD-METHOD` — tags are `vX.Y.Z`, default branch `main`.
   **🐛 Fixes** the payload diff can't surface. Cross-check any installer note
   against `CLAUDE.md` "Known platform facts" — the README "Updating" guidance
   keys off exactly these.
-- **stable → prerelease — post-stable commits.** The `next` prerelease carries
+- **prerelease line — post-stable commits.** The `next` prerelease carries
   no git tag, so read the commits on `main` since the last stable tag:
   `gh api repos/bmad-code-org/BMAD-METHOD/compare/v<stable>...main --jq
   '.commits[].commit.message'`. These are *what's landed since the last stable,
   heading toward the next release* — not necessarily the exact `next` build. A
   `src/`-touching commit is already in the diff; its value here is the **intent**
   behind it. The payoff is the **`tools/`-only** commits the package never carries.
+  Since the tarball diff is now incremental, **focus on commits that postdate the
+  last-checked prerelease** — the rest you already reviewed on a prior run.
 
 If `gh` is unauthenticated or offline, say so and **fall through to the
 tarball-only verdict** — this step sharpens judgement, it isn't a gate.
@@ -115,14 +133,18 @@ Produce this exact template in chat:
 # BMAD compatibility check — <YYYY-MM-DD>
 
 ## Versions
-- Last verified (auto-bmad): <baseline>
-- Current stable (npm `latest`): <stable>
-- Current prerelease (npm `next`): <prerelease, or "none ahead of stable">
+- Last checked (auto-bmad): <baseline stable> + <prev_prerelease, or "no prerelease recorded">
+- Current stable (npm `latest`): <stable, or "unchanged since last check">
+- Current prerelease (npm `next`): <prerelease, "unchanged since last check", or "none ahead of stable">
 
 ## What changed
-<grouped by comparison; bold the delegated/contract changes; one line each. Draw
-on the Step 3 release notes (stable) and post-stable commits (prerelease) for the
-*why*. For docs-only or off-pipeline churn, say so plainly.>
+<grouped by comparison — and note which line each is (stable vs prerelease) and
+its actual `from → to`, since the prerelease diff is incremental. Bold the
+delegated/contract changes; one line each. Draw on the Step 3 release notes
+(stable) and post-stable commits (prerelease) for the *why*. For docs-only or
+off-pipeline churn, say so plainly. If `comparisons` is empty (verdict
+`up-to-date`), say plainly that nothing is new on either line since the last
+check — that is the whole point of the incremental check.>
 
 ## Impact on auto-bmad
 - **Verdict:** none / low / needs-attention / breaking
@@ -136,7 +158,8 @@ on the Step 3 release notes (stable) and post-stable commits (prerelease) for th
 - <skill → concrete auto-bmad phase it could improve, or "nothing actionable">
 
 ## Recommendation
-- <e.g. "Safe to bump the compat marker to <stable>", or "Hold — inspect X first">
+- <e.g. "Safe to advance the markers to <stable> + <prerelease>", "Already
+  up-to-date — nothing new since last check", or "Hold — inspect X first">
 ```
 
 Lead with the verdict; a maintainer should grasp it in seconds.
@@ -150,12 +173,17 @@ contract), **offer** to update the compatibility markers — never write silentl
    on a new minor line (e.g. `6.8.x` → `6.9.x`); a new patch/prerelease alone
    doesn't change it.
 2. **README compat blockquote** — rewrite the exact versions to the new stable
-   (and prerelease, if any). Keep the contract-based "tested against … couples
-   to those skills' contracts rather than a pinned version" framing — that
-   wording is *why* a BMAD bump is low-risk; don't reduce it to a bare version.
+   **and** the new prerelease. This blockquote **is the store** the next run
+   reads as its baseline, so always advance *both* versions you just checked —
+   even a prerelease-only bump (`next.1 → next.2`) must be recorded, or the next
+   run re-diffs ground you already covered. Keep the contract-based "tested
+   against … couples to those skills' contracts rather than a pinned version"
+   framing — that wording is *why* a BMAD bump is low-risk; don't reduce it to a
+   bare version.
 3. **CHANGELOG `[Unreleased]`** — add a short note only if this is a meaningful
    compatibility statement (a verified new BMAD line). A routine "still
-   compatible, nothing changed" check needs no changelog entry.
+   compatible, nothing changed" check — including a benign prerelease-marker
+   advance — needs no changelog entry.
 
 Note for the user: `scripts/bump-version.py` rewrites auto-bmad's *own* version
 badge but **not** these BMAD-compat markers, so they're hand-maintained — which
@@ -165,6 +193,12 @@ is exactly what this skill automates.
 
 - The `next` tag can lag a fresh stable release; the script only treats it as a
   prerelease when it actually sorts above `latest` (and reports the raw tag).
+- The check is **incremental and stateful via the README** (Step 1): each line is
+  diffed only from the last-checked version, and the prerelease line anchors at
+  the higher of `{current stable, last-checked prerelease}` so a prerelease that
+  has graduated to stable is covered by the stable diff, never double-reported.
+  A recorded prerelease that npm has since unpublished degrades to the stable
+  anchor (`prerelease_anchor_note`) rather than crashing.
 - Tarball diffing is authoritative for "what shipped" but won't catch a BMAD
   *installer* behavior change (those live in `tools/`, not the skill payload) —
   which is exactly why Step 3 reads the release notes and post-stable commits.

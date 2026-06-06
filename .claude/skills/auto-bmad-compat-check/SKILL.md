@@ -54,14 +54,23 @@ python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py \
 - **Surface** = the BMAD skills auto-bmad delegates to, derived live from
   `auto-bmad/references/*.md` so it never goes stale as the pipeline evolves.
 - The script fetches the npm `latest` (stable) and `next` (prerelease) versions
-  and diffs **incrementally**: `prev_stable → stable`, and the prerelease line
-  from the higher of `{current stable, last-checked prerelease}` → current
-  prerelease. So when the prerelease line moves `next.1 → next.2`, you see *only*
-  `next.1 → next.2`, not the whole `stable → next.2`. A comparison is **omitted
-  entirely** when nothing is new on that line (same stable, or the prerelease
-  hasn't moved / has graduated to stable) — an empty `comparisons` list means
-  `up-to-date`. Output is JSON with a `summary` plus per-file `impact` entries
-  (each carrying a bounded unified `diff` for the changes that matter).
+  and diffs **incrementally**, each line anchored at the highest version you've
+  already checked below it:
+  - *prerelease line* → from the higher of `{current stable, last-checked
+    prerelease}`. So `next.1 → next.2` shows *only* `next.1 → next.2`, not the
+    whole `stable → next.2`.
+  - *stable line* → from the higher of `{last-checked stable, a last-checked
+    prerelease that has since graduated into this stable}`. So when `6.8.1` ships
+    after you reviewed `6.8.1-next.2`, you see *only* the `next.2 → 6.8.1` sliver,
+    not the whole `prev_stable → 6.8.1` (which would re-show everything you already
+    reviewed as prereleases).
+  A comparison is **omitted entirely** when nothing is new on that line (stable
+  unchanged, or the prerelease hasn't moved / has graduated) — an empty
+  `comparisons` list means `up-to-date`. Output is JSON with a `summary` plus per-file `impact` entries
+  (each carrying a bounded unified `diff` for the changes that matter). Each
+  comparison also carries `from_git_head` / `to_git_head` — the exact source
+  commits npm built its endpoints from — for the precise repo cross-check in
+  Step 3.
 
 If it can't determine a baseline from the README, pass `--baseline X.Y.Z` and/or
 `--prev-prerelease X.Y.Z-next.N` explicitly. If a recorded prerelease has since
@@ -102,15 +111,22 @@ Repo `bmad-code-org/BMAD-METHOD` — tags are `vX.Y.Z`, default branch `main`.
   **🐛 Fixes** the payload diff can't surface. Cross-check any installer note
   against `CLAUDE.md` "Known platform facts" — the README "Updating" guidance
   keys off exactly these.
-- **prerelease line — post-stable commits.** The `next` prerelease carries
-  no git tag, so read the commits on `main` since the last stable tag:
-  `gh api repos/bmad-code-org/BMAD-METHOD/compare/v<stable>...main --jq
-  '.commits[].commit.message'`. These are *what's landed since the last stable,
-  heading toward the next release* — not necessarily the exact `next` build. A
-  `src/`-touching commit is already in the diff; its value here is the **intent**
-  behind it. The payoff is the **`tools/`-only** commits the package never carries.
-  Since the tarball diff is now incremental, **focus on commits that postdate the
-  last-checked prerelease** — the rest you already reviewed on a prior run.
+- **prerelease line — exact commit window via `gitHead`.** The `next` prerelease
+  carries no git tag, but npm stamps the **exact source commit** it was built from
+  into each version's metadata — the script surfaces it as `from_git_head` /
+  `to_git_head` on the prerelease comparison. Use those to read the *precise*
+  commit window that produced the incremental diff:
+  `gh api repos/bmad-code-org/BMAD-METHOD/compare/<from_git_head>...<to_git_head>
+  --jq '.commits[].commit.message'`. This is tight — it spans only the
+  last-checked prerelease → current prerelease, not the whole `v<stable>...main`
+  (which can be **ahead of** the published `next`, and re-includes commits you
+  reviewed on a prior run). A `src/`-touching commit is already in the diff; its
+  value here is the **intent** behind it. The payoff is the **`tools/`-only**
+  commits the package never carries.
+  - *Fallback:* if `from_git_head`/`to_git_head` are null (an older publish that
+    predates npm `gitHead`) **or the `compare` 404s** (commit squash-rewritten or
+    force-pushed off `main`), fall back to `compare/v<stable>...main` and manually
+    ignore commits at or before the last-checked prerelease.
 
 If `gh` is unauthenticated or offline, say so and **fall through to the
 tarball-only verdict** — this step sharpens judgement, it isn't a gate.
@@ -194,11 +210,13 @@ is exactly what this skill automates.
 - The `next` tag can lag a fresh stable release; the script only treats it as a
   prerelease when it actually sorts above `latest` (and reports the raw tag).
 - The check is **incremental and stateful via the README** (Step 1): each line is
-  diffed only from the last-checked version, and the prerelease line anchors at
-  the higher of `{current stable, last-checked prerelease}` so a prerelease that
-  has graduated to stable is covered by the stable diff, never double-reported.
-  A recorded prerelease that npm has since unpublished degrades to the stable
-  anchor (`prerelease_anchor_note`) rather than crashing.
+  diffed only from the highest version you've already checked below it, so nothing
+  is ever reviewed twice. The prerelease line anchors at the higher of `{current
+  stable, last-checked prerelease}`; the stable line, symmetrically, anchors at a
+  last-checked prerelease once it has *graduated* into the stable (diffing just the
+  prerelease→final sliver). A recorded prerelease that npm has since unpublished
+  degrades to a durable stable anchor (`stable_anchor_note` /
+  `prerelease_anchor_note`) rather than crashing.
 - Tarball diffing is authoritative for "what shipped" but won't catch a BMAD
   *installer* behavior change (those live in `tools/`, not the skill payload) —
   which is exactly why Step 3 reads the release notes and post-stable commits.

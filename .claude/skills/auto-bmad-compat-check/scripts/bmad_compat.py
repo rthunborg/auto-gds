@@ -199,6 +199,24 @@ def prerelease_anchor(stable, prev_prerelease, prerelease):
     return floor if semver_key(prerelease) > semver_key(floor) else None
 
 
+def stable_anchor(baseline, prev_prerelease, stable):
+    """Pick the 'from' version for the stable diff, or None to skip it.
+
+    Symmetric to prerelease_anchor: anchor at the highest version we've already
+    checked that sits *below* the current stable — the last-checked stable, or the
+    last-checked prerelease once it has *graduated* into this stable (then we diff
+    only the prerelease→final sliver, never re-showing changes already reviewed as
+    prereleases). A prerelease aimed at a *future* line (>= this stable) is not a
+    precursor to it, so it's ignored. Skip when stable hasn't moved past what we've
+    seen."""
+    floor = baseline
+    if (prev_prerelease
+            and semver_key(prev_prerelease) < semver_key(stable)
+            and semver_key(prev_prerelease) > semver_key(floor)):
+        floor = prev_prerelease
+    return floor if semver_key(stable) > semver_key(floor) else None
+
+
 def unified(path: str, a: bytes, b: bytes, max_lines: int) -> str:
     """A bounded unified diff for one file, or a binary-change note."""
     try:
@@ -249,6 +267,28 @@ def extract_package_src(tar_bytes: bytes) -> dict:
 def _has_version(registry: dict, version: str) -> bool:
     """Whether npm still publishes this exact version (prereleases can be pulled)."""
     return version in registry.get("versions", {})
+
+
+def _resolve_anchor(anchor, fallback, registry, kind):
+    """Guard against anchoring a diff at an *ephemeral* prerelease npm has since
+    unpublished. If `anchor` is such a version, degrade to `fallback` (always a
+    durable stable) and return a note saying so; otherwise return it unchanged."""
+    if anchor and anchor != fallback and not _has_version(registry, anchor):
+        note = (f"last-checked prerelease {anchor} is no longer published on npm; "
+                f"anchored the {kind} diff at {fallback} instead")
+        return fallback, note
+    return anchor, None
+
+
+def _git_head(registry: dict, version) -> str | None:
+    """The exact source commit a published version was built from, if npm recorded
+    it. npm stamps `gitHead` into each published version's metadata, so this pins a
+    tagless `-next` prerelease to a precise commit — letting the repo cross-check
+    (Step 3) read the *exact* commit window that produced a diff, instead of the
+    looser `v<stable>...main` (where `main` can sit ahead of the published build)."""
+    if not version:
+        return None
+    return registry.get("versions", {}).get(version, {}).get("gitHead")
 
 
 def _tarball_url(registry: dict, version: str) -> str:
@@ -305,21 +345,30 @@ def build_report(baseline, prev_prerelease, surface, max_lines) -> dict:
     trees = {baseline: _tree(registry, baseline), stable: _tree(registry, stable)}
 
     comparisons = []
-    # Stable line: only what's new since the last-checked stable.
-    if baseline != stable:
-        comparisons.append(_compare("prev_stable_to_stable", baseline, stable,
-                                    trees[baseline], trees[stable], surface, max_lines))
+
+    def add(comp):
+        # Pin each comparison to the exact source commits npm built its endpoints
+        # from, so Step 3's repo cross-check reads the precise commit window.
+        comp["from_git_head"] = _git_head(registry, comp["from"])
+        comp["to_git_head"] = _git_head(registry, comp["to"])
+        comparisons.append(comp)
+
+    # Stable line: only what's new since the highest version we've already checked
+    # below the current stable — the last-checked stable, or a prerelease that has
+    # since graduated into it (then just the prerelease→final sliver).
+    s_anchor = stable_anchor(baseline, prev_prerelease, stable)
+    s_anchor, stable_anchor_note = _resolve_anchor(s_anchor, baseline, registry, "stable")
+    if s_anchor:
+        if s_anchor not in trees:
+            trees[s_anchor] = _tree(registry, s_anchor)
+        label = "prev_stable_to_stable" if s_anchor == baseline else "prev_prerelease_to_stable"
+        add(_compare(label, s_anchor, stable,
+                     trees[s_anchor], trees[stable], surface, max_lines))
 
     # Prerelease line: only what's new since the last-checked prerelease (or the
     # current stable, whichever is higher — see prerelease_anchor).
     pre_anchor = prerelease_anchor(stable, prev_prerelease, prerelease)
-    pre_anchor_note = None
-    if pre_anchor and pre_anchor != stable and not _has_version(registry, pre_anchor):
-        # A -next.N prerelease is ephemeral and may have been unpublished since we
-        # last recorded it. Don't crash — fall back to the stable anchor and say so.
-        pre_anchor_note = (f"last-checked prerelease {pre_anchor} is no longer published on "
-                           f"npm; anchored the prerelease diff at stable {stable} instead")
-        pre_anchor = stable  # prerelease > prev_prerelease > stable, so it's still above this floor
+    pre_anchor, pre_anchor_note = _resolve_anchor(pre_anchor, stable, registry, "prerelease")
     if pre_anchor and prerelease:  # prerelease is non-None whenever pre_anchor is set
         if pre_anchor not in trees:
             trees[pre_anchor] = _tree(registry, pre_anchor)
@@ -327,8 +376,8 @@ def build_report(baseline, prev_prerelease, surface, max_lines) -> dict:
             trees[prerelease] = _tree(registry, prerelease)
         label = ("stable_to_prerelease" if pre_anchor == stable
                  else "prev_prerelease_to_prerelease")
-        comparisons.append(_compare(label, pre_anchor, prerelease,
-                                    trees[pre_anchor], trees[prerelease], surface, max_lines))
+        add(_compare(label, pre_anchor, prerelease,
+                     trees[pre_anchor], trees[prerelease], surface, max_lines))
 
     return {
         "package": "bmad-method",
@@ -337,6 +386,7 @@ def build_report(baseline, prev_prerelease, surface, max_lines) -> dict:
         "stable": stable,
         "prerelease": prerelease,
         "prerelease_tag_raw": nxt,
+        "stable_anchor_note": stable_anchor_note,
         "prerelease_anchor_note": pre_anchor_note,
         "surface_skills": surface,
         "comparisons": comparisons,
@@ -446,11 +496,30 @@ def _self_test() -> int:
     check("anchor: no prior prerelease recorded -> anchor at stable",
           prerelease_anchor("6.8.0", None, "6.8.1-next.1") == "6.8.0")
 
+    # stable anchoring — symmetric: don't re-show prerelease content when it graduates
+    check("stable-anchor: no new stable -> skip",
+          stable_anchor("6.8.0", "6.8.1-next.2", "6.8.0") is None)
+    check("stable-anchor: prerelease graduated -> anchor at it (sliver only)",
+          stable_anchor("6.8.0", "6.8.1-next.2", "6.8.1") == "6.8.1-next.2")
+    check("stable-anchor: no prior prerelease -> anchor at prev stable",
+          stable_anchor("6.8.0", None, "6.8.1") == "6.8.0")
+    check("stable-anchor: future-line prerelease ignored for this stable",
+          stable_anchor("6.8.0", "6.9.0-next.1", "6.8.1") == "6.8.0")
+    check("stable-anchor: prerelease already below baseline ignored",
+          stable_anchor("6.8.1", "6.8.1-next.2", "6.9.0") == "6.8.1")
+
     # version availability — drives the graceful degrade when a recorded
     # prerelease has since been unpublished (anchor falls back to stable)
     reg = {"versions": {"6.8.0": {}, "6.8.1-next.2": {}}}
     check("has_version: present", _has_version(reg, "6.8.0"))
     check("has_version: pulled prerelease", not _has_version(reg, "6.8.1-next.1"))
+
+    # gitHead pinning — lets Step 3 read the exact commit window for a tagless prerelease
+    reg2 = {"versions": {"6.8.0": {"gitHead": "abc123"}, "6.8.1-next.2": {}}}
+    check("git_head: present", _git_head(reg2, "6.8.0") == "abc123")
+    check("git_head: not recorded -> None", _git_head(reg2, "6.8.1-next.2") is None)
+    check("git_head: unknown version -> None", _git_head(reg2, "9.9.9") is None)
+    check("git_head: None version -> None", _git_head(reg2, None) is None)
 
     # unified diff truncation
     big = unified("f", b"a\n" * 50, b"b\n" * 50, max_lines=10)

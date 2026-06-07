@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-06-07
+
 ### Changed
 
 - **Every auto-bmad commit now carries a body, not just a subject.** Each per-phase commit is a full
@@ -401,7 +403,8 @@ First tagged release — the matching `v0.1.1` git tag for the module already pu
 - **Distribution** via the BMAD installer (custom Git source) and a Claude plugin `marketplace.json`,
   plus a README "Updating" section, `CHANGELOG.md`, and the `scripts/bump-version.py` release helper.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.2...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.3...HEAD
+[0.13.3]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.12.1...v0.13.0

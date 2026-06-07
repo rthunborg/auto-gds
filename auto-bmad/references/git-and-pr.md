@@ -48,7 +48,8 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 - Never `commit`/`push` to the base branch.
 
 ## Commits (between phases)
-- Conventional Commits: `type(scope): subject`.
+- Conventional Commits, **in full**: a `type(scope): subject` line **plus a body** (required on
+  every commit) and a **footer when relevant** — never subject-only. See "Message body & footer".
 - Scope is the story or epic: `story-{e}-{s}` or `epic-{e}`.
 - Type per phase (see `pipeline.md` for the exact strings):
   - `chore` — pipeline start, review-passed checkpoint, Phase 9 finalize (mark done + BMAD status)
@@ -67,8 +68,36 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
   to `commits[]` on the **next** phase's folded-in state write (Phase 9's finalize write closes out
   the last one). `commits[]` feeds the report only — resume keys off `completed_phases`, which the
   folded write keeps current — so a one-phase lag in `commits[]` is harmless.
-- Keep subjects imperative and ≤ ~72 chars. The `feat` subject for dev-story comes from the
+
+### Message body & footer
+- Keep the **subject** imperative and ≤ ~72 chars. The `feat` subject for dev-story comes from the
   agent's one-line summary of what it built.
+- **Body — required on every commit.** One blank line after the subject, then 1–4 wrapped lines
+  saying *what this phase changed and why*, drawn from the context the orchestrator **already holds**
+  for the phase (the delegate's report, finding/severity counts, resolved decisions, deviations,
+  deferred work) — never invent. **The body must add information the subject doesn't carry; if it
+  would only restate the subject, the commit is too thin — put the real facts the phase produced.**
+  By type:
+  - `feat` (dev-story): what was built + notable decisions/deviations + any deferred work.
+  - `fix` (code review): the findings addressed this iteration, by severity, and the reviewer/iter;
+    note anything deferred or dismissed.
+  - `test`: the scaffolds/coverage added (ATDD red, post-dev automation, epic test design).
+  - `docs`: which artifact and its scope (story context, project-context, epic gate/context/retro,
+    pipeline report).
+  - `chore` start: story title, epic, branch, and the delegation tier/profiles in use.
+  - `chore` checkpoint (`code review passed`): reviewer/model, iteration, verdict, and that the pass
+    had 0 non-deferred findings.
+  - `chore` finalize: clean-vs-caveated outcome, the BMAD-status flip, and PR URL / CI status /
+    gate decision.
+- **Footer — optional, only when relevant.** One blank line after the body, Conventional Commits
+  `token: value` form. auto-bmad emits one only when it holds the data — chiefly
+  `BREAKING CHANGE: <what broke + how to migrate>` when a delegate reports an incompatible change
+  (equivalently mark the type, e.g. `feat(story-1-2)!: …`). Don't invent footers the phase didn't
+  produce.
+- **Emit the parts as separate `-m` args** so the blank-line separators are guaranteed:
+  `git commit -m "<subject>" -m "<body>" [-m "<footer>"]` — each `-m` becomes its own
+  blank-line-separated paragraph, i.e. exactly the subject / body / footer shape. (Stage the phase
+  artifacts **and** the state file first — the single-commit rule above.)
 
 ## PR (Phase 9, mode `remote` only)
 - Push: `git push -u origin <branch>`.

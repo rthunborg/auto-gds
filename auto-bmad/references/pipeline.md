@@ -10,7 +10,10 @@ current host/tier per `delegation-runtime.md` → read the result → if `blocke
 and report → else update the state file (append retro notes, mark the phase done in
 `completed_phases`, record timing — see `state-and-resume.md`) and **commit it in the same single
 commit as the phase's artifacts** (see `git-and-pr.md` → "Commits"; **never** a standalone
-state-only commit). When updating state, also record timing: read the host's `date +%s`
+state-only commit). Each phase below gives its `Commit:` **subject only** — every commit also
+carries a **required body** (and a footer when relevant), built from that phase's own facts, per
+`git-and-pr.md` → "Message body & footer". When updating state, also record timing: read the host's
+`date +%s`
 just before delegating the phase and again when it returns (just before the state write + commit),
 and add the delta to `active_seconds`
 (alongside the `updated_at` stamp) — this is what lets the report split AI-run time from
@@ -133,7 +136,9 @@ no-op, recorded as skipped). Sub-steps execute in this order:
 ## Phase 5 — Dev story  → `dev_story`
 - Delegate the **`dev-story`** entry with `<story_file>`. Fully autonomous; it runs tests and
   moves the story to `review`.
-- Capture deviations / deferred work / decisions → retro notes.
+- Capture deviations / deferred work / decisions → retro notes (these feed the commit body); if the
+  agent reports a **breaking change**, capture it → the `feat` commit's `BREAKING CHANGE:` footer
+  (see `git-and-pr.md` → Commits).
 - Commit: `feat(story-{e}-{s}): <one-line summary from the agent>`.
   (If the dev agent reports it cannot complete — missing secret, external service, manual
   step — that is `needs-human`: stop and report.)

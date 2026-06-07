@@ -87,6 +87,10 @@ reads it back, so create-story only sees it if we inject it here.
 Run `/bmad-dev-story <story_file>` in <project_root>.
 Implement the story to completion: all tasks/subtasks done, tests written and passing, story
 moved to `review`. Do not commit or branch — the orchestrator handles git.
+When done, report a short summary of what you built plus any deviations, key decisions, and
+deferred work — and any breaking change you introduce (a changed/removed public interface, config
+key, schema, CLI flag, or required migration step). The orchestrator records these in the commit
+body (and a `BREAKING CHANGE:` footer).
 ```
 
 ### code-review

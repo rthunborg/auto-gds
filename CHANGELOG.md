@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Every auto-bmad commit now carries a body, not just a subject.** Each per-phase commit is a full
+  Conventional Commit — `type(scope): subject` plus a required body drawn from the phase's own facts,
+  and a `BREAKING CHANGE:` footer when a delegate reports one — so story history reads consistently
+  (git-and-pr.md).
+
 ## [0.13.2] - 2026-06-04
 
 ### Changed

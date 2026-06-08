@@ -95,8 +95,9 @@ body (and a `BREAKING CHANGE:` footer).
 
 ### code-review
 ```
-Run `/bmad-code-review` in <project_root>, reviewing the current branch's diff against the base
-branch, with <story_file> as the spec/story file. 
+Run `/bmad-code-review` in <project_root>, reviewing story {key}, current branch's diff against 
+the base branch (excluding `_bmad`, `_bmad-output`, cache files and folders, and obvious non-code 
+files), with <story_file> as the spec/story file. 
 
 PERSIST the findings in the story file's `### Review Findings` section (add it if missing) as 
 `[Review][Patch|Decision|Defer]` bullets, and copy every `[Review][Defer]` to the cross-story 

@@ -50,7 +50,18 @@ CONTRACT_OWNERS = {
     "bmad-sprint-status": "sprint-status.yaml (status keys/shape)",
     "bmad-create-story": "story file (Status: field + section headings)",
     "bmad-generate-project-context": "project-context.md (path + structure)",
-    "bmad-code-review": "### Review Findings + deferred-work ledger",
+    "bmad-code-review": ("### Review Findings + deferred-work ledger; auto-bmad ALSO replicates this "
+                         "skill's internal structure — its step-02 lens roster + the inline Acceptance "
+                         "Auditor prompt + its step-03 triage rubric — in delegation.md's code-review "
+                         "fan-out, so a change to those internals drifts silently"),
+    # auto-bmad invokes these two review lenses DIRECTLY in the Phase 7 fan-out (they were formerly
+    # reached only through bmad-code-review's own subagents), and its code-review-triage prompt parses
+    # their output shapes — so a format change is a silent break, not just churn.
+    "bmad-review-edge-case-hunter": ("Edge Case Hunter JSON output shape "
+                                     "(location/trigger_condition/guard_snippet/potential_consequence) — "
+                                     "parsed by the code-review-triage prompt"),
+    "bmad-review-adversarial-general": ("Blind Hunter findings-list output — normalized by the "
+                                        "code-review-triage prompt"),
     "bmad-retrospective": "retro notes consumed for project-context refresh",
 }
 
@@ -461,6 +472,10 @@ def _self_test() -> int:
     check("classify: off-pipeline skill -> low", c3["relevance"] == "low")
     c4 = classify_path("package.json", surface)
     check("classify: non-skill -> info", c4["relevance"] == "info")
+    c5 = classify_path("src/bmm-skills/4-implementation/bmad-review-edge-case-hunter/SKILL.md",
+                       ["bmad-review-edge-case-hunter"])
+    check("classify: code-review fan-out lens is a contract owner -> critical",
+          c5["relevance"] == "critical" and "owns_contract" in c5)
 
     # diff sets
     a = {"p.json": b"1", "src/a/SKILL.md": b"x", "src/gone/SKILL.md": b"z"}

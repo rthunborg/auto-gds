@@ -7,7 +7,9 @@ This repo is a **BMAD standalone module** (one skill + a Claude `marketplace.jso
 ## Core principle (do not violate)
 The orchestrator **delegates BMAD work and reports** — it must never implement story work or run
 `/bmad-*` skills directly. Every BMAD step (create-story, dev-story, code-review, TEA, retro,
-project-context bootstrap/refresh) runs in a delegated `ab-*` sub-agent. **Preserve this separation
+project-context bootstrap/refresh) runs in a delegated `ab-*` sub-agent — code-review as a **fan-out**
+of four delegates the orchestrator drives (three review lenses + triage), since its skill can't spawn
+its own subagents from inside a delegate (see the owns-directly list). **Preserve this separation
 when editing.**
 
 The orchestrator owns a small set of actions **directly** (never delegated) — all git/finalize
@@ -20,15 +22,23 @@ bookkeeping it already holds full pipeline context for. Don't "fix" these into d
   fully-resolved entries out of the active `<impl>/deferred-work.md` ledger into the sibling
   `deferred-work-resolved.md` archive. No `/bmad-*` skill prunes the ledger, and the orchestrator
   already writes this file directly at Phase 7 — so this is connective bookkeeping, not a delegate.
+- **Phase 7 code-review fan-out** — `/bmad-code-review` fans out to three review subagents internally,
+  which a delegate can't (no nested subagents). So the orchestrator hoists the fan-out: it builds the
+  diff (git) and spawns the three review lenses + the triage as delegates. **The lenses and triage are
+  all delegated; the orchestrator only routes the diff and findings by path and never reads either** —
+  so "no code inspection at any tier" still holds. Because auto-bmad here mirrors the upstream skill's
+  *internal* structure (lens roster, the inline Acceptance Auditor prompt, the triage rubric), an
+  upstream `bmad-code-review` change can drift silently — keep the replica in lockstep.
 - **Phase 7 external-change handling** — at the end-of-loop human halt, the orchestrator detects any
   external-review changes with a **git-only check** (never a code read), commits them, and re-opens
   the halt. The **re-review of those changes is delegated** like every other review (the alternate
-  reviewer) and its findings gate the re-halt — it is emphatically **not** an inline read. The
-  orchestrator no longer inspects code at any tier; keep it that way.
+  reviewer, via the same fan-out) and its findings gate the re-halt — it is emphatically **not** an
+  inline read. The orchestrator no longer inspects code at any tier; keep it that way.
 
 The mechanics of these live in the reference docs — **don't restate them here**: `git-and-pr.md`
-(branching, push, PR, merge prompt) and `pipeline.md` (Phase 0 probe, Phase 7 external-change
-handling, Phase 8 deferred-work archive, Phase 9 status flip + report commit). The only other time the
+(branching, push, PR, merge prompt), `pipeline.md` (Phase 0 probe, Phase 7 code-review fan-out, Phase 7
+external-change handling, Phase 8 deferred-work archive, Phase 9 status flip + report commit), and
+`delegation.md` (the code-review fan-out's four delegate entries). The only other time the
 orchestrator does delegated step work itself is the `inline` delegation tier (see
 `delegation-runtime.md`), and even then it follows the same phase contract.
 

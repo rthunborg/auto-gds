@@ -20,8 +20,9 @@ to an `ab-*` profile). The list — other docs link here by name instead of rest
 - the Phase 7 **HITL-halt handling** — detecting external-review changes (a git-only check, never a
   code read), committing them (`fix(story-{e}-{s}): external review changes`), and re-opening the halt
   after the re-review. The **re-review of those changes is delegated**, not orchestrator-owned — it's a
-  normal `code-review` pass on the alternate reviewer; the orchestrator no longer inspects code on
-  **Continue** (see `pipeline.md` Phase 7 step 4).
+  normal **code-review fan-out** (the three lenses + triage, hoisted to the orchestrator) on the
+  alternate reviewer; the orchestrator no longer inspects code on **Continue** (see `pipeline.md`
+  Phase 7 step 4).
 
 Each lives here because the orchestrator holds the full pipeline context — commit/PR messages,
 state, the clean-vs-caveated decision; a round-trip to a delegate would only be slower. The

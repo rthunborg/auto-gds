@@ -162,13 +162,33 @@ For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with the primary reviewer.** When
    `code_review.alternate_models` is true: odd `i` → `code_review_review` (primary), even `i` →
    `code_review_review_secondary` — so iter 1 = primary, iter 2 = secondary, iter 3 = primary.
-   When alternation is off, every iteration is `code_review_review`. Delegate the **`code-review`**
-   entry to that reviewer profile. The skill writes findings into the story file's
-   `### Review Findings` section as `[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]` items.
+   When alternation is off, every iteration is `code_review_review`. **This iteration's reviewer
+   profile drives all four code-review delegates below.**
 
-   **Verify persistence (reconciliation gate) — before trusting the result.** The review skill
-   silently runs in `no-spec` mode and persists *nothing* if the story file isn't bound as its
-   spec, so never take the reviewer's chat counts on faith. After the delegate returns, run
+   **Run the code-review fan-out (four delegates, not one skill call).** `/bmad-code-review` internally
+   spawns three review subagents — impossible from inside a delegate (no nested subagents) — so the
+   orchestrator hoists the fan-out (`delegation.md` → `code-review (fan-out)`; `CLAUDE.md` →
+   orchestrator-owned actions). It passes the diff and findings **by path, never by content**, so it
+   inspects no code:
+   a. **Build the diff (orchestrator, git).** Write the branch diff (`git.base_branch...HEAD` with the
+      `:(exclude)` pathspecs in `delegation.md`) to `<diff_file>` inside a throwaway `mktemp -d`
+      `<review_tmp>` (outside the work tree, never committed). If `<diff_file>` is empty there is
+      nothing to review — treat it as a 0-finding pass through step 3 (the iteration-exit logic
+      applies; with no failed lenses it is a genuine clean pass).
+   b. **Fan out the three lenses** at this iteration's reviewer profile, each writing to its own temp
+      file: the **`code-review-blind`**, **`code-review-edge`**, and **`code-review-auditor`** entries.
+      On **Claude Code** spawn them **in parallel**; on **Codex** run them **sequentially** (its
+      no-fan-out rule — `delegation-runtime.md`). Collect each lens's reported path + count; note any
+      empty/failed layer.
+   c. **Triage + persist** via the **`code-review-triage`** entry (same profile), handed the three lens
+      paths + `<diff_file>` + `<story_file>` + the failed-layer list. It dedupes, classifies, and writes
+      the `### Review Findings` section (`[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]`)
+      plus the deferral ledger, then returns the verdict + counts. It is the **only** code-review
+      delegate that writes findings.
+
+   **Verify persistence (reconciliation gate) — before trusting the result.** The triage delegate is
+   the one that persists; never take its chat counts on faith (a mis-bound write leaves the section
+   empty while chat claims findings). After it returns, run
    `python3 {skill-root}/scripts/review_findings.py --story-file <story_file> --expect-min {N}
    --deferred-work-file <impl>/deferred-work.md --story-key {key}` where `{N}` is the reviewer's
    reported `Findings persisted:` count (fall back to its total raised-findings count if that line
@@ -177,9 +197,10 @@ For iteration `i` (1-based):
    defer count). `reconciled: true` (exit 0) → proceed, and use **the file's** counts (`open_patch`
    / `open_decision`), not the chat report, to drive steps 2–3.
    `reconciled: false` (exit 1 — section absent, fewer bullets than claimed, or defer findings not
-   logged to the ledger) → the findings did NOT persist: **re-delegate the `code-review` entry once
-   more this iteration** with the spec binding and deferral-ledger reinforced (this retry does not
-   consume a loop iteration). If it still won't persist, **stop and report `needs-human`**
+   logged to the ledger) → the findings did NOT persist: **re-run the `code-review-triage` entry once
+   more this iteration** — the lens findings are still on disk, so do NOT re-run the lenses — with the
+   spec binding and deferral-ledger reinforced (this retry does not consume a loop iteration). If it
+   still won't persist, **stop and report `needs-human`**
    ("code-review did not persist findings to `<story_file>`") rather than running the fix loop
    against an empty section.
 2. **Resolve `[Review][Decision]` items first — ASK the user.** These are the calls the reviewer
@@ -192,7 +213,7 @@ For iteration `i` (1-based):
    `[Review][Defer]` and log to `deferred_work`; dismiss → check it off as won't-fix). For each
    item the user **defers**, also append it (with their one-line reason) to the durable cross-story
    ledger `<impl>/deferred-work.md` under this story's `## Deferred from: code review of {key}
-   (<date>)` heading — the same file the `code-review` delegate logs its own `[Review][Defer]`
+   (<date>)` heading — the same file the `code-review-triage` delegate logs its own `[Review][Defer]`
    findings to. This is a direct orchestrator write, like the report and retro-notes: it owns the
    user-deferred decisions because it (not the delegate) resolved them.
 3. **Fix, then classify the pass.** Read the verdict (Approve / Changes Requested / Blocked) and the
@@ -208,10 +229,22 @@ For iteration `i` (1-based):
    user chose to fix; use **the file's** reconciled counts from step 1, not the chat report). The
    pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were Critical or
    High** (a *deferred* Critical/High is a logged human decision and does not block convergence).
+
+   **Incomplete-review guard (failed lenses) — apply before the loop-drive below.** Fold in the
+   fan-out's failed-layer list (step 1b): if **all three lenses failed or returned empty**, the review
+   did not actually happen — **stop and report `needs-human`** ("code review incomplete — 0/3 lenses
+   produced findings"); never let that count as clean. If **some but not all** lenses failed, a
+   0-non-deferred-finding result is **not** trustworthy as "perfectly clean": it does **not** qualify
+   for the `i == 1` early-exit below — force at least a second pass, and carry an "incomplete review
+   (only N/3 lenses ran)" caveat into the report and the Phase 7 HITL-halt summary. If a pass with a
+   lens still missing is the loop's final one (it converges or hits the cap), also set
+   `convergence_unverified: true` so Phase 9 ships a **draft** — an incomplete review is the same
+   flavor of unverified-ness as a cap-unconverged exit (`git-and-pr.md` draft predicate).
+
    Drive the loop:
-   - **`i == 1` and the pass found 0 non-deferred findings** → **exit the loop** (perfectly clean —
-     the second opinion is skipped; this is the only first-pass early exit). The pass trivially
-     converged, so `convergence_unverified` stays false.
+   - **`i == 1`, all three lenses ran, and the pass found 0 non-deferred findings** → **exit the loop**
+     (perfectly clean — the second opinion is skipped; this is the only first-pass early exit). The
+     pass trivially converged, so `convergence_unverified` stays false.
    - **`i == 1` with ≥ 1 non-deferred finding** → **continue to iteration 2**, whatever else it found.
      The second review is mandatory the moment the first pass surfaces anything actionable (even a
      single ≤ 3-finding pass that would otherwise converge).
@@ -237,11 +270,12 @@ For iteration `i` (1-based):
      them `fix(story-{e}-{s}): external review changes`, then **delegate a fresh whole-story
      re-review** — this **replaces** the old "orchestrator reads the diff itself and summarizes it"
      carve-out; the orchestrator no longer inspects code at any tier:
-     - **Re-review (delegated, not an inline read).** Delegate the **`code-review`** entry to the
-       `code_review_review_secondary` profile — the alternate model, an independent second pair of
-       eyes on the human's changes — current branch diff vs base with `<story_file>` as spec, exactly
-       like a loop pass. Apply the **same reconciliation gate** as step 1 (`review_findings.py`; one
-       re-delegate on non-persist, else `needs-human`). Increment `external_review_iterations`.
+     - **Re-review (delegated, not an inline read).** Run the **code-review fan-out** (`delegation.md`
+       → `code-review (fan-out)`) at the `code_review_review_secondary` profile — the alternate model,
+       an independent second pair of eyes on the human's changes — exactly like a loop pass (build the
+       diff, the three lenses, then `code-review-triage`). Apply the **same reconciliation gate** as
+       step 1 (`review_findings.py`; one `code-review-triage` re-run on non-persist, else
+       `needs-human`). Increment `external_review_iterations`.
      - **Gate on the FILE, not the chat.** Read the `### Review Findings` counts via
        `review_findings.py` (never the reviewer's chat report). The changes are **meaningful** iff
        this review's non-deferred findings are **> 3 OR include ≥ 1 Critical/High** (the loop's

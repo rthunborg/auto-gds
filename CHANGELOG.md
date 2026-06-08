@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Code review now runs its three independent review lenses for real.** The orchestrator fans the
+  review out itself (Blind Hunter, Edge Case Hunter, Acceptance Auditor, then triage) instead of
+  delegating `/bmad-code-review` to one sub-agent that — barred from spawning its own subagents —
+  silently collapsed all three into a single sequential pass, losing the parallel, context-isolated
+  adversarial coverage (pipeline.md, delegation.md).
+
 ## [0.13.4] - 2026-06-08
 
 ### Changed

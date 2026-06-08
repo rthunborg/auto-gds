@@ -63,7 +63,10 @@ locally as a test sandbox; it is gitignored — never commit it.
 ## Making changes
 
 - **Pipeline behavior** lives in `auto-bmad/references/pipeline.md`. Keep the orchestrator a pure
-  delegator — it must never implement story work itself (git/PR work is the one exception it owns).
+  delegator — it must never implement story work itself. A small set of git / finalize / bookkeeping
+  actions are the documented exceptions it owns directly (including the Phase 7 code-review **fan-out**,
+  which the orchestrator drives because the review skill can't spawn its own sub-agents from inside a
+  delegate) — see `CLAUDE.md` → "Core principle" for the canonical list.
 - **Per-skill delegation prompts** live in `auto-bmad/references/delegation.md`. New BMAD skills
   get a prompt template here, never inline ad-hoc text.
 - **Agent profiles** live in `auto-bmad/assets/agents/profiles.yaml` — the single source of truth

@@ -32,6 +32,10 @@ already carry the full form, so the short version is enough.
 - `<project_root>` — absolute cwd.
 - `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
 - `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
+- `<review_tmp>` — a throwaway dir the orchestrator makes **outside the work tree** (`mktemp -d`) for
+  the code-review fan-out, holding `<diff_file>` (the branch diff it writes) and the three lens
+  outputs `<blind_out>` / `<edge_out>` / `<auditor_out>`. Never under `<impl>` or the repo — it must
+  not be committable.
 
 ---
 
@@ -93,22 +97,103 @@ key, schema, CLI flag, or required migration step). The orchestrator records the
 body (and a `BREAKING CHANGE:` footer).
 ```
 
-### code-review
+### code-review  (fan-out — four delegates, not one skill call)
+Code-review is **not** delegated as a single `/bmad-code-review` call. That skill internally fans out
+to three review subagents, which a delegate cannot do (a sub-agent can't spawn sub-agents — see
+`CLAUDE.md` → "Known platform facts"). So the **orchestrator hoists the fan-out** (it is the only level
+where fan-out is legal — `CLAUDE.md` → orchestrator-owned actions; `pipeline.md` Phase 7 step 1): it
+builds the diff, runs the four entries below — three review lenses, then one triage — and gates
+persistence. The orchestrator passes the diff and each lens's findings **by path, never by content** —
+it never reads either, so "no code inspection at any tier" holds. All four entries in iteration `i` run
+at that iteration's reviewer profile (`code_review_review` on odd `i`, `code_review_review_secondary` on
+even — see `pipeline.md`).
+
+**Keep that invariant real for the three lenses:** when you append the shared autonomy directive to a
+lens prompt, bind its structured result so finding content stays out of chat — the lens's `Outcome` is
+just its output-file path + finding count, and its `Deferred work` / `Retro notes` are `none`. Only
+`code-review-triage` reads the findings. (Triage's own report carries counts + verdict — metadata, not
+code — which the orchestrator needs for the loop.)
+
+**Diff construction (orchestrator, git — by path, no ingestion).** Make `<review_tmp>` with `mktemp -d`
+(outside the work tree), then write the branch diff to `<diff_file>`:
 ```
-Run `/bmad-code-review` in <project_root>, reviewing story {key}, current branch's diff against 
-the base branch (excluding `_bmad`, `_bmad-output`, cache files and folders, and obvious non-code 
-files), with <story_file> as the spec/story file. 
+git diff <base>...HEAD -- ':(exclude)_bmad' ':(exclude)_bmad-output' \
+  ':(exclude)**/__pycache__' ':(exclude)**/*.pyc' ':(exclude)**/.DS_Store' > <diff_file>
+```
+`<base>` = `git.base_branch` (Phase 0). **Three-dot** = exactly what this branch changed since it
+diverged from base. The single-quoted `:(exclude)` pathspecs are read by git, not the shell — safe under
+zsh/fish (`CLAUDE.md` → "Shell globs"). "Obvious non-code files" beyond these excludes is **not** a path
+rule (it was reviewer judgment) — it is handled in `code-review-triage` (dismiss findings whose only
+locus is a lockfile / generated / vendored file). If `<diff_file>` is empty, there is nothing to review.
 
-PERSIST the findings in the story file's `### Review Findings` section (add it if missing) as 
-`[Review][Patch|Decision|Defer]` bullets, and copy every `[Review][Defer]` to the cross-story 
-ledger `<impl>/deferred-work.md` (its own `deferred_work_file`) under a `## Deferred from: 
-code review of {key} (<date>)` heading — create that file if absent.
+#### code-review-blind  (Blind Hunter — diff only, unanchored)
+```
+Run `/bmad-review-adversarial-general` in <project_root> with the diff at <diff_file> as the content to
+review. Review ONLY that diff — do NOT open the spec, the story file, or any other project file; your
+value is being unanchored by the spec. Write the skill's findings (its markdown list) to <blind_out>.
+Report ONLY the path you wrote and your finding count — NOT the findings text.
+```
 
-Do not end on the skill's summary alone. Report: verdict (Approve / Changes Requested / Blocked);
-Critical/High/Med/Low counts; the count of open `[Review][Decision]` items (a human call — see
-`pipeline.md` Phase 7); `Findings persisted: <N>` = `[Review][*]` bullets now in <story_file>;
-`Deferrals logged: <W>` = bullets you added under this story's `## Deferred from:` heading in
-`<impl>/deferred-work.md`.
+#### code-review-edge  (Edge Case Hunter — diff + project read)
+```
+Run `/bmad-review-edge-case-hunter` in <project_root> with the diff at <diff_file> as the content to
+review (you may read project files the diff references). Write the skill's JSON-array output to
+<edge_out>. Report ONLY the path you wrote and your finding count — NOT the findings text.
+```
+
+#### code-review-auditor  (Acceptance Auditor — diff + spec)
+```
+You are an Acceptance Auditor. Review this diff against the spec and context docs. Check for: violations
+of acceptance criteria, deviations from spec intent, missing implementation of specified behavior,
+contradictions between spec constraints and actual code. Output findings as a Markdown list. Each
+finding: one-line title, which AC/constraint it violates, and evidence from the diff.
+
+The diff is at <diff_file>; the spec/story file is <story_file> (load it, plus any docs its `context`
+frontmatter lists). Write your findings to <auditor_out>. Report ONLY the path you wrote and your
+finding count — NOT the findings text.
+```
+(The first paragraph is the Acceptance Auditor prompt **verbatim** from the `bmad-code-review` skill's
+`step-02-review.md`; keep it in lockstep with upstream — a divergence is the documented cost of
+"replicate exactly," see `CLAUDE.md` → orchestrator-owned actions, code-review fan-out.)
+
+#### code-review-triage  (triage + persist — the only code-review delegate that writes findings)
+```
+Triage a code review of story {key}. Three independent review lenses already ran; their raw findings
+are in these files (any may be empty or absent — note each such case as a failed/empty layer):
+- Blind Hunter (adversarial markdown list): <blind_out>
+- Edge Case Hunter (JSON array — location / trigger_condition / guard_snippet / potential_consequence): <edge_out>
+- Acceptance Auditor (markdown list — title / AC-or-constraint / evidence): <auditor_out>
+The diff under review is at <diff_file>; the spec/story file is <story_file>. Do NOT re-review — work
+from the three files.
+
+TRIAGE:
+1. Normalize all findings to a common shape (title, detail, file:line if present, source lens).
+2. Deduplicate: merge findings describing the same issue — prefer the one with a concrete file:line,
+   fold in the others' detail, mark the merged source (e.g. blind+edge).
+3. Classify each into exactly one bucket:
+   - Decision — an ambiguous choice that needs a human call; the code can't be correctly patched
+     without knowing intent.
+   - Patch — a code issue whose correct fix is unambiguous.
+   - Defer — real but pre-existing, not caused by this change; not actionable now.
+   - Dismiss — noise / false positive / handled elsewhere. ALSO dismiss any finding whose only locus
+     is an obvious non-code file (lockfile, generated, vendored, build artifact).
+   Drop every Dismiss finding (keep the dismissed count for the report).
+
+PERSIST (this is the deliverable the orchestrator gates on):
+- In <story_file>, add/append a `### Review Findings` section with one bullet per surviving finding,
+  Decision first, then Patch, then Defer:
+    - [ ] [Review][Decision] <title> — <detail>
+    - [ ] [Review][Patch] <title> [<file>:<line>]
+    - [x] [Review][Defer] <title> [<file>:<line>] — deferred, pre-existing
+- Copy every `[Review][Defer]` finding to <impl>/deferred-work.md (create it if absent) under a
+  `## Deferred from: code review of {key} (<date>)` heading — one bullet each.
+
+REPORT (chat — the orchestrator reads this, then independently gates the file): verdict (Approve /
+Changes Requested / Blocked); Critical/High/Med/Low counts; the count of open `[Review][Decision]`
+items (a human call — `pipeline.md` Phase 7); `Findings persisted: <N>` = total `[Review][*]` bullets
+you wrote to <story_file>; `Deferrals logged: <W>` = bullets you added under this story's
+`## Deferred from:` heading in <impl>/deferred-work.md; `Failed layers: <list or none>`. Do NOT change
+the story's Status field, sync sprint-status.yaml, or halt for input — the orchestrator owns those.
 ```
 
 ### code-review fix

@@ -118,7 +118,7 @@ Run from the root of a BMAD-enabled project:
 | 4 | ATDD acceptance scaffolds | `bmad-testarch-atdd` | TEA on + risk-warranted |
 | 5 | Implement story | `bmad-dev-story` | always |
 | 6 | Expand automated coverage | `bmad-testarch-automate` | TEA on + risk-warranted |
-| 7 | Code review (Opus-first, alternating models, 1–3 iters; always halts for your go-ahead) | `bmad-code-review` | always |
+| 7 | Code review (Opus-first, alternating models, 1–3 iters; always halts for your go-ahead) | `bmad-review-adversarial-general`, `bmad-review-edge-case-hunter` (`bmad-code-review`'s adversarial layers, run as parallel sub-agents + triage) | always |
 | 7 | Per-story trace advisory (after review; non-blocking — surfaces uncovered ACs early) | `bmad-testarch-trace` | TEA on + risk-warranted, *not* last story of epic, long epic (≥6 stories) |
 | 8 | Gates (asks if trace fails), project context, archive resolved deferred work, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
 | 9 | Push, open PR, wait for CI, mark story `done` (clean run), **ask whether to merge** (clean run, opt-in), final report | — | always |

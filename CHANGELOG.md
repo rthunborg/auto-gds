@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Code review now skips BMAD scaffolding and non-code files.** The delegated review scopes to the
+  story by key and excludes `_bmad`, `_bmad-output`, cache files, and obvious non-code files from the
+  branch diff, so findings focus on actual story code (delegation.md).
+
 ## [0.13.3] - 2026-06-07
 
 ### Changed

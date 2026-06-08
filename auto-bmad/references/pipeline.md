@@ -83,10 +83,11 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   brownfield mid-project adoption (a codebase that never ran `bmad-generate-project-context`).
 - **Triage (only if `tea.enabled`; delegated to `tea_triage`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_risk` (`low|med|high`) and `tea_selected`
-  (e.g. `[atdd, automate]`, or `[]` for trivial) in state. Also record `epic_story_count` (stories
-  under epic `{e}`, from the sprint-status read that set `is_first/last_in_epic`) and, when
-  `tea-policy.md` §3's conditions all hold (high risk, not last-in-epic, long-enough epic), add
-  `trace-advisory` to `tea_selected` — Phase 7's tail runs it.
+  (e.g. `[atdd, automate]`, or `[]` for trivial) in state. Also record `epic_story_count` and
+  `stories_after_in_epic` (both from the sprint-status read that set `is_first/last_in_epic`) and, when
+  `tea-policy.md` §3's conditions all hold (high risk, **not within the epic's last
+  `skip_last_stories`** — i.e. `stories_after_in_epic >= skip_last_stories`, default 3 — and a
+  long-enough epic), add `trace-advisory` to `tea_selected` — Phase 7's tail runs it.
 - No commit (nothing changed yet). Persist decisions to state.
 
 ## Phase 1 — Branch  *(orchestrator)*
@@ -147,7 +148,7 @@ no-op, recorded as skipped). Sub-steps execute in this order:
 - Delegate the **`testarch-automate`** entry with `<story_file>`.
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
-## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 3; ≥ 2 unless the first pass is perfectly clean)
+## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean)
 The loop runs **at least two review passes — unless the first pass is perfectly clean** (found **0
 non-deferred findings**), in which case it exits after that single pass. Any first pass with **≥ 1**
 non-deferred finding still pulls a mandatory second opinion (the alternate model, when
@@ -161,7 +162,8 @@ non-deferred Critical/High**. Track `code_review_iterations` and `code_review_lo
 For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with the primary reviewer.** When
    `code_review.alternate_models` is true: odd `i` → `code_review_review` (primary), even `i` →
-   `code_review_review_secondary` — so iter 1 = primary, iter 2 = secondary, iter 3 = primary.
+   `code_review_review_secondary` — so iter 1 = primary, iter 2 = secondary (and, if the cap is
+   raised, iter 3 = primary again, alternating by parity).
    When alternation is off, every iteration is `code_review_review`. **This iteration's reviewer
    profile drives all four code-review delegates below.**
 
@@ -255,8 +257,8 @@ For iteration `i` (1-based):
      predicate clause 2).
    On any exit, set `code_review_loop_done: true`, then go to step 4.
    (Edge: if `code_review.max_iterations` is `1` the second review can't run — the loop takes its
-   single pass and exits; note it in the report. At the default cap of 3 the loop runs 1–3 passes —
-   1 when the first pass is perfectly clean, otherwise 2–3.)
+   single pass and exits; note it in the report. At the default cap of 2 the loop runs 1–2 passes —
+   1 when the first pass is perfectly clean, otherwise 2.)
 4. **HITL halt — ASK the user, on every loop exit.** The loop *always* ends here (converged or
    capped); this single human checkpoint replaces the old cap-only prompt. Summarize: iterations
    run, each pass's verdict + `Critical N / High N / Medium N / Low N` counts, the total non-deferred
@@ -313,7 +315,8 @@ For iteration `i` (1-based):
 ### Phase 7 tail — per-story trace advisory  *(conditional; non-blocking)*  → `tea_per_story`
 Runs **once on the Continue path, after the review loop and its HITL halt resolve**, only if
 `trace-advisory ∈ tea_selected` (set in Phase 0
-— high risk, not last-in-epic, and the epic is long enough; see `tea-policy.md` → §3). Resume-safe:
+— high risk, not within the epic's last `skip_last_stories` stories, and the epic is long enough;
+see `tea-policy.md` → §3). Resume-safe:
 skip if `story_trace` is already non-null in state. Phase 7 lands in `completed_phases` only after
 this step (when selected) finishes, so a resume that re-enters a converged Phase 7 with
 `story_trace == null` runs just this step.
@@ -333,9 +336,10 @@ this step (when selected) finishes, so a resume that re-enters a converged Phase
 Run these in order. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project
 context, deferred-work archive, retrospective`. (Trace-gate remediation, if any, commits separately
 as it runs — step 1.)
-1. **TEA gates (only if `tea.enabled`; epic-level skills are always on here):** delegate via
-   `tea_epic`, in order, the **`testarch-trace`**, then **`testarch-nfr`**, then
-   **`testarch-test-review`** entries. Capture each verdict; record the gate decision in state
+1. **TEA gates (only if `tea.enabled`; epic-level skills are always on here):** delegate, in order,
+   the **`testarch-trace`** entry via `tea_epic` (the blocking gate — full depth), then the
+   **`testarch-nfr`** and **`testarch-test-review`** entries via `tea_epic_audit` (advisory audits —
+   one effort tier below the blocking gate). Capture each verdict; record the gate decision in state
    (`gate_decision`) + report. Handle the **trace** verdict before running nfr/test-review:
    - `PASS` → continue.
    - `WAIVED` (emitted by the skill itself) → continue; it ships as a **draft** PR in Phase 9

@@ -34,6 +34,7 @@ tea:
   story_trace_advisory:    # per-story, non-blocking trace pass — shifts coverage-gap visibility left on LONG epics
     enabled: true          # self-activating: dormant on short epics (see min_epic_stories), fires only on long high-risk stories
     min_epic_stories: 6    # only runs in epics with >= this many stories; short epics rely on the epic-end gate alone
+    skip_last_stories: 3   # also skip the epic's last N stories (distance-to-gate, tea-policy.md §3) — their gap surfaces at the epic-end trace gate anyway. Absent in older configs => orchestrator defaults to 3
 git:
   mode: auto               # auto -> detect; or force "remote" / "local"
   branch_prefix: "story/"
@@ -41,7 +42,7 @@ git:
   offer_merge: true        # Phase 9: ask the user whether to merge a clean-completion PR
   ci_wait_minutes: 30      # max wait for in-progress CI before deciding (used only when offer_merge is on)
 code_review:
-  max_iterations: 3
+  max_iterations: 2
   alternate_models: true   # odd iters use code_review_review, even iters code_review_review_secondary
 # profiles + phase_profiles complete the file but are NOT reproduced here (with values) on
 # purpose — their single source is assets/agents/profiles.yaml, which render-agents.py reads and
@@ -52,7 +53,7 @@ profiles: {…}              # ab-xhigh | ab-high | ab-alt-xhigh | ab-alt-high, 
                            #   {claude: {model, effort}, codex: {model, reasoning_effort}}
 phase_profiles: {…}        # create_story, dev_story, code_review_review,
                            #   code_review_review_secondary, code_review_fix, tea_triage,
-                           #   tea_per_story, tea_epic, retrospective, project_context
+                           #   tea_per_story, tea_epic, tea_epic_audit, retrospective, project_context
                            # (git/PR work is run by the orchestrator directly — no delegate profile)
 ```
 
@@ -91,7 +92,7 @@ The single interactive episode in normal operation. Always confirm `target_tools
    infra-choosing setup — never auto-run without asking.
 4. **Full only — extra prefs** (each prefilled with the default shown; the user changes only what
    they want): `git.mode` (auto | remote | local; default auto), `git.branch_prefix` (default
-   `story/`), `code_review.max_iterations` (default 3), `code_review.alternate_models` (default
+   `story/`), `code_review.max_iterations` (default 2), `code_review.alternate_models` (default
    true). `git.base_branch` is auto-detected, never asked.
 5. Write `config.yaml` with the seeded delegation/profiles, the confirmed `target_tools`, the
    answers, and detected `git`/`base_branch` values (Quick fills the step-4 fields with the
@@ -185,6 +186,7 @@ tea_risk: high                   # low|med|high from Phase 0 triage; gates per-s
 tea_selected: [atdd, automate]   # from triage; [] if trivial or TEA off; may also include trace-advisory (long-epic high-risk)
 tea_rationale: "touches auth -> High risk"
 epic_story_count: 12             # stories under epic {e} (from sprint-status); gates the long-epic trace advisory
+stories_after_in_epic: 7         # epic stories ordered after this one (0=last); with epic_story_count, drives the trace-advisory distance gate (skip the last skip_last_stories)
 completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here if EITHER sub-step ran
 code_review_iterations: 1
 code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating

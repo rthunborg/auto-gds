@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Lower-stakes pipeline steps now run at reduced reasoning effort.** Cheaper and faster: the
+  epic-end NFR and test-review gates drop one tier to `ab-high` (the blocking trace gate and the
+  high-stakes steps — dev, create-story, primary review — keep full depth), and per-story risk
+  triage + the epic retrospective drop to `medium`. **Upgraders:** the `tea_epic_audit` mapping is
+  added automatically at preflight; the triage/retro effort drop reaches new projects only — run
+  `/auto-bmad reset-defaults ab-alt-high` to adopt it in an existing project.
+- **Default code-review iteration cap is now 2 (was 3).** `code_review.max_iterations` defaults to
+  2 — the review loop runs at most two passes (one if the first pass is perfectly clean). Existing
+  projects keep their configured value; raise it in `config.yaml` for deeper loops.
+- **Long-epic trace advisory now skips the epic's last stories.** A new `skip_last_stories`
+  (default 3) drops the advisory on an epic's last few stories — their coverage gaps surface at the
+  epic-end trace gate that is about to run anyway — keeping it on the early/middle stories where an
+  unnoticed gap is costliest.
+
 ## [0.13.5] - 2026-06-08
 
 ### Fixed

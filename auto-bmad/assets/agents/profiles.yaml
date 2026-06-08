@@ -61,10 +61,10 @@ profiles:
     status_example: "for triage — the risk level (low/med/high) and selected TEA set; for the retrospective — key action items and any next-epic prep flagged"
     claude:
       model: sonnet
-      effort: high
+      effort: medium     # rubric-driven classification + note synthesis — medium is sufficient, not the deep-reasoning tier
     codex:
       model: gpt-5.4
-      reasoning_effort: high
+      reasoning_effort: medium
 
 # Phase -> profile mapping. This is the SINGLE source of the phase->profile
 # binding: pipeline.md / delegation.md name these keys, never raw profile names.
@@ -79,6 +79,7 @@ phase_profiles:
   code_review_fix: ab-high                     # apply already-identified findings (mechanical vs the hunt)
   tea_triage: ab-alt-high                      # Phase 0 story-risk classification (cheap)
   tea_per_story: ab-high                       # Phase 4 ATDD, Phase 6 automate
-  tea_epic: ab-xhigh                           # Phase 2 epic test design, Phase 8 epic gates
+  tea_epic: ab-xhigh                           # Phase 2 epic test design, Phase 8 blocking trace gate (+ its remediation)
+  tea_epic_audit: ab-high                      # Phase 8 advisory gates (nfr + test-review) — one effort tier below the blocking trace gate
   retrospective: ab-alt-high
   project_context: ab-high                     # Phase 2 bootstrap + Phase 8 refresh

@@ -52,8 +52,14 @@ remediates, asks, or forces a draft PR. The blocking gate stays at epic end (§1
 Select `trace-advisory` (add it to `tea_selected`) at Phase-0 triage **iff all** of:
 - `tea.enabled` **and** `tea.story_trace_advisory.enabled` (default true), **and**
 - `tea_risk == high` — only stories where an uncovered AC is genuinely costly justify the extra pass, **and**
-- `is_last_in_epic == false` — the last story triggers the full epic-end trace gate in Phase 8
-  anyway, so an advisory there is pure duplication, **and**
+- `stories_after_in_epic >= tea.story_trace_advisory.skip_last_stories` (default 3) — **skip the
+  last few stories of the epic.** Their distance to the epic-end trace gate is already tiny, so an
+  advisory there is near-duplication of the gate that is about to run (and the last story would
+  double the gate outright). Gating on *distance to the epic's end* — rather than the old
+  `is_last_in_epic` flag — keeps the advisory exactly where it pays off (the early-to-middle stories,
+  whose gaps would otherwise stay hidden longest) and drops only the redundant tail.
+  `stories_after_in_epic` is how many stories in this epic come after this one (0 for the last, 1 for
+  second-to-last, …), so `>= 3` skips the last three and subsumes the old is-last clause, **and**
 - `epic_story_count >= tea.story_trace_advisory.min_epic_stories` (default 6) — **this is the
   long-epic gate.** The advisory's only value is shrinking the distance from "gap introduced" to
   "gap noticed"; on a short epic that distance is already tiny (the epic-end gate is right there), so
@@ -61,8 +67,9 @@ Select `trace-advisory` (add it to `tea_selected`) at Phase-0 triage **iff all**
   until the story-12 gate — context gone, PRs merged. The threshold is what makes this feature
   **dormant on normal short epics and self-activating only on the long ones that need it.**
 
-`epic_story_count` is the count of stories under epic `{e}` from the same sprint-status read that
-sets `is_first_in_epic`/`is_last_in_epic`; record it in state alongside `tea_risk`.
+`epic_story_count` and `stories_after_in_epic` both come from the same `story_plan.py` read that
+sets `is_first_in_epic`/`is_last_in_epic` (`stories_after_in_epic` = epic stories ordered after this
+one); record both in state alongside `tea_risk`.
 
 ### Notes
 - Low risk ⇒ `tea_selected = []` and Phases 4 & 6 are skipped — the story still gets full code review.

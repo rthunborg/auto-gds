@@ -126,6 +126,7 @@ def build_result(sprint_status_path, story_arg, impl_dir):
         "epic_story_count": None,
         "is_first_in_epic": None,
         "is_last_in_epic": None,
+        "stories_after_in_epic": None,
         "retrospective_status": None,
         "next_action": None,
         "hard_stop": False,
@@ -184,6 +185,10 @@ def build_result(sprint_status_path, story_arg, impl_dir):
             "epic_story_count": len(same_epic),
             "is_first_in_epic": target["story_num"] == min_story,
             "is_last_in_epic": target["story_num"] == max_story,
+            # Stories in this epic ordered after the target (higher story_num). 0 for the last
+            # story, 1 for second-to-last, etc. — drives the trace-advisory "skip the last N
+            # stories" distance gate (see tea-policy.md §3), which subsumes is_last_in_epic.
+            "stories_after_in_epic": sum(1 for s in same_epic if s["story_num"] > target["story_num"]),
             "retrospective_status": retros.get(epic_num),
             "next_action": next_action,
         }
@@ -238,6 +243,7 @@ def _run_self_test():
     check("1-2 not last in epic", auto["is_last_in_epic"] is False)
     check("epic-1 status in-progress", auto["epic_status"] == "in-progress")
     check("epic-1 story count is 3", auto["epic_story_count"] == 3)
+    check("1-2 has 1 story after it", auto["stories_after_in_epic"] == 1)
     check("retro status optional", auto["retrospective_status"] == "optional")
     check("story_file joined", auto["story_file"] == "/impl/1-2-account-management.md")
 
@@ -247,12 +253,14 @@ def _run_self_test():
     check("explicit 1-3 create-story", ex["next_action"] == "create-story")
     check("1-3 is last in epic", ex["is_last_in_epic"] is True)
     check("1-3 not first in epic", ex["is_first_in_epic"] is False)
+    check("1-3 has 0 stories after it (last)", ex["stories_after_in_epic"] == 0)
 
     # Explicit first story of epic 2.
     ex2 = build_result(path, "2-1-personality-system", "/impl")
     check("2-1 first in epic", ex2["is_first_in_epic"] is True)
     check("2-1 last in epic", ex2["is_last_in_epic"] is True)
     check("epic-2 story count is 1", ex2["epic_story_count"] == 1)
+    check("2-1 has 0 stories after it", ex2["stories_after_in_epic"] == 0)
 
     # Missing file hard-stops.
     miss = build_result("/no/such/file.yaml", None, "/impl")

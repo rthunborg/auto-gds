@@ -75,7 +75,7 @@ locally as a test sandbox; it is gitignored — never commit it.
 - **TEA selection rules** live in `auto-bmad/references/tea-policy.md`.
 - **Every user-facing change needs a `CHANGELOG.md` note** under `## [Unreleased]` (correct
   Keep-a-Changelog heading) in the same PR. Never bump the version files by hand — `scripts/bump-version.py`
-  keeps the three version strings in sync at release time.
+  keeps the four version strings in sync at release time.
 
 ## Commit & PR conventions
 

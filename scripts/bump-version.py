@@ -23,12 +23,12 @@ Usage:
 
 What a real (non --dry-run) run does, in order:
   1. Reads the current version from marketplace.json (the source of truth) and
-     refuses to proceed if the other two files disagree (drift guard).
+     refuses to proceed if the other three files disagree (drift guard).
   2. Promotes CHANGELOG.md's `## [Unreleased]` to `## [X.Y.Z] - <date>`, opens a
      fresh empty `[Unreleased]`, and fixes the compare links. Aborts if
      `[Unreleased]` is empty — you can't release nothing. (Notes are written by
      hand; this only relabels them. See CLAUDE.md -> "Releasing".)
-  3. Rewrites the version in all three files above.
+  3. Rewrites the version in all four files above.
   4. Requires a clean working tree, then commits `chore(release): vX.Y.Z` and
      creates the annotated tag `vX.Y.Z`. Push with: git push --follow-tags
      (annotated so --follow-tags actually pushes it).

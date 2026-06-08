@@ -55,6 +55,8 @@ jobs:
             || { echo "module.yaml module_version != $ver"; fail=1; }
           grep -qE "badge/version-${esc}-blue" README.md \
             || { echo "README version badge != $ver"; fail=1; }
+          grep -qE "profiles_source_version: \"${esc}\"" auto-bmad/references/state-and-resume.md \
+            || { echo "state-and-resume.md profiles_source_version != $ver"; fail=1; }
           [ "$fail" = 0 ] \
             || { echo "tag v$ver disagrees with the version files; use scripts/bump-version.py"; exit 1; }
 

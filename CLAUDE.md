@@ -98,9 +98,11 @@ python3 scripts/bump-version.py --self-test
 ```
 
 ## Releasing
-The version lives in **three** tracked files that must stay in lockstep —
+The version lives in **four** tracked files that must stay in lockstep —
 `.claude-plugin/marketplace.json` (`version`), `auto-bmad/assets/module.yaml` (`module_version`),
-and the README shields badge. "Publishing" is just **pushing a `vX.Y.Z` git tag** (the BMAD
+the README shields badge, and `auto-bmad/references/state-and-resume.md`
+(`profiles_source_version`, the config.yaml schema example). "Publishing" is just **pushing a
+`vX.Y.Z` git tag** (the BMAD
 installer keys upgrade detection off stable tags; the Claude plugin marketplace reads the manifest
 `version`).
 
@@ -108,13 +110,13 @@ Cut a release from a clean `main`:
 1. Ensure this release's notes are under `## [Unreleased]` in `CHANGELOG.md`, grouped under
    Keep-a-Changelog headings. Write them by hand as changes land — never auto-generate from commits.
 2. `python3 scripts/bump-version.py <patch|minor|major>` (or an explicit `X.Y.Z`; `--dry-run` to
-   preview). It refuses an empty `[Unreleased]`, guards against version drift across the three files,
-   promotes the changelog (date + compare links), rewrites all three versions, then commits
+   preview). It refuses an empty `[Unreleased]`, guards against version drift across the four files,
+   promotes the changelog (date + compare links), rewrites all four versions, then commits
    `chore(release): vX.Y.Z` and tags it.
 3. `git push --follow-tags`.
 
 `.github/workflows/release.yml` then fires on the `v*` tag and creates the GitHub Release from that
-tag's CHANGELOG section (idempotent; it verifies the tag agrees with all three version files and the
+tag's CHANGELOG section (idempotent; it verifies the tag agrees with all four version files and the
 changelog first). That's the only CI — no build/publish step, and nothing re-renders agents on bump
 (`/auto-bmad reprovision` is a runtime concern, not a release artifact).
 

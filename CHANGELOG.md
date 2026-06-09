@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-09
+
 ### Added
 
 - **New setup-block defaults now reach an existing `config.yaml` on update.** The preflight
@@ -457,7 +459,8 @@ First tagged release — the matching `v0.1.1` git tag for the module already pu
 - **Distribution** via the BMAD installer (custom Git source) and a Claude plugin `marketplace.json`,
   plus a README "Updating" section, `CHANGELOG.md`, and the `scripts/bump-version.py` release helper.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.6...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.6...v0.14.0
 [0.13.6]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.5...v0.13.6
 [0.13.5]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.4...v0.13.5
 [0.13.4]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.3...v0.13.4

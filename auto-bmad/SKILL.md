@@ -111,8 +111,10 @@ invocation carried any instructions — `references/overrides.md`, then:
    in state under `overrides`. If `dry_run`, print the plan and stop here. (`skip tea` flips
    `tea.enabled` off for this run, affecting sub-steps 1 and 4 below.)
 1. **Skill availability:** verify the BMAD skills required for the selected path exist
-   (core always; TEA set only if `tea.enabled`; epic-end skills if this is a last story). Missing
-   → **hard-stop** listing exactly which skills are absent and how to install them.
+   (core always; TEA set only if `tea.enabled`; epic-end skills if this is a last story) —
+   verified via `preflight.py --require-skills <csv> --skills-dirs <host skills dirs>`
+   (its `skills.missing` list). Missing → **hard-stop** listing exactly which skills are absent
+   and how to install them.
 2. **Target story** (precedence when NO `--story` argument is given):
    a. **Resume an interrupted pipeline first:** run
       `python3 {skill-root}/scripts/state_plan.py --state-dir <output_folder>/auto-bmad/state`.
@@ -133,12 +135,12 @@ invocation carried any instructions — `references/overrides.md`, then:
    otherwise initialize a fresh state file in Phase 1 — but first apply the **status-mismatch
    guard** (`state-and-resume.md` → "Target selection & resume logic"): a story already at
    `review`/`in-progress` with no state file asks the user before running the full pipeline.
-4. **Git preflight, project-context probe & triage** (per Phase 0 of the pipeline): **you run the
-   git preflight and the project-context probe directly** — detect repo, clean tree, git mode,
-   base branch; then probe for an existing `project-context.md` at the BMAD-canonical write path
-   (`<output_folder>/project-context.md`) with a `find` fallback anywhere under `<project_root>`
-   except `node_modules/`/`.venv/`/`.git/` (see Phase 0 for the exact invocation — it mirrors the
-   `bmad-generate-project-context` skill's own discovery) and record
+4. **Git preflight, project-context probe & triage** (per Phase 0 of the pipeline): run
+   `python3 {skill-root}/scripts/preflight.py --project-root <project_root> --output-folder
+   <output_folder>` (one call, one JSON — see Phase 0) and read its fields: the `git` block
+   (repo, clean tree, git mode, base branch — with `hard_stop`/`hard_stop_reasons` covering a
+   dirty tree off the expected story branch) and `project_context.found` (it mirrors the
+   `bmad-generate-project-context` skill's own discovery) → record
    `needs_project_context_bootstrap` in state. Then, **only if TEA enabled**, delegate the
    story-risk classification to the `tea_triage` profile to pick per-story TEA skills. Record
    the decisions in state.

@@ -30,6 +30,9 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 `delegation-runtime.md`), where the orchestrator runs *every* step itself.
 
 ## Mode detection (Phase 0)
+Evaluated by `scripts/preflight.py` — the orchestrator reads its JSON (`git.is_repo`,
+`git.base_branch`, `git.mode`, `git.tree_clean`/`dirty_files_count`), never re-derives these in
+shell. The rules below are the normative definition the script implements:
 - It's a git repo? `git rev-parse --is-inside-work-tree`. If not → hard-stop (suggest
   `git init`, since the local-branch flow needs a repo).
 - Base branch: the remote HEAD if present (`git symbolic-ref refs/remotes/origin/HEAD`),

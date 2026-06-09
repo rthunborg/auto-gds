@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report-section` emits the literal section template (append-only; a rewrite needs explicit
   confirmation) and `retro-append` enforces the skip-empty rule, so a clean phase writes nothing.
 
+- **Phase 0 preflight is now one deterministic script call.** `scripts/preflight.py` replaces the
+  ~8 hand-rolled shell probes (git preflight + mode, project-context, CI, required skills,
+  framework detection) with a single JSON answer and built-in hard-stop rules.
+
 ### Changed
 
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage

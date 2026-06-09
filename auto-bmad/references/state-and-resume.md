@@ -106,10 +106,10 @@ The single interactive episode in normal operation. Always confirm `target_tools
    step 4.
 3. **TEA (both depths):** detect the TEA skills (`bmad-testarch-*`) and ask `tea.enabled` —
    default "yes" if present, "no" if absent (don't offer yes when absent). If enabled, resolve
-   `framework_ci`: detect a test-framework config (`playwright.config.*`, `cypress.config.*`,
-   `pytest`/`jest`/`vitest`) and a CI workflow (`.github/workflows/*`, `.gitlab-ci.yml`, …) —
-   probe with `find`/`test -f`, never a bare `ls playwright.config.*` / `ls .github/workflows/*`
-   (unmatched it aborts under zsh/fish, same trap as the resume-scan above). Both
+   `framework_ci`: detect via `preflight.py --detect-framework-ci` — its `framework.configs`
+   lists the test-framework configs found (`playwright.config.*`, `cypress.config.*`,
+   `pytest`/`jest`/`vitest`) and `framework.ci_present` the CI workflow
+   (`.github/workflows/*`, `.gitlab-ci.yml`). Both
    present → `framework_ci: done` silently; missing → **ask** to run one-time
    `/bmad-testarch-framework` + `/bmad-testarch-ci` now (delegate to `ab-standard`) or `skip`. Heavy,
    infra-choosing setup — never auto-run without asking.

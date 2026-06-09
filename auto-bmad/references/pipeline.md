@@ -34,19 +34,22 @@ Placeholders (`{e}`/`{s}`, `{key}`, `{slug}`, `<impl>`, `<story_file>`, …) are
 
 ## Phase 0 — Preflight & triage  *(git preflight: orchestrator; TEA triage: `tea_triage`)*
 Runs during Step 1 of the SKILL procedure (before any commit).
-- **Probe discipline (applies to every orchestrator-run check here and below):** do existence /
-  enumeration probes with `find`, `test`, or Python — **never a bare glob** (`ls *.x`,
-  `for f in *.x`). An unmatched glob aborts with exit 1 under zsh/fish (`nomatch`), whereas
-  `find`/`test` give empty output + exit 0 in every shell. And probe by real on-disk names: state
-  files are `{key}.yaml`, story files `{key}.md` — neither carries the `story-{e}-{s}` prefix
-  that only commit/PR scopes use. State-file enumeration is encapsulated in
-  `scripts/state_plan.py` (the deterministic reader — call it, don't re-derive); this rule then
-  governs the git, project-context, and framework/CI existence probes that stay hand-rolled. See
-  `CLAUDE.md` → "Shell globs".
-- Verify required skills exist for the selected path. Missing → hard-stop.
-- Git preflight (**orchestrator runs this directly**): is this a git repo? is the working tree
-  clean? detect git mode (gh installed AND a GitHub remote → `remote`; else `local`); detect the
-  base branch. Dirty tree on a non-story branch → hard-stop.
+- **Probe discipline:** all orchestrator-run Phase 0 probes go through **one
+  `scripts/preflight.py` call** — git preflight, project-context probe, CI presence,
+  required-skills check, and (first-run) framework detection come back as a single JSON object;
+  read its fields, never re-derive them in shell. Any probe that stays hand-rolled (here or in
+  later phases) uses `find`/`test`/Python, **never a bare glob** — unmatched globs abort under
+  zsh/fish (`nomatch` ⇒ exit 1; `CLAUDE.md` → "Shell globs") — and probes by real on-disk names
+  (state `{key}.yaml`, story `{key}.md` — no `story-{e}-{s}` prefix). State-file enumeration
+  stays in `scripts/state_plan.py` (the deterministic reader — call it, don't re-derive).
+- Verify required skills exist for the selected path (the preflight JSON's `skills.missing`, via
+  `--require-skills` + `--skills-dirs`). Missing → hard-stop.
+- Git preflight (**orchestrator runs this directly**): read the preflight JSON's `git` block —
+  `is_repo`, `tree_clean`/`dirty_files_count`, `current_branch`, `base_branch`, `mode`
+  (`remote`|`local`) — plus the top-level `hard_stop`/`hard_stop_reasons` (not a repo, or dirty
+  tree off the expected story branch → hard-stop; pass `--expected-branch` on a resume so
+  in-flight dirt on the story branch is allowed). The normative rules live in `git-and-pr.md` →
+  "Mode detection (Phase 0)"; `preflight.py` implements them.
 - **Config drift heal (orchestrator; all hosts):** the runtime `config.yaml` is seeded **once** at
   first run and is never re-touched by a module update, so a newer asset's keys silently never reach
   the project. Two axes drift: the `profiles`/`phase_profiles` blocks (e.g. a `tea_triage` phase
@@ -88,18 +91,13 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   delegate agents are missing or stale (module updated / profiles edited), auto-reprovision and
   note it in the preflight echo + final report. Not a human stop. See `delegation-runtime.md` →
   "Resolving host & mode".
-- **Project-context probe (orchestrator):** match the discovery the `bmad-generate-project-context`
-  skill itself does — primary location is `<output_folder>/project-context.md` (where the skill
-  writes; `<output_folder>` comes from `_bmad/bmm/config.yaml`), fallback is any
-  `project-context.md` anywhere under `<project_root>` except build/VCS noise. Probe:
-  ```
-  test -f <output_folder>/project-context.md || \
-    find <project_root> -name 'project-context.md' -not -path '*/node_modules/*' \
-      -not -path '*/.venv/*' -not -path '*/.git/*' -type f -print -quit | grep -q .
-  ```
-  (`find` is the external binary — shell-agnostic per `CLAUDE.md` → "Shell globs".) Both checks
-  empty → set `needs_project_context_bootstrap: true` in state; Phase 2 will bootstrap it before
-  create-story. Either non-empty → set the flag `false` (the existing file is good enough; Phase 8
+- **Project-context probe (orchestrator):** read the preflight JSON's `project_context.found` —
+  `preflight.py` mirrors the discovery the `bmad-generate-project-context` skill itself does
+  (primary `<output_folder>/project-context.md`, where `<output_folder>` comes from
+  `_bmad/bmm/config.yaml` and is passed as `--output-folder`; fallback: any `project-context.md`
+  under `<project_root>` excluding `node_modules`/`.venv`/`.git`). `found: false` → set
+  `needs_project_context_bootstrap: true` in state; Phase 2 will bootstrap it before
+  create-story. `found: true` → set the flag `false` (the existing file is good enough; Phase 8
   still refreshes it on the last story of the epic). This covers both greenfield first-story and
   brownfield mid-project adoption (a codebase that never ran `bmad-generate-project-context`).
 - **Triage (only if `tea.enabled`; delegated to `tea_triage`)**: classify the story `low | med | high` and choose the

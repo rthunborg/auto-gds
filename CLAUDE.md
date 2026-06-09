@@ -109,6 +109,8 @@ schema, first-run).
     overwrites the profiles blocks back to shipped values (a whole-block scope also **prunes**
     profiles the asset no longer ships — the rename/drop remedy, surfaced as `removed_profiles`)
     but never the setup blocks.
+  - `preflight.py` — one-call Phase 0 preflight: git state/mode, project-context, CI, required
+    skills, framework detection — single JSON with hard-stop reasons.
   - `review_findings.py` — Phase 7 reconciliation reader for a story's `### Review Findings`.
   - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
     builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-
@@ -125,6 +127,7 @@ schema, first-run).
 python3 auto-bmad/scripts/story_plan.py --self-test
 python3 auto-bmad/scripts/state_plan.py --self-test
 python3 auto-bmad/scripts/state_update.py --self-test
+python3 auto-bmad/scripts/preflight.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
 python3 auto-bmad/scripts/config_plan.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test

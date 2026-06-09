@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `deferred_ledger.py` reads the ledger into addressable entries and performs the move atomically
   (sha-guarded, no writes on a stale plan); the orchestrator keeps only the keep-vs-move judgment.
 
+- **The per-story report field spec now has a single home.** `state-and-resume.md`'s Section
+  template carries every field's semantics; SKILL.md Step 3 is now a pointer, so the two can't
+  drift.
+
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage
   delegate must tag every persisted finding (`[Review][Patch][High] …`) and `review_findings.py`
   parses the tags (`open_severity`, `open_crit_high`; an untagged finding counts as Critical/High,

@@ -413,14 +413,18 @@ artifact: it belongs in the `Pipeline status` line, so it is **not** chat-only.)
   user declines, append instead.
 
 ### Section template (use literally, in this order)
-Every `## Report — <ISO timestamp>` section uses the same headings in the same order so a PR
-reviewer always finds each field in a predictable place. `state_update.py report-section` renders
-this template literally — it derives the Story/Branch/Timing lines (and the `resumed N×` count)
-from the state file + the prior sections, takes the prose snippets from `--json`, and never drops
-a heading: an empty field keeps its heading with `(none)` on its line.
+This template is the **single home** for the file portion's fields, heading order, and per-field
+semantics (`SKILL.md` Step 3 only points here). Every `## Report — <ISO timestamp>` section uses
+the same headings in the same order — no restructuring per run — so a PR reviewer always finds
+each field in a predictable place. `state_update.py report-section` renders this template
+literally — it derives the Story/Branch/Timing lines (and the `resumed N×` count) from the state
+file + the prior sections, takes the prose snippets from `--json`, and never drops a heading: an
+empty field keeps its heading with `(none)` on its line. The Timing split is best-effort, not
+exact: AI-run ≈ `active_seconds`, human/idle wait ≈ `elapsed − active_seconds` (see the timing
+fields above).
 
 ```markdown
-## Report — <ISO timestamp UTC> (<disposition tag>)
+## Report — <ISO timestamp UTC> (<disposition tag — the closed vocabulary above: (final) / (final — caveated) / (halted — <reason>) — tagging the heading keeps the log skim-readable from its outline>)
 
 **Story:** `{key}` (epic {e}, story {s}) — {first-in-epic? / last-in-epic? / mid-epic}.
 **Branch:** `<branch>` (HEAD `<short-sha>`).
@@ -432,19 +436,19 @@ a heading: an empty field keeps its heading with `(none)` on its line.
 **Phases run:** <comma-joined Phase N list for THIS session, with profile in parens for delegated phases; on a resume this is the session delta — earlier phases live in the section named by `Continues:`>.
 **Skipped:** <comma-joined Phase N list with reason in parens; this session>.
 
-**Overrides:** <one line; "none" if no invocation overrides applied>.
+**Overrides:** <one line — the invocation overrides applied this run (phase window, skips, caps); "none" if no invocation overrides applied>.
 
 **TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story; for the per-story trace advisory, its verdict + any uncovered ACs (advisory, non-blocking)>.
 
 **Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; then the end-of-loop HITL-halt outcome (continued / stopped / skipped (clean convergence)); and, if external-review changes triggered a post-halt re-review, its rounds + verdict/counts and the user's fix / fix-and-re-review / ignore decision; "skipped" if no review>.
 
-**Open questions:** <numbered list, one per line; "(none)" if empty>.
+**Open questions:** <numbered list, one per line — questions surfaced by any step; "(none)" if empty — keep the heading>.
 
-**Deferred work:** <numbered list, one per line; cross-link to `<impl>/deferred-work.md` if items landed there; on the last story of an epic, add a line noting how many resolved entries Phase 8 archived to `deferred-work-resolved.md` (omit if none); "(none)" if empty>.
+**Deferred work:** <numbered list, one per line — anything intentionally postponed (also appended to the durable cross-story `<impl>/deferred-work.md` ledger; cross-link it when items landed there); on the last story of an epic, add a line noting how many resolved entries Phase 8 moved to the `deferred-work-resolved.md` archive (e.g. "archived 6 resolved → deferred-work-resolved.md"; omit the note if none); "(none)" if empty — keep the heading>.
 
-**Planning drift:** <epic-end only — planning assumptions the retrospective proved wrong + the recommended re-sync (document-project → generate-project-context → bmad-prd update; correct-course if structural); non-blocking, never auto-run; "(none)" if clean or not epic-end>.
+**Planning drift:** <epic-end only — planning assumptions the retrospective proved wrong + the recommended re-sync (document-project → generate-project-context → /bmad-prd update; /bmad-correct-course if structural); non-blocking, never auto-run; "(none)" if clean or not epic-end>.
 
-**⚠️ Needs human:** <numbered list of blockers / manual actions; "(none)" if clean>.
+**⚠️ Needs human:** <numbered list of blockers / manual actions. On a caveated completion these are required before the story can be considered done (it was left at `review`); on a clean completion the story is already `done` — list only genuine optional follow-ups (e.g. merging the open PR, on the human's own time) and never imply the merge gates `done`; "(none)" if clean>.
 
-**Next:** <one line — the story `story_plan.py` would pick next; preview only>.
+**Next:** <one line — the story `story_plan.py` would pick next; preview only — do NOT start it>.
 ```

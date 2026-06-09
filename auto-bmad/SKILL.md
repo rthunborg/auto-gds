@@ -180,36 +180,11 @@ Both are always printed to the user.
   — these add the links/merge-method/status-flip specifics to the disposition the file's
   `Pipeline status` line already records; they do not replace it.
 
-**File portion — fields** (story-level outputs preserved across runs; use the exact heading
-order and field labels from `references/state-and-resume.md` → "Section template" — no
-restructuring per run, so PR reviewers always find each field in the same place):
-- **Story:** key, branch (HEAD short sha).
-- **Pipeline status:** one-line summary (clean completion / halted at Phase N / draft (reason) / …).
-  Also tag the `## Report` heading itself with the section's disposition — `(final)` /
-  `(final — caveated)` / `(halted — <reason>)` — so the log is skim-readable from its outline.
-- **Timing:** `started_at`/`completed_at` (or "in progress"), total elapsed, and the best-effort
-  AI-run vs human/idle-wait split (`active_seconds` vs `elapsed − active_seconds`); note resume count if >1.
-- **Phases run / Skipped:** the Phase N list each line (THIS session only — a resume reports its
-  delta, with a `Continues:` line naming the section it picks up from), profile in parens for delegated phases.
-- **Overrides:** any invocation overrides applied this run (phase window, skips, caps); "none" if none.
-- **TEA:** which skills ran and outcomes; epic gate decision if last story; "disabled" if `tea.enabled=false`.
-- **Code review:** iterations run; per-iteration verdict + severity counts in the fixed form
-  `Critical N / High N / Medium N / Low N`; the end-of-loop HITL-halt outcome (continued / stopped /
-  skipped (clean convergence)); and — if external-review changes triggered a post-halt re-review — its rounds, verdict + counts, and
-  the user's fix / fix-and-re-review / ignore decision.
-- **Open questions** surfaced by any step ("(none)" if empty — keep the heading).
-- **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
-  `<impl>/deferred-work.md` ledger). "(none)" if empty — keep the heading. On the **last story of an
-  epic**, also note how many resolved entries Phase 8 moved to the `deferred-work-resolved.md`
-  archive (e.g. "archived 6 resolved → deferred-work-resolved.md"; omit the note if none).
-- **Planning drift** (epic-end only): planning assumptions the retrospective proved wrong + the
-  recommended re-sync (document-project → generate-project-context → `/bmad-prd` update;
-  `/bmad-correct-course` if structural). Non-blocking, never auto-run. "(none)" if clean or not epic-end.
-- **⚠️ Needs human:** blockers / manual actions. On a **caveated** completion these are required
-  before the story can be considered done (it was left at `review`). On a **clean** completion the
-  story is already `done`; list only genuine follow-ups (e.g. merging the open PR is optional and
-  on the human's own time) — do not imply the merge gates `done`. "(none)" if clean.
-- **Next:** the next story `story_plan.py` would pick (preview only — do NOT start it).
+**File portion — fields:** the file portion's fields, heading order, and per-field semantics
+live in `references/state-and-resume.md` → "Section template" — the **single home**, rendered
+literally by `scripts/state_update.py report-section`. Don't restate or restructure them here.
+The only Step-3-specific facts are the ones already stated above: when the file was written by
+Phase 9 vs written here as a fallback, and that both portions are always printed to the user.
 
 **Chat-only — additional lines** (not committed; the finalization **artifacts/links**, retrievable
 from git/GitHub/sprint-status later — they add the PR/CI/merge specifics on top of the disposition

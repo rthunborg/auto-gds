@@ -12,15 +12,16 @@ and report → else update the state file (append retro notes, mark the phase do
 commit as the phase's artifacts** (see `git-and-pr.md` → "Commits"; **never** a standalone
 state-only commit). Each phase below gives its `Commit:` **subject only** — every commit also
 carries a **required body** (and a footer when relevant), built from that phase's own facts, per
-`git-and-pr.md` → "Message body & footer". When updating state, also record timing: read the host's
-`date +%s`
-just before delegating the phase and again when it returns (just before the state write + commit),
-and add the delta to `active_seconds`
-(alongside the `updated_at` stamp) — this is what lets the report split AI-run time from
-human/idle wait (`state-and-resume.md` → timing fields). **Don't count time spent waiting on the
-user:** if the phase opens an `AskUserQuestion` (e.g. the Phase 7 decision asks or the HITL halt),
-bracket the prompt with `date +%s` and exclude that interval from the phase's delta, so the wait
-lands on human/idle, not active.
+`git-and-pr.md` → "Message body & footer". When updating state, also record timing — never with hand-rolled `date` arithmetic: bracket each
+phase with `python3 {skill-root}/scripts/state_update.py timing-start --state-file <state>` just
+before delegating and `… timing-pause …` when it returns (just before the state write + commit);
+the script owns the clock math and folds the interval into `active_seconds` — this is what lets
+the report split AI-run time from human/idle wait (`state-and-resume.md` → timing fields).
+**Don't count time spent waiting on the user:** if the phase opens an `AskUserQuestion` (e.g. the
+Phase 7 decision asks or the HITL halt), invert the bracket — `timing-pause` before the prompt,
+`timing-start` after — so the wait lands on human/idle, not active. (A `dropped_anchor: true`
+from `timing-start` means a prior session crashed mid-bracket; the dangling interval is discarded
+conservatively — expected on resume, not an error.)
 
 **Git/PR work is orchestrator-owned, not delegated** — see `git-and-pr.md` → "Ownership" for the
 full list. The git-only phases below (0 preflight, 1 branch, 9 finalize) carry no
@@ -113,11 +114,11 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 ## Phase 1 — Branch  *(orchestrator)*
 - Ensure we are NOT on the base branch. Create/checkout `{branch_prefix}{e}-{s}-{slug}`
   (default `story/{e}-{s}-{slug}`). If the branch already exists (resume), check it out.
-- Write the initial state file and commit it:
-  `chore(story-{e}-{s}): start auto-bmad pipeline`. Stamp `started_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`)
-  and initialize `completed_at: null`, `active_seconds: 0` on this first write. On a **resume** (the
-  state file already exists), leave `started_at` and the accumulated `active_seconds` untouched —
-  they span all sessions.
+- Write the initial state file with `python3 {skill-root}/scripts/state_update.py init
+  --state-file <state> --json -` (it stamps `started_at` once and initializes
+  `completed_at: null`, `active_seconds: 0`; it refuses — exit 1 — if the file already exists, so
+  a **resume** can never re-init and `started_at`/`active_seconds` span all sessions). Commit it:
+  `chore(story-{e}-{s}): start auto-bmad pipeline`.
 
 ## Phase 2 — Epic-start setup  *(conditional; two independently-gated sub-steps)*
 Two sub-steps that each carry their own gate; either, both, or neither may run. **Phase 2 enters
@@ -369,7 +370,8 @@ For iteration `i` (1-based):
      unconverged, report its last pass's findings as `needs-human`.
    Record the choice, the external-change re-review outcome (if it ran — `external_review_iterations`,
    each round's verdict + counts, and the user's fix/ignore decision), and any extra commits in state +
-   the report. **Bracket every prompt here with `date +%s`** — the original ask and any re-opened halt
+   the report. **Bracket every prompt here with `state_update.py timing-pause`/`timing-start`** — the
+   original ask and any re-opened halt
    — so the (possibly long) external-review waits land on human/idle, not `active_seconds` (see top of
    this file). Phase 7 enters `completed_phases` only after this halt resolves — or after the skip
    gate above fires (a skipped halt counts as resolved) — and the tail below, when selected.
@@ -396,9 +398,14 @@ this step (when selected) finishes, so a resume that re-enters a converged Phase
   wrote one, plus the state update).
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*
-Run these in order. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project
-context, deferred-work archive, retrospective`. (Trace-gate remediation, if any, commits separately
-as it runs — step 1.)
+Run these in order. Each sub-step records its `phase8_steps.<key>` marker (`trace_gate`, `nfr`,
+`test_review`, `project_context`, `archive`, `retro`) in its folded state write — `done` when it
+ran (trace_gate also `waived`/`failed`), and `done` too when its gate was false (e.g. TEA off) so
+a skip reads as resolved. On resume, enter Phase 8 at the **first null marker** instead of
+re-running completed delegations; Phase 8 joins `completed_phases` only once all six markers are
+resolved. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project context,
+deferred-work archive, retrospective`. (Trace-gate remediation, if any, commits separately as it
+runs — step 1.)
 1. **TEA gates (only if `tea.enabled`; epic-level skills are always on here):** delegate, in order,
    the **`testarch-trace`** entry via `tea_epic` (the blocking gate — full depth), then the
    **`testarch-nfr`** and **`testarch-test-review`** entries via `tea_epic_audit` (advisory audits —
@@ -470,12 +477,16 @@ as it runs — step 1.)
 
 ## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).
-- **Write the report file (before push, so it ships in the PR).** Append a new
-  `## Report — <ISO timestamp>` section to `_bmad-output/auto-bmad/reports/{key}.md`,
-  preserving any earlier sections. Tag the heading with this section's disposition — `(final)` on a
-  clean completion, `(final — caveated)` if the run finalized but stays at `review` — and keep the
-  section a session delta (on a resume, `Phases run` lists only the resumed phases and a
-  `Continues:` line names the section it picks up from; full vocabulary in `state-and-resume.md` →
+- **Write the report file (before push, so it ships in the PR).** Emit it with
+  `python3 {skill-root}/scripts/state_update.py report-section --report-file
+  _bmad-output/auto-bmad/reports/{key}.md --state-file <state> --json -` — the script appends a new
+  `## Report — <ISO timestamp>` section (creating the file if absent, never touching earlier
+  sections) and derives the Story/Branch/Timing lines from state; you supply the prose snippets
+  (`disposition_tag`, `pipeline_status`, `continues`, `phases_run`, `skipped`, `overrides`, `tea`,
+  `code_review`, lists, `next`, `head_sha`) in the JSON. Tag it with this section's disposition —
+  `(final)` on a clean completion, `(final — caveated)` if the run finalized but stays at `review`
+  — and keep the section a session delta (on a resume, `phases_run` lists only the resumed phases
+  and `continues` names the section it picks up from; full vocabulary in `state-and-resume.md` →
   "reports/{key}.md"). The file holds only the **story-level** outputs that aren't
   recorded elsewhere — overrides, TEA outcomes, open questions, deferred work, blockers,
   next-story preview (see `SKILL.md` Step 3 for the exact fields). The finalization **artifacts**

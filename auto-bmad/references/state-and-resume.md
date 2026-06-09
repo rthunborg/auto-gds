@@ -207,9 +207,13 @@ updated_at: "2026-05-28T14:04:41Z"  # ISO-8601 UTC; set by the orchestrator afte
 started_at: "2026-05-28T13:55:02Z"  # ISO-8601 UTC; stamped ONCE at the Phase 1 write, never rewritten (survives resume)
 completed_at: null          # ISO-8601 UTC; set when status flips to done (Phase 9 finalize); null while in-progress
 active_seconds: 0           # accumulated wall-clock spent EXECUTING phases (delegate runtime + the orchestrator's own
-                            #   commit/state work), summed across every session so it keeps growing on resume. Each phase:
-                            #   read `date +%s` before delegating and again after its commit, add the delta here.
+                            #   commit/state work), summed across every session so it keeps growing on resume. Maintained
+                            #   solely by `state_update.py timing-start`/`timing-pause` — bracket each phase, never hand-add.
                             #   elapsed = completed_at-started_at; human/idle wait = elapsed - active_seconds.
+timing_anchor: null         # epoch seconds while a phase (or a bracketed user prompt) is executing; null when
+                            #   idle. Set by `state_update.py timing-start`; `timing-pause` folds now−anchor into
+                            #   active_seconds and nulls it. Non-null on resume = a crash tail — the next
+                            #   timing-start re-anchors and conservatively discards the dangling interval.
 is_first_in_epic: false
 is_last_in_epic: false
 needs_project_context_bootstrap: false  # set at Phase 0; flipped to false by Phase 2's bootstrap sub-step
@@ -229,6 +233,13 @@ convergence_unverified: false  # true if the review loop hit max_iterations whil
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
+phase8_steps:                # per-sub-step epic-end resume markers, recorded in each sub-step's folded state
+  trace_gate: null           #   write: null (not yet run) | done; trace_gate may also be waived | failed.
+  nfr: null                  #   A mid-Phase-8 crash resumes at the first null instead of re-running completed
+  test_review: null          #   delegations; Phase 8 joins completed_phases only once all six markers resolve
+  project_context: null      #   (ran, or its gate was false).
+  archive: null
+  retro: null
 gate_decision: null          # PASS|CONCERNS|FAIL|WAIVED (last story only)
 gate_iterations: 0           # Phase 8 trace-gate remediation passes run (automate+re-trace); capped by tea.gate_max_iterations; resume continues mid-loop
 deferred_work_archived: 0    # Phase 8 (last story only): count of resolved entries moved from deferred-work.md to the deferred-work-resolved.md archive
@@ -251,16 +262,21 @@ Update it after every phase. Treat it as the source of truth for resume. The mer
 `false`/`null`/`unknown` defaults from the first write; Phase 9 mutates them only when it actually
 waits for CI / runs `gh pr merge`.
 
-The **timing** fields are orchestrator-owned (use the host's `date`): `started_at` is stamped once
-at the Phase 1 write and never touched again; `completed_at` is set only when the run flips `status`
-to `done`; `active_seconds` accumulates each phase's execution window, so it grows across resumes.
-Derive for the report: **elapsed** = `completed_at − started_at` (total, includes overnight resume
-gaps), **AI-run time** ≈ `active_seconds`, **human/idle wait** ≈ `elapsed − active_seconds`.
-The split is best-effort, not exact — it's host wall-clock, not token-compute time. Time spent
-waiting on the user does **not** count as active: when a phase opens an `AskUserQuestion` (e.g. the
-Phase 7 decision asks or HITL halt), the orchestrator brackets the prompt and excludes that
-interval from `active_seconds`, so it lands on wait. Between-phase prompts and resume gaps land on
-wait too; a story halted overnight shows a large wait dominated by the gap, not by work.
+The **timing** fields are script-owned — all clock arithmetic lives in
+`scripts/state_update.py`, never in orchestrator shell: `started_at` is stamped once by `init`
+(Phase 1) and never rewritten (`set` refuses); `completed_at` is auto-stamped when a patch flips
+`status` to `done`; `active_seconds` accumulates each phase's execution window via the
+`timing-start` / `timing-pause` bracket, so it grows across resumes. The orchestrator just
+brackets work: `timing-start` before delegating a phase, `timing-pause` after its commit — and
+inverts the bracket around any `AskUserQuestion` (pause before the prompt, start after), so user
+waits land on idle, not active. `timing_anchor` holds the open bracket; a non-null anchor on
+resume is a crash tail — the next `timing-start` re-anchors and conservatively discards the
+dangling interval (reported as `dropped_anchor: true`). Derive for the report (done by
+`state_update.py report-section`): **elapsed** = `completed_at − started_at` (total, includes
+overnight resume gaps), **AI-run time** ≈ `active_seconds`, **human/idle wait** ≈
+`elapsed − active_seconds`. The split is best-effort, not exact — it's host wall-clock, not
+token-compute time. Between-phase prompts and resume gaps land on wait; a story halted overnight
+shows a large wait dominated by the gap, not by work.
 
 ## Target selection & resume logic
 No-arg `/auto-bmad` chooses the target story with this precedence:
@@ -333,16 +349,21 @@ on the story branch show how far the pipeline got.
 
 ## retro-notes/epic-{e}.md
 The cross-story scratchpad the epic retrospective reads — **signal only, not a log.** After each
-phase, append the agent's **Retro notes** under one per-story heading (create `## Story {key}` on
-the first real note for that story; reuse it for later phases):
+phase, hand the agent's **Retro notes** to the deterministic writer — never append by hand:
+```
+python3 {skill-root}/scripts/state_update.py retro-append --retro-file <output_folder>/auto-bmad/retro-notes/epic-{e}.md --story-key {key} --json -
+```
+(`--json` is `{"lines": [...]}`). It keeps one per-story heading — creates `## Story {key}` on the
+first real note, reuses it for later phases:
 ```
 ## Story {key}
 - <one terse line: a deviation / non-obvious decision / surprise / risk / deferred item>
 ```
 Keep it small so it stays usable across a multi-story epic:
-- **Skip empty notes.** Most phases run clean and have nothing retrospective-worthy — when a
-  delegate returns `Retro notes: none` (or only routine "did the work" text), append **nothing**
-  (don't even write the heading). Only genuine signal lands here.
+- **Skip empty notes** — enforced by the script: it drops empty/`none`/whitespace lines, and when
+  nothing survives it writes **nothing** (not even the heading; `{"appended": 0}`). Most phases run
+  clean and have nothing retrospective-worthy — still pass routine "did the work" text through your
+  own judgment and send `none`; only genuine signal lands here.
 - **One terse line per item** — never a paragraph, and never a recap of what the story file
   already records.
 
@@ -366,9 +387,11 @@ artifact: it belongs in the `Pipeline status` line, so it is **not** chat-only.)
 - On a hard-stop before Phase 9 (or any path that didn't reach the pre-push write), `SKILL.md`
   Step 3 writes the file as a fallback — same content, no commit (the working tree is already
   in needs-human state; the human will commit it alongside their fix).
-- Each run (first completion OR resume) **appends** a new `## Report — <ISO timestamp>` section,
-  preserving everything already in the file. A resume must never clobber an earlier run's
-  report, since prior sections may hold context (decisions, partial outcomes) we'd otherwise lose.
+- Each run (first completion OR resume) **appends** a new `## Report — <ISO timestamp>` section via
+  `state_update.py report-section` (which also creates the file with its one-line H1 when absent),
+  preserving everything already in the file — the script never overwrites existing sections. A
+  resume must never clobber an earlier run's report, since prior sections may hold context
+  (decisions, partial outcomes) we'd otherwise lose.
 - **Each section is a session delta, not a cumulative rollup.** A section reports only what
   happened in *its* run — `Phases run` / `Skipped` cover this session alone, and a resume carries a
   `Continues:` back-reference to the section it picks up from. Don't re-derive an earlier (possibly
@@ -383,13 +406,16 @@ artifact: it belongs in the `Pipeline status` line, so it is **not** chat-only.)
   plus the `Continues:` line already mark a resume.
 - The file is created on the first report for the story.
 - The **only** time it's overwritten is a deliberate full re-run of an already-`done` story, and
-  only after explicit user confirmation ("overwrite the existing report log for {key}?"). If the
+  only after explicit user confirmation ("overwrite the existing report log for {key}?") — then,
+  and only then, pass `--overwrite-confirmed`; without the flag the script always appends. If the
   user declines, append instead.
 
 ### Section template (use literally, in this order)
 Every `## Report — <ISO timestamp>` section uses the same headings in the same order so a PR
-reviewer always finds each field in a predictable place. Never drop a heading — when a field is
-empty, keep its heading and write `(none)` on its line.
+reviewer always finds each field in a predictable place. `state_update.py report-section` renders
+this template literally — it derives the Story/Branch/Timing lines (and the `resumed N×` count)
+from the state file + the prior sections, takes the prose snippets from `--json`, and never drops
+a heading: an empty field keeps its heading with `(none)` on its line.
 
 ```markdown
 ## Report — <ISO timestamp UTC> (<disposition tag>)

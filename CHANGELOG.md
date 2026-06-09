@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **State files are now written by a deterministic script, not hand-rolled YAML.** New
+  `state_update.py` re-emits the full stable schema on every write, stamps the timestamps, guards
+  `started_at`, and owns all timing arithmetic (`timing-start`/`timing-pause` brackets); older
+  state files migrate to the full shape on their next write.
+
+- **A crash mid-Phase-8 now resumes at the first unfinished sub-step.** New per-sub-step
+  `phase8_steps` resume markers in state mean completed epic-end delegations (gate, audits,
+  context refresh, archive, retro) never re-run.
+
+- **Report sections and retro notes are now rendered deterministically.** `state_update.py
+  report-section` emits the literal section template (append-only; a rewrite needs explicit
+  confirmation) and `retro-append` enforces the skip-empty rule, so a clean phase writes nothing.
+
 ### Changed
 
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage

@@ -98,6 +98,10 @@ schema, first-run).
   docstring (read the script for exact behavior):
   - `story_plan.py` — sprint-status reader.
   - `state_plan.py` — auto-bmad `state/{key}.yaml` reader (resume detection).
+  - `state_update.py` — deterministic per-story state/report/retro writer: full-schema state
+    writes (init / JSON patch / phase-done), the timing-start/-pause clock brackets, literal
+    report-section rendering, and skip-empty retro appends. Lockstep-self-tested against the
+    `state-and-resume.md` schema block.
   - `render-agents.py` — agent generator from `profiles.yaml`.
   - `config_plan.py` — detects and additively heals drift between the shipped defaults
     (`profiles.yaml` for `profiles`/`phase_profiles`; `config-defaults.yaml` for the constant-default
@@ -120,6 +124,7 @@ schema, first-run).
 # Deterministic cores:
 python3 auto-bmad/scripts/story_plan.py --self-test
 python3 auto-bmad/scripts/state_plan.py --self-test
+python3 auto-bmad/scripts/state_update.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
 python3 auto-bmad/scripts/config_plan.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test

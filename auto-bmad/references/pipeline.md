@@ -438,23 +438,33 @@ runs — step 1.)
    the orchestrator already writes this file at Phase 7, so this is connective bookkeeping, not a
    delegated step. See `CLAUDE.md` → orchestrator-owned actions):* now that `project-context.md` has
    distilled the epic's durable conventions, trim the active ledger `<impl>/deferred-work.md` so
-   create-story stops re-folding finished work into future stories. Read it; for every **bullet that
-   clearly states ALL of its deferred work is done** — keyed on a resolution *marker's meaning*, not
-   a fixed string (the phrasing varies run to run: a leading `✅`, `RESOLVED`, "resolved in
-   story …", "closed", "addressed in …") — **move** that bullet out of the active ledger and append
-   it, under a matching `## Deferred from: <source>` heading, to the sibling archive
-   `<impl>/deferred-work-resolved.md` (create it with a one-line title if absent; reuse the heading
-   there if it already exists, else add it). Then drop any active-ledger `## Deferred from:` heading
-   whose last bullet was moved; preserve the ledger's title/intro. **Keep — never move:**
-   - any entry with an open remainder — a *partial* resolution ("X portion done; Y owned by story Z"
-     still carries open work). The entry must vouch for **itself**; do not move it just because some
-     *other* entry says the remainder landed.
-   - any unmarked entry (a still-open deferral).
-   **When uncertain, keep it in the active ledger.** The asymmetry is the safety rule: a wrongly-kept
-   resolved item is merely wasteful (create-story folds a done item once), but a wrongly-moved open
-   item silently drops real follow-up work. No-op if the ledger is absent or holds no resolved entry.
-   Record the count moved in state (`deferred_work_archived`) and the report's **Deferred work**
-   field; the move lands in this phase's `docs(epic-{e})` commit.
+   create-story stops re-folding finished work into future stories. The mechanics are scripted —
+   you own only the keep-vs-move judgment:
+   1. Run `python3 {skill-root}/scripts/deferred_ledger.py plan --ledger <impl>/deferred-work.md`.
+      It returns every entry (`id`, `heading`, `text`), the `ledger_sha256`, and a `marker_hint`
+      (`resolved`/`partial`/`open`) — the hint is a heuristic aid that focuses your read; it never
+      decides.
+   2. Judge each entry on its own `text`. Move only a **bullet that clearly states ALL of its
+      deferred work is done** — keyed on a resolution *marker's meaning*, not a fixed string (the
+      phrasing varies run to run: a leading `✅`, `RESOLVED`, "resolved in story …", "closed",
+      "addressed in …"). **Keep — never move:**
+      - any entry with an open remainder — a *partial* resolution ("X portion done; Y owned by
+        story Z" still carries open work). The entry must vouch for **itself**; do not move it just
+        because some *other* entry says the remainder landed.
+      - any unmarked entry (a still-open deferral).
+      **When uncertain, keep it in the active ledger.** The asymmetry is the safety rule: a
+      wrongly-kept resolved item is merely wasteful (create-story folds a done item once), but a
+      wrongly-moved open item silently drops real follow-up work.
+   3. Run `python3 {skill-root}/scripts/deferred_ledger.py archive --ledger <impl>/deferred-work.md
+      --archive <impl>/deferred-work-resolved.md --ids <move ids> --expect-sha <ledger_sha256>`. It
+      atomically appends each moved entry under a matching `## Deferred from:` heading in the
+      archive (created with a one-line title if absent; an identical heading is reused, else added),
+      removes it from the ledger, drops any ledger `## Deferred from:` heading left with zero
+      entries, and preserves the ledger's title/intro verbatim. A stale `--expect-sha` or unknown id
+      exits 1 with no writes — re-run `plan` and re-judge.
+   No-op if the ledger is absent or holds no resolved entry (skip `archive` when the move set is
+   empty). Record the count moved (the result's `moved`) in state (`deferred_work_archived`) and the
+   report's **Deferred work** field; the move lands in this phase's `docs(epic-{e})` commit.
 4. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
    it the accumulated `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
    writes the retro doc + flips the retrospective status to `done`. **Planning-drift advisory:** if the

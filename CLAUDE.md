@@ -118,6 +118,9 @@ schema, first-run).
     `gate` encodes the loop's decision table, `post-fix` verifies each fix pass.
   - `ci_wait.py` — Phase 9 CI wait: polls `gh pr checks`, classifies the pinned `ci_status`
     verdict (passed/failed/timeout/none), and resolves `ci_run_url` by head SHA.
+  - `deferred_ledger.py` — Phase 8 deferred-work archive mechanics: `plan` reads ledger entries +
+    resolution hints, `archive` moves chosen entries atomically (sha-guarded); keep-vs-move
+    judgment stays with the LLM.
   - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
     builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-
     validates binary/skills/auth. Pure `resolve()` + live `validate()`.
@@ -140,6 +143,7 @@ python3 auto-bmad/scripts/review_findings.py --self-test
 python3 auto-bmad/scripts/review_loop.py --self-test
 python3 auto-bmad/scripts/cli_delegate.py --self-test
 python3 auto-bmad/scripts/ci_wait.py --self-test
+python3 auto-bmad/scripts/deferred_ledger.py --self-test
 # Maintainer-only skill (tracked under .claude/ via gitignore exception; NOT shipped to users):
 python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test
 # Marketplace manifest is valid JSON:

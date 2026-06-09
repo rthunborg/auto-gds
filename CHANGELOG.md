@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classifies the pinned `ci_status` verdict, and resolves the run URL by head SHA — replacing
   the orchestrator's hand-rolled polling loop. (git-and-pr.md)
 
+- **Phase 8 deferred-work archiving is now script-driven, not a hand-edit.** New
+  `deferred_ledger.py` reads the ledger into addressable entries and performs the move atomically
+  (sha-guarded, no writes on a stale plan); the orchestrator keeps only the keep-vs-move judgment.
+
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage
   delegate must tag every persisted finding (`[Review][Patch][High] …`) and `review_findings.py`
   parses the tags (`open_severity`, `open_crit_high`; an untagged finding counts as Critical/High,

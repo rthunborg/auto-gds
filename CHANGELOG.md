@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **New setup-block defaults now reach an existing `config.yaml` on update.** The preflight
+  config-drift heal also appends constant-default keys the config is missing in the
+  `delegation`/`tea`/`git`/`code_review` blocks (e.g. `git.offer_merge`, `tea.story_trace_advisory`) —
+  previously only `profiles`/`phase_profiles` self-healed, so a new setup key stayed invisible until a
+  Full re-`configure`. Append-only: your existing values are never touched, and environment-detected
+  fields (`git.base_branch`, `delegation.target_tools`, …) are deliberately left to runtime detection.
+
+- **The heal now shows what it changed.** When it adds setup keys, the preflight prints the new
+  keys (with values) and any of your customizations it kept — non-blocking, so the pipeline continues
+  without a prompt (the additions are behavior-neutral, matching the defaults already in effect).
+
 - **Any pipeline phase can now be delegated to an external CLI instead of an in-tool sub-agent.** Set
   `delegation.cli_phases` in `config.yaml` (e.g. `{ code_review_review_secondary: codex }`) to run a
   chosen phase via `claude -p` or `codex exec` for cross-tool diversity; model + effort come from that

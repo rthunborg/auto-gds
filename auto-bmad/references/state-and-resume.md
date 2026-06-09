@@ -20,7 +20,12 @@ profiles_source_version: "0.13.6"  # abm version whose assets/agents/profiles.ya
                                   # scripts/config_plan.py and compared to the installed
                                   # module_version: a newer module triggers an ADDITIVE re-seed of
                                   # any asset keys this config is MISSING — never overwriting the
-                                  # user's retunes.
+                                  # user's retunes. The same Phase 0 heal also appends any MISSING
+                                  # constant-default keys in the setup blocks below (delegation /
+                                  # tea / git / code_review) from assets/config-defaults.yaml — also
+                                  # append-only (your setup answers are preserved), and that asset
+                                  # omits environment-detected fields (git.base_branch,
+                                  # delegation.target_tools, ...) so a static guess is never written.
 delegation:                # spawn mechanism — host/mode auto-detected each run
   host: auto               # auto (detect each run) | claude-code | codex | other
   mode: auto               # auto (derive from host) | custom-subagents | general-subagents | inline
@@ -136,7 +141,11 @@ that already exists). **Config-only:** report what changed, then stop — never 
 
 **Boundary (state it to the user):** reset-defaults touches **only** `profiles`, `phase_profiles`,
 and the `profiles_source_version` stamp — **never** `delegation`/`tea`/`git`/`code_review`, which
-are setup answers, not shipped defaults. Redoing those is `setup`/`configure`.
+are setup answers, not shipped defaults. Redoing those is `setup`/`configure`. (This is the
+overwrite-vs-append line: reset *overwrites* back to shipped values, which would clobber a setup
+answer, so it stays out of those blocks; the Phase 0 drift heal only *appends* a setup key the
+config never had — which can't lose an answer — so it safely materializes new constant-default
+setup keys from `config-defaults.yaml`. Different operations, different scopes.)
 
 **Flow:**
 1. Require `config.yaml` to exist. Absent → "Nothing to reset — run `/auto-bmad setup` first." and stop.

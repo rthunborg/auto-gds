@@ -80,6 +80,13 @@ schema, first-run).
 - `auto-bmad/assets/agents/profiles.yaml` — the single per-profile source (model/effort + persona
   strings). `claude/agent.md.tmpl` + `codex/agent.toml.tmpl` — one shared body template per tool the
   renderer fills in, so the four `ab-*` personas can't drift between tools.
+- `auto-bmad/assets/config-defaults.yaml` — the source of truth for the **constant-default
+  setup-block** keys (`delegation`/`tea`/`git`/`code_review`) that the Phase 0 drift heal appends to
+  an existing `config.yaml` (those blocks are otherwise setup answers with no asset). Deliberately
+  **omits** environment-detected/interviewed fields (`git.base_branch`, `delegation.target_tools`,
+  `host`/`mode`, `tea.enabled`/`framework_ci`, `git.mode`) so the append-only heal can never write a
+  wrong static value. Lockstep: each default must equal the orchestrator fallback **and** the
+  `state-and-resume.md` schema (config_plan.py's `--self-test` enforces the include/exclude sets).
 - `auto-bmad/assets/module.yaml` + `module-help.csv` + `module-setup.md` — module identity,
   capability registry, and the self-registration/provisioning flow.
 - `auto-bmad/scripts/` — dependency-free helpers, each with a `--self-test` and a self-documenting
@@ -87,8 +94,10 @@ schema, first-run).
   - `story_plan.py` — sprint-status reader.
   - `state_plan.py` — auto-bmad `state/{key}.yaml` reader (resume detection).
   - `render-agents.py` — agent generator from `profiles.yaml`.
-  - `config_plan.py` — detects and additively heals drift between the shipped `profiles.yaml` and a
-    project's runtime `config.yaml`.
+  - `config_plan.py` — detects and additively heals drift between the shipped defaults
+    (`profiles.yaml` for `profiles`/`phase_profiles`; `config-defaults.yaml` for the constant-default
+    setup-block keys) and a project's runtime `config.yaml`. Append-only (`--apply`); `--reset`
+    overwrites the profiles blocks back to shipped values but never the setup blocks.
   - `review_findings.py` — Phase 7 reconciliation reader for a story's `### Review Findings`.
   - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
     builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-

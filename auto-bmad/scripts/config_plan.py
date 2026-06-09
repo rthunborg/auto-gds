@@ -29,7 +29,15 @@ What ``--apply`` heals automatically (the realistic, safe-to-append cases):
   * ``phase_profiles`` keys present in the asset but absent from the config
     (appended as ``  key: value`` lines at the end of that block);
   * whole ``profiles`` entries present in the asset but absent from the config
-    (the asset's raw block is copied verbatim to the end of the ``profiles:`` block).
+    (the asset's raw block is copied verbatim to the end of the ``profiles:`` block);
+  * **constant-default setup-block keys** (``delegation``/``tea``/``git``/``code_review``)
+    present in the second asset ``assets/config-defaults.yaml`` but absent from the config,
+    at any depth — a missing scalar, a missing sub-block, or a missing whole block (see
+    ``plan_setup``). The setup blocks are otherwise SETUP ANSWERS with no asset source, so a
+    new setup key shipped by an update never reaches an existing config; this closes that gap.
+    Append-only like the above (a key already present is never touched), and that asset
+    deliberately excludes environment-detected fields (``git.base_branch``,
+    ``delegation.target_tools``, ...) so the heal can't bake in a wrong static guess.
 What it reports but does NOT rewrite (``manual_review`` — rare, value-bearing, and
 a mid-block insert would risk mangling a user-edited profile): sub-keys missing
 from a profile that already exists in the config (e.g. the asset added a new tool
@@ -39,8 +47,8 @@ Parsing is dependency-free (same block-structured spirit as ``render-agents.py``
 ``story_plan.py``) so no PyYAML is needed. Output: a single JSON object on stdout.
 
 Usage:
-    config_plan.py --check --config FILE [--asset-profiles FILE] [--module-yaml FILE | --module-version X.Y.Z]
-    config_plan.py --apply --config FILE [--asset-profiles FILE] [--module-yaml FILE | --module-version X.Y.Z]
+    config_plan.py --check --config FILE [--asset-profiles FILE] [--asset-config-defaults FILE] [--module-yaml FILE | --module-version X.Y.Z]
+    config_plan.py --apply --config FILE [--asset-profiles FILE] [--asset-config-defaults FILE] [--module-yaml FILE | --module-version X.Y.Z]
     config_plan.py --self-test
 """
 from __future__ import annotations
@@ -188,6 +196,166 @@ def parse_profiles_blocks(lines: Sequence[str], span: tuple[int, int] | None) ->
     return profiles
 
 
+def _last_nonblank(lines: Sequence[str], start: int, end: int) -> int | None:
+    """Index of the last non-blank, non-comment line in ``lines[start:end]`` (any indent)."""
+    last = None
+    for i in range(start, end):
+        if not _is_blank_or_comment(lines[i]):
+            last = i
+    return last
+
+
+def parse_tree(lines: Sequence[str], start: int, end: int, indent: int) -> dict:
+    """Recursively parse an indent-structured mapping region into an ordered tree.
+
+    Returns ``name -> node`` (insertion order preserved) for the keys at exactly ``indent``
+    in ``lines[start:end]``. Each node is
+    ``{line, end, indent, kind, children}`` where ``line`` is the ``key:`` header index,
+    ``end`` is the exclusive end of that key's subtree (trailing blanks/comments trimmed),
+    ``kind`` is ``"map"`` (has indent+2 children) or ``"scalar"`` (leaf — an inline value,
+    ``{}``/empty, or a list body, none of which we merge *into*), and ``children`` is the
+    recursively-parsed sub-tree (empty for a scalar).
+
+    Dependency-free and block-structured (same spirit as ``parse_profiles_blocks``); used to
+    additively heal the setup blocks (delegation/tea/git/code_review) whose only source of
+    new-key defaults is ``assets/config-defaults.yaml``.
+    """
+    headers: list[int] = []
+    for i in range(start, end):
+        if _is_blank_or_comment(lines[i]):
+            continue
+        if _indent(lines[i]) == indent and ":" in _strip_comment(lines[i].strip()):
+            headers.append(i)
+    nodes: dict = {}
+    for idx, h in enumerate(headers):
+        sib = headers[idx + 1] if idx + 1 < len(headers) else end
+        last = _last_nonblank(lines, h, sib)
+        sub_end = (last + 1) if last is not None else h + 1
+        name = _strip_comment(lines[h].strip()).partition(":")[0].strip()
+        children = parse_tree(lines, h + 1, sub_end, indent + 2)
+        nodes[name] = {
+            "line": h,
+            "end": sub_end,
+            "indent": indent,
+            "kind": "map" if children else "scalar",
+            "children": children,
+        }
+    return nodes
+
+
+def _plan_merge(cfg_lines: Sequence[str], cfg_nodes: dict, setup_lines: Sequence[str],
+                setup_nodes: dict, parent_anchor: int, child_indent: int,
+                healed: list, prefix: str) -> list:
+    """Recursive core of ``plan_setup`` — see it for the contract.
+
+    Missing direct children of this level are gathered into ONE verbatim block inserted after
+    ``parent_anchor``; for a child that exists in both as a *map*, recurse so a key missing
+    deeper down (e.g. a new scalar inside an existing ``story_trace_advisory``) is healed in
+    place. A child present as a scalar (or a kind mismatch) is left untouched — never overwritten.
+    """
+    inserts: list = []
+    missing_block: list[str] = []
+    for name, a_node in setup_nodes.items():
+        path = f"{prefix}{name}"
+        c_node = cfg_nodes.get(name)
+        if c_node is None:
+            missing_block.extend(setup_lines[a_node["line"]: a_node["end"]])
+            healed.append(path)
+        elif a_node["kind"] == "map" and c_node["kind"] == "map":
+            sub_anchor = _last_nonblank(cfg_lines, c_node["line"], c_node["end"])
+            sub_anchor = sub_anchor if sub_anchor is not None else c_node["line"]
+            inserts += _plan_merge(cfg_lines, c_node["children"], setup_lines, a_node["children"],
+                                   sub_anchor, child_indent + 2, healed, path + ".")
+    if missing_block:
+        inserts.append((parent_anchor, child_indent, missing_block))
+    return inserts
+
+
+def plan_setup(cfg_lines: Sequence[str], setup_lines: Sequence[str]) -> tuple[list, list]:
+    """Plan the additive heal of the setup blocks from ``config-defaults.yaml``.
+
+    Returns ``(inserts, healed_paths)`` where ``inserts`` is a list of
+    ``(anchor_idx, child_indent, [new_lines])`` (each inserted AFTER ``anchor_idx``) and
+    ``healed_paths`` is the dotted paths that would be added (``git.offer_merge`` etc.).
+
+    Append-only: a key already present in the config — at any depth — is never touched, so a
+    user's customised setup answer is preserved; only keys the config is MISSING are added,
+    copied verbatim from the asset (so each carries the asset's default value + inline comment).
+    Reset, by contrast, overwrites and so stays scoped to the asset-sourced profiles blocks;
+    appending a never-seen setup key cannot lose a customisation, which is why it is safe here.
+    """
+    cfg_nodes = parse_tree(cfg_lines, 0, len(cfg_lines), 0)
+    setup_nodes = parse_tree(setup_lines, 0, len(setup_lines), 0)
+    top_anchor = _last_nonblank(cfg_lines, 0, len(cfg_lines))
+    if top_anchor is None:
+        top_anchor = len(cfg_lines) - 1 if cfg_lines else 0
+    healed: list = []
+    inserts = _plan_merge(cfg_lines, cfg_nodes, setup_lines, setup_nodes, top_anchor, 0, healed, "")
+    return inserts, healed
+
+
+def _leaf_value(lines: Sequence[str], node: dict) -> str:
+    """The scalar value on a node's ``key: value`` line (comment + surrounding quotes stripped)."""
+    return _strip_value(_strip_comment(lines[int(node["line"])].strip()).partition(":")[2])
+
+
+def _resolve_node(nodes: dict, path: str) -> dict | None:
+    """Walk a dotted ``a.b.c`` path through a parse_tree mapping; ``None`` if any hop is absent."""
+    cur: dict | None = None
+    node_map = nodes
+    for part in path.split("."):
+        cur = node_map.get(part)
+        if cur is None:
+            return None
+        node_map = cur.get("children", {})
+    return cur
+
+
+def _node_value_summary(lines: Sequence[str], node: dict) -> str:
+    """Human-readable value for a node: the scalar, or a compact ``{k: v, ...}`` for a map."""
+    if node["kind"] != "map":
+        return _leaf_value(lines, node)
+    inner = ", ".join(f"{k}: {_node_value_summary(lines, c)}" for k, c in node["children"].items())
+    return "{" + inner + "}"
+
+
+def _flatten_leaves(lines: Sequence[str], nodes: dict, prefix: str = "") -> dict:
+    """Dotted scalar-leaf path -> value for a parse_tree mapping (recurses into sub-maps)."""
+    out: dict = {}
+    for name, node in nodes.items():
+        path = f"{prefix}{name}"
+        if node["kind"] == "map":
+            out.update(_flatten_leaves(lines, node["children"], path + "."))
+        else:
+            out[path] = _leaf_value(lines, node)
+    return out
+
+
+def setup_detail(cfg_lines: Sequence[str], setup_lines: Sequence[str], missing_paths: list) -> tuple:
+    """Build the two human-facing lists for the Phase 0 echo (non-blocking disclosure).
+
+    Returns ``(added, kept)``:
+      * ``added`` — ``[{path, value}]`` for each node the heal would add (``missing_paths``),
+        with a value summary (scalar, or compact ``{k: v, ...}`` for a whole sub-/block);
+      * ``kept`` — ``[{path, value, default}]`` for every asset leaf the config ALREADY carries
+        with a value that differs from the shipped default — i.e. the user's customisations the
+        append-only heal preserves. Asset keys only, so an interviewed/detected field the asset
+        omits (``git.base_branch``, ``tea.enabled``) is never mislabelled a "customisation".
+    """
+    setup_nodes = parse_tree(setup_lines, 0, len(setup_lines), 0)
+    cfg_nodes = parse_tree(cfg_lines, 0, len(cfg_lines), 0)
+    added = [{"path": p, "value": (_node_value_summary(setup_lines, n) if (n := _resolve_node(setup_nodes, p)) else None)}
+             for p in missing_paths]
+    kept = []
+    for path, default in _flatten_leaves(setup_lines, setup_nodes).items():
+        node = _resolve_node(cfg_nodes, path)
+        if node is not None and node["kind"] != "map":
+            cur = _leaf_value(cfg_lines, node)
+            if cur != default:
+                kept.append({"path": path, "value": cur, "default": default})
+    return added, kept
+
+
 def _read_version(text: str, key: str) -> str | None:
     for line in text.splitlines():
         if _indent(line) == 0:
@@ -207,10 +375,26 @@ def _ver_tuple(v: str | None) -> tuple:
     return tuple(out)
 
 
-def analyze(config_text: str, asset_text: str, config_version: str | None, module_version: str | None) -> dict:
-    """Diff the asset's profiles/phase_profiles keys against the config's."""
+def analyze(config_text: str, asset_text: str, config_version: str | None,
+            module_version: str | None, setup_text: str | None = None) -> dict:
+    """Diff the asset's profiles/phase_profiles keys against the config's.
+
+    When ``setup_text`` (the ``config-defaults.yaml`` asset) is supplied, also diff its
+    constant-default setup-block keys (delegation/tea/git/code_review): the dotted paths the config
+    is MISSING go in ``missing_setup`` (these heal append-only via ``apply()``), and the two
+    human-facing lists for the Phase 0 echo go in ``added_setup`` (``[{path, value}]``) and
+    ``kept_setup`` (``[{path, value, default}]`` — the user's preserved customisations).
+    """
     cfg_lines = config_text.splitlines(keepends=True)
     asset_lines = asset_text.splitlines(keepends=True)
+
+    missing_setup: list = []
+    added_setup: list = []
+    kept_setup: list = []
+    if setup_text is not None:
+        setup_lines = setup_text.splitlines(keepends=True)
+        _, missing_setup = plan_setup(cfg_lines, setup_lines)
+        added_setup, kept_setup = setup_detail(cfg_lines, setup_lines, missing_setup)
 
     cfg_pp = parse_phase_profiles(cfg_lines, find_block(cfg_lines, "phase_profiles"))
     asset_pp = parse_phase_profiles(asset_lines, find_block(asset_lines, "phase_profiles"))
@@ -236,6 +420,9 @@ def analyze(config_text: str, asset_text: str, config_version: str | None, modul
     return {
         "missing_phase_profiles": missing_pp,
         "missing_profiles": missing_profiles,
+        "missing_setup": missing_setup,
+        "added_setup": added_setup,
+        "kept_setup": kept_setup,
         "manual_review": manual_review,
         "version": {
             "config": config_version,
@@ -254,14 +441,25 @@ def _ensure_newline(lines: list[str], idx: int) -> None:
         lines[idx] = lines[idx] + "\n"
 
 
-def apply(config_text: str, asset_text: str, config_version: str | None, module_version: str | None) -> dict:
-    """Additively heal the config: append missing keys, restamp the version."""
-    info = analyze(config_text, asset_text, config_version, module_version)
+def apply(config_text: str, asset_text: str, config_version: str | None,
+          module_version: str | None, setup_text: str | None = None) -> dict:
+    """Additively heal the config: append missing keys, restamp the version.
+
+    Heals three append-only axes (never overwriting an existing value): missing whole
+    ``profiles`` blocks + missing ``phase_profiles`` keys (from ``asset_text`` /
+    ``profiles.yaml``), and, when ``setup_text`` (``config-defaults.yaml``) is supplied,
+    missing constant-default setup-block keys (delegation/tea/git/code_review) at any depth.
+    """
+    info = analyze(config_text, asset_text, config_version, module_version, setup_text)
     lines = config_text.splitlines(keepends=True)
     asset_lines = info["_asset_lines"]
     asset_prof = info["_asset_profiles"]
 
-    inserts: list[tuple[int, list[str]]] = []  # (insert-after index, new lines)
+    # Each insert is (insert-after index, child indent, new lines). The indent is the sort
+    # tiebreak for the rare case where two inserts share an anchor (a block AND its trailing
+    # sub-block both gain a key): shallower applied first => deeper ends nearest the anchor,
+    # so the deeper line attaches to the inner block and the shallower starts a new outer key.
+    inserts: list[tuple[int, int, list[str]]] = []
 
     # Missing whole profiles -> copy the asset's raw block to the profiles block end.
     if info["missing_profiles"]:
@@ -275,7 +473,7 @@ def apply(config_text: str, asset_text: str, config_version: str | None, module_
                 p = asset_prof[name]
                 block.append("\n")
                 block.extend(asset_lines[p["start"]: p["end"]])
-            inserts.append((anchor, block))
+            inserts.append((anchor, 2, block))
 
     # Missing phase_profiles keys -> append `  key: value` lines to that block end.
     if info["missing_phase_profiles"]:
@@ -285,10 +483,16 @@ def apply(config_text: str, asset_text: str, config_version: str | None, module_
             anchor = _last_content_idx(lines, header + 1, end)
             anchor = anchor if anchor is not None else header
             block = [f"  {k}: {v}\n" for k, v in info["missing_phase_profiles"].items()]
-            inserts.append((anchor, block))
+            inserts.append((anchor, 2, block))
 
-    # Apply inserts bottom-up so earlier indices stay valid.
-    for anchor, block in sorted(inserts, key=lambda t: t[0], reverse=True):
+    # Missing setup-block keys (delegation/tea/git/code_review) -> append-only, nested-aware.
+    healed_setup: list = []
+    if setup_text is not None:
+        setup_inserts, healed_setup = plan_setup(lines, setup_text.splitlines(keepends=True))
+        inserts.extend(setup_inserts)
+
+    # Apply bottom-up so earlier indices stay valid; for a shared anchor, shallower first.
+    for anchor, _, block in sorted(inserts, key=lambda t: (t[0], -t[1]), reverse=True):
         _ensure_newline(lines, anchor)
         lines[anchor + 1: anchor + 1] = block
 
@@ -301,6 +505,9 @@ def apply(config_text: str, asset_text: str, config_version: str | None, module_
         "new_text": "".join(lines),
         "reseeded_phase_profiles": info["missing_phase_profiles"],
         "reseeded_profiles": info["missing_profiles"],
+        "reseeded_setup": healed_setup,
+        "added_setup": info["added_setup"],
+        "kept_setup": info["kept_setup"],
         "manual_review": info["manual_review"],
         "version_restamped": restamped,
     }
@@ -333,9 +540,13 @@ def _restamp_version(lines: list[str], new_version: str) -> dict:
 # --------------------------------------------------------------------------- #
 # reset: restore shipped defaults (the inverse of the additive --apply heal).  #
 # --apply only APPENDS missing keys; it never reverts a user's edited value.   #
-# reset OVERWRITES the asset-sourced blocks (profiles / phase_profiles) from    #
-# the asset, scoped, and NEVER touches the behavioural blocks (delegation /     #
-# tea / git / code_review) — those are setup answers, not shipped defaults.    #
+# reset OVERWRITES the profiles / phase_profiles blocks back to the asset,      #
+# scoped, and NEVER touches the setup blocks (delegation / tea / git /         #
+# code_review). config-defaults.yaml DOES ship defaults for those blocks, so    #
+# the additive heal can append a constant-default key they lack — but reset is  #
+# an OVERWRITE, and overwriting a setup block would clobber a user's setup      #
+# answer (an interviewed/detected value the heal deliberately leaves alone).    #
+# Append can't lose an answer; overwrite can — so only --apply enters those.    #
 # --------------------------------------------------------------------------- #
 
 RESET_BLOCK_SCOPES = ("both", "profiles", "phase_profiles")
@@ -545,6 +756,16 @@ def reset_to_file(config_path: Path, asset_path: Path, module_version: str | Non
 
 def _default_asset_profiles() -> Path:
     return Path(__file__).resolve().parent.parent / "assets" / "agents" / "profiles.yaml"
+
+
+def _default_setup_defaults() -> Path:
+    return Path(__file__).resolve().parent.parent / "assets" / "config-defaults.yaml"
+
+
+def _read_setup_text(setup_path: Path | None) -> str | None:
+    """Read the config-defaults asset, or ``None`` if it is absent (heal degrades gracefully)."""
+    path = setup_path if setup_path is not None else _default_setup_defaults()
+    return path.read_text(encoding="utf-8") if path.is_file() else None
 
 
 def _default_module_yaml() -> Path:
@@ -803,34 +1024,213 @@ def _run_self_test() -> int:
         assert reset_to_file(cp, asset, "0.9.0", scope=None, write=True)["status"] == "noop", "second reset should be a noop"
         assert reset_to_file(cp, asset, "0.9.0", scope="ab-nope", write=False)["status"] == "error", "bad scope must error"
 
+    # ----------------------------------------------------------------------- #
+    # Setup-block additive heal (config-defaults.yaml). The delegation/tea/git/  #
+    # code_review blocks have no profiles-style asset, so new setup keys never   #
+    # reached an existing config; plan_setup/apply close that gap, append-only.  #
+    # ----------------------------------------------------------------------- #
+    setup_asset = _default_setup_defaults()
+    assert setup_asset.is_file(), f"shipped config-defaults.yaml missing at {setup_asset}"
+    setup_text = setup_asset.read_text(encoding="utf-8")
+    s_nodes = parse_tree(setup_text.splitlines(keepends=True), 0, len(setup_text.splitlines(keepends=True)), 0)
+
+    # The asset INCLUDES the constant-default setup keys ...
+    assert "cli_phases" in s_nodes["delegation"]["children"], "asset missing delegation.cli_phases"
+    for k in ("branch_prefix", "offer_merge", "ci_wait_minutes"):
+        assert k in s_nodes["git"]["children"], f"asset missing git.{k}"
+    assert "gate_max_iterations" in s_nodes["tea"]["children"], "asset missing tea.gate_max_iterations"
+    sta = s_nodes["tea"]["children"].get("story_trace_advisory")
+    assert sta and {"enabled", "min_epic_stories", "skip_last_stories"}.issubset(set(sta["children"])), "asset story_trace_advisory shape"
+    for k in ("max_iterations", "alternate_models"):
+        assert k in s_nodes["code_review"]["children"], f"asset missing code_review.{k}"
+
+    # ... and DELIBERATELY EXCLUDES environment-detected / interviewed fields, so the heal can
+    # never bake in a wrong static guess for one (the safety invariant — enforced here in code).
+    assert "base_branch" not in s_nodes["git"]["children"], "asset must NOT carry git.base_branch (detected)"
+    assert "mode" not in s_nodes["git"]["children"], "asset must NOT carry git.mode (detect toggle)"
+    for k in ("host", "mode", "target_tools"):
+        assert k not in s_nodes["delegation"]["children"], f"asset must NOT carry delegation.{k}"
+    for k in ("enabled", "framework_ci"):
+        assert k not in s_nodes["tea"]["children"], f"asset must NOT carry tea.{k} (interviewed)"
+
+    # Anchor a few literal DEFAULT VALUES — the set assertions above pin which keys exist, these
+    # pin that their values still match the state-and-resume.md schema + orchestrator fallbacks
+    # (the lockstep the asset header warns about). Cheap guard against a silent value edit.
+    for kv in ("offer_merge: true", "ci_wait_minutes: 30", "min_epic_stories: 6",
+               "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2"):
+        assert kv in setup_text, f"asset default drifted from the documented schema: expected `{kv}`"
+
+    def _heal(cfg: str) -> tuple:
+        res = apply(cfg, asset_text, "0.9.0", "0.9.0", setup_text)
+        return res["new_text"], res["reseeded_setup"]
+
+    def _setup_nodes(text: str) -> dict:
+        ls = text.splitlines(keepends=True)
+        return parse_tree(ls, 0, len(ls), 0)
+
+    base = 'version: 1\nprofiles_source_version: "0.9.0"\n'  # minimal non-setup head
+
+    # Case 1 — a whole top-level setup block absent => recreated (appended at EOF).
+    c1 = base + 'delegation:\n  host: auto\n  cli_phases: {}\n'  # no tea/git/code_review
+    h1, paths1 = _heal(c1)
+    n1 = _setup_nodes(h1)
+    assert {"git", "tea", "code_review"}.issubset(set(n1)), f"missing top blocks not recreated: {sorted(n1)}"
+    assert {"git", "tea", "code_review"}.issubset(set(paths1)), f"whole-block heals not reported: {paths1}"
+    assert "delegation" not in paths1, "delegation present yet reported as healed"
+    assert {"branch_prefix", "offer_merge", "ci_wait_minutes"}.issubset(set(n1["git"]["children"])), n1["git"]["children"].keys()
+
+    # Case 2 — a scalar missing from an existing block => appended in that block; a detected value
+    # the asset omits (base_branch) is left exactly as the user had it.
+    c2 = base + 'git:\n  mode: auto\n  base_branch: develop\n'
+    h2, paths2 = _heal(c2)
+    n2 = _setup_nodes(h2)
+    assert {"offer_merge", "ci_wait_minutes", "branch_prefix"}.issubset(set(n2["git"]["children"])), n2["git"]["children"].keys()
+    assert {"git.offer_merge", "git.ci_wait_minutes"}.issubset(set(paths2)), paths2
+    assert "base_branch: develop" in h2, "user's detected base_branch must be preserved"
+
+    # Case 3 — a whole sub-block missing from an existing block => appended in that block; an
+    # interviewed answer the asset omits (tea.enabled=false) is never reset to the default.
+    c3 = base + 'tea:\n  enabled: false\n'
+    h3, paths3 = _heal(c3)
+    n3 = _setup_nodes(h3)
+    sta3 = n3["tea"]["children"].get("story_trace_advisory")
+    assert sta3 and sta3["kind"] == "map", "story_trace_advisory sub-block not added"
+    assert {"enabled", "min_epic_stories", "skip_last_stories"}.issubset(set(sta3["children"])), sta3["children"].keys()
+    assert "tea.story_trace_advisory" in paths3, paths3
+    assert "enabled: false" in h3, "tea.enabled customisation lost"
+
+    # Case 4 + collision — a scalar missing INSIDE an existing sub-block that is the block's LAST
+    # child, while the block itself also gains a key. Both heal, with correct nesting + ordering.
+    c4 = (base + 'tea:\n  enabled: true\n  story_trace_advisory:\n'
+          '    enabled: true\n    min_epic_stories: 6\n')   # missing skip_last_stories + gate_max_iterations
+    h4, paths4 = _heal(c4)
+    n4 = _setup_nodes(h4)
+    assert "skip_last_stories" in n4["tea"]["children"]["story_trace_advisory"]["children"], "deep scalar not healed"
+    assert "gate_max_iterations" in n4["tea"]["children"], "block-level scalar not healed alongside the deep one"
+    assert {"tea.gate_max_iterations", "tea.story_trace_advisory.skip_last_stories"}.issubset(set(paths4)), paths4
+    # The deep scalar must stay INSIDE the sub-block (indent 4); the shallow one becomes a new tea
+    # key (indent 2) AFTER it — so skip_last_stories appears before gate_max_iterations.
+    assert h4.index("skip_last_stories") < h4.index("gate_max_iterations"), "collision insert mis-ordered"
+    assert "    skip_last_stories" in h4, "deep scalar not at indent 4"
+    assert "  gate_max_iterations" in h4 and "    gate_max_iterations" not in h4, "block scalar not at indent 2"
+
+    # Append-only: a user's customised setup value is NEVER overwritten by the heal.
+    c5 = base + 'git:\n  mode: auto\n  offer_merge: false\n  ci_wait_minutes: 90\n'
+    h5, paths5 = _heal(c5)
+    assert "offer_merge: false" in h5, "offer_merge:false overwritten"
+    assert "ci_wait_minutes: 90" in h5, "ci_wait_minutes:90 overwritten"
+    assert "git.offer_merge" not in paths5 and "git.ci_wait_minutes" not in paths5, paths5
+    assert "git.branch_prefix" in paths5, "a still-missing key was not healed"
+
+    # Idempotency: a config already carrying every setup key heals to nothing, and --check agrees.
+    full_setup = base + setup_text   # head + the asset's blocks verbatim = every setup key present
+    assert _heal(full_setup)[1] == [], "fully-populated config should heal nothing"
+    assert analyze(full_setup, asset_text, "0.9.0", "0.9.0", setup_text)["missing_setup"] == [], "fresh config flagged"
+    mp = analyze(c2, asset_text, "0.9.0", "0.9.0", setup_text)["missing_setup"]
+    assert {"git.offer_merge", "git.ci_wait_minutes"}.issubset(set(mp)), mp
+
+    # added_setup / kept_setup — the two human-facing lists for the Phase 0 echo (show-don't-block).
+    a2 = analyze(c2, asset_text, "0.9.0", "0.9.0", setup_text)
+    off = next(x for x in a2["added_setup"] if x["path"] == "git.offer_merge")
+    assert off["value"] == "true", off                          # scalar value surfaced
+    assert {x["path"] for x in a2["kept_setup"]} == set(), "c2 carries no asset-key customisation"
+    assert "git.base_branch" not in {x["path"] for x in a2["added_setup"]}, "a detected field must never be 'added'"
+
+    a3 = analyze(c3, asset_text, "0.9.0", "0.9.0", setup_text)
+    sta_added = next(x for x in a3["added_setup"] if x["path"] == "tea.story_trace_advisory")
+    assert sta_added["value"] == "{enabled: true, min_epic_stories: 6, skip_last_stories: 3}", sta_added  # whole sub-block summarised
+
+    a5 = analyze(c5, asset_text, "0.9.0", "0.9.0", setup_text)
+    kept5 = {x["path"]: (x["value"], x["default"]) for x in a5["kept_setup"]}
+    assert kept5.get("git.offer_merge") == ("false", "true"), kept5   # customisation kept, with its default shown
+    assert kept5.get("git.ci_wait_minutes") == ("90", "30"), kept5
+    assert "git.branch_prefix" not in kept5, "a missing key is 'added', never 'kept'"
+
+    # kept detection reaches a customised leaf INSIDE a sub-block; a leaf equal to default is not kept.
+    c7 = (base + 'tea:\n  gate_max_iterations: 2\n  story_trace_advisory:\n'
+          '    enabled: true\n    min_epic_stories: 8\n    skip_last_stories: 3\n')
+    kept7 = {x["path"]: (x["value"], x["default"]) for x in analyze(c7, asset_text, "0.9.0", "0.9.0", setup_text)["kept_setup"]}
+    assert kept7.get("tea.story_trace_advisory.min_epic_stories") == ("8", "6"), kept7
+    assert "tea.gate_max_iterations" not in kept7, "a leaf equal to default must not be reported as 'kept'"
+
+    # Cross-axis collision — a missing phase_profiles key AND a missing whole top-level setup block
+    # (code_review), with phase_profiles as the file's LAST block, so BOTH inserts anchor on the same
+    # EOF line. The pp key must stay inside phase_profiles (indent 2); the setup block starts fresh
+    # (indent 0) AFTER it — i.e. the tiebreak keeps the deeper insert nearest the anchor.
+    xcfg = (
+        'profiles_source_version: "0.8.0"\n'
+        'delegation:\n  cli_phases: {}\n'
+        'tea:\n  gate_max_iterations: 2\n  story_trace_advisory:\n'
+        '    enabled: true\n    min_epic_stories: 6\n    skip_last_stories: 3\n'
+        'git:\n  branch_prefix: "story/"\n  offer_merge: true\n  ci_wait_minutes: 30\n'
+        # no code_review block; profiles + phase_profiles (last) follow, with one pp key dropped:
+        + asset_text.replace("  retrospective: ab-alt-high\n", "", 1)
+    )
+    assert "retrospective: ab-alt-high" not in xcfg, "fixture: pp key not actually dropped"
+    xh = apply(xcfg, asset_text, "0.8.0", "0.9.0", setup_text)["new_text"]
+    assert "code_review" in _setup_nodes(xh), "missing top-level setup block not recreated (cross-axis)"
+    xpp = parse_phase_profiles(xh.splitlines(keepends=True), find_block(xh.splitlines(keepends=True), "phase_profiles"))
+    assert xpp.get("retrospective") == "ab-alt-high", "phase_profiles key not re-seeded (cross-axis)"
+    assert xh.index("retrospective: ab-alt-high") < xh.index("\ncode_review:"), "collision mis-ordered: pp key escaped its block"
+    assert analyze(xh, asset_text, "0.9.0", "0.9.0", setup_text)["missing_setup"] == [], "cross-axis heal left setup drift"
+
+    # File-driven, the orchestrator's ACTUAL trigger: a config at the CURRENT version (profiles fresh)
+    # missing ONLY a setup key must still read as `drift` via check_file -> --apply heals it -> fresh.
+    # This is the user's literal scenario: already upgraded, a setup key still absent.
+    with tempfile.TemporaryDirectory() as td:
+        cfgp = Path(td) / "config.yaml"
+        cur = ('profiles_source_version: "0.9.0"\n' + asset_text          # profiles/phase_profiles fresh
+               + '\ndelegation:\n  cli_phases: {}\n'
+               'tea:\n  gate_max_iterations: 2\n  story_trace_advisory:\n'
+               '    enabled: true\n    min_epic_stories: 6\n    skip_last_stories: 3\n'
+               'git:\n  branch_prefix: "story/"\n  ci_wait_minutes: 30\n'   # <- git.offer_merge missing
+               'code_review:\n  max_iterations: 2\n  alternate_models: true\n')
+        cfgp.write_text(cur, encoding="utf-8")
+        chk = check_file(cfgp, asset, "0.9.0", setup_asset)
+        assert chk["version"]["drift"] is False, "fixture must isolate the setup-only path (no version drift)"
+        assert chk["status"] == "drift", f"same-version config missing a setup key must read as drift: {chk}"
+        assert chk["missing_setup"] == ["git.offer_merge"], chk["missing_setup"]
+        app = apply_to_file(cfgp, asset, "0.9.0", setup_asset)
+        assert app["reseeded_setup"] == ["git.offer_merge"], app
+        assert check_file(cfgp, asset, "0.9.0", setup_asset)["status"] == "fresh", "heal did not clear the setup-only drift"
+
     print("SELF-TEST PASSED (all assertions)")
     return 0
 
 
-def check_file(config_path: Path, asset_path: Path, module_version: str | None) -> dict:
+def check_file(config_path: Path, asset_path: Path, module_version: str | None,
+               setup_path: Path | None = None) -> dict:
     config_text = config_path.read_text(encoding="utf-8")
     asset_text = asset_path.read_text(encoding="utf-8")
+    setup_text = _read_setup_text(setup_path)
     config_version = _read_version(config_text, "profiles_source_version")
-    info = _public(analyze(config_text, asset_text, config_version, module_version))
-    non_fresh = info["needs_reseed"] or info["version"]["drift"] or bool(info["manual_review"])
+    info = _public(analyze(config_text, asset_text, config_version, module_version, setup_text))
+    non_fresh = (info["needs_reseed"] or info["version"]["drift"]
+                 or bool(info["manual_review"]) or bool(info["missing_setup"]))
     info["status"] = "drift" if non_fresh else "fresh"
     info["config_path"] = str(config_path)
     info["asset_path"] = str(asset_path)
     return info
 
 
-def apply_to_file(config_path: Path, asset_path: Path, module_version: str | None) -> dict:
+def apply_to_file(config_path: Path, asset_path: Path, module_version: str | None,
+                  setup_path: Path | None = None) -> dict:
     config_text = config_path.read_text(encoding="utf-8")
     asset_text = asset_path.read_text(encoding="utf-8")
+    setup_text = _read_setup_text(setup_path)
     config_version = _read_version(config_text, "profiles_source_version")
-    res = apply(config_text, asset_text, config_version, module_version)
-    changed = bool(res["reseeded_phase_profiles"] or res["reseeded_profiles"] or res["version_restamped"])
+    res = apply(config_text, asset_text, config_version, module_version, setup_text)
+    changed = bool(res["reseeded_phase_profiles"] or res["reseeded_profiles"]
+                   or res["reseeded_setup"] or res["version_restamped"])
     if changed:
         config_path.write_text(res["new_text"], encoding="utf-8")
     return {
         "status": "applied" if changed else "noop",
         "reseeded_phase_profiles": res["reseeded_phase_profiles"],
         "reseeded_profiles": res["reseeded_profiles"],
+        "reseeded_setup": res["reseeded_setup"],
+        "added_setup": res["added_setup"],
+        "kept_setup": res["kept_setup"],
         "version_restamped": res["version_restamped"],
         "manual_review": res["manual_review"],
         "config_path": str(config_path),
@@ -850,6 +1250,7 @@ def main() -> int:
     parser.add_argument("--write", action="store_true", help="With --reset: write the result (backs up to <config>.bak first).")
     parser.add_argument("--config", help="Runtime config.yaml to inspect/heal.")
     parser.add_argument("--asset-profiles", help="Shipped profiles.yaml. Default: assets/agents/profiles.yaml next to this script.")
+    parser.add_argument("--asset-config-defaults", help="Shipped config-defaults.yaml (setup-block defaults). Default: assets/config-defaults.yaml next to this script; absent => setup heal skipped.")
     parser.add_argument("--module-yaml", help="module.yaml to read module_version from. Default: assets/module.yaml next to this script.")
     parser.add_argument("--module-version", help="Override the module version (else read from --module-yaml).")
     args = parser.parse_args()
@@ -879,17 +1280,19 @@ def main() -> int:
         if myaml.is_file():
             module_version = _read_version(myaml.read_text(encoding="utf-8"), "module_version")
 
+    setup_path = Path(args.asset_config_defaults) if args.asset_config_defaults else None
+
     if args.reset is not None:
         result = reset_to_file(config_path, asset_path, module_version, scope=args.reset, write=args.write)
         print(json.dumps(result, indent=2))
         return 2 if result["status"] == "error" else 0
 
     if args.apply:
-        result = apply_to_file(config_path, asset_path, module_version)
+        result = apply_to_file(config_path, asset_path, module_version, setup_path)
         print(json.dumps(result, indent=2))
         return 0
 
-    result = check_file(config_path, asset_path, module_version)
+    result = check_file(config_path, asset_path, module_version, setup_path)
     print(json.dumps(result, indent=2))
     return 1 if result["status"] == "drift" else 0
 

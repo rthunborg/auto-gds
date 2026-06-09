@@ -34,7 +34,7 @@
 # opencode.json). The optional `opencode.variant` is read ONLY by the cli_phases route
 # (`opencode run --variant high|max|minimal`), never written into an agent file.
 profiles:
-  ab-xhigh:
+  ab-deep:
     description: "auto-bmad delegate for the highest-stakes, deep-reasoning steps: implementing story code (`dev-story`), building the story context file (`create-story`), primary adversarial code review, and the epic-level test design + release gates (trace/NFR/test-review). Invoked by the auto-bmad orchestrator; not meant for direct use."
     role_blurb: "the highest-stakes, deep-reasoning work: implementing story code (`dev-story`), building the comprehensive story context file (`create-story`), running adversarial primary code review, and the epic-level test design + release gates (trace / NFR / test-review). Be exhaustive and skeptical — correctness matters more than speed: reason hard about edge cases, regressions, and acceptance criteria, because these steps determine whether everything downstream succeeds and the gates decide whether the epic ships."
     status_example: "for dev-story — any status/state the skill set (e.g. story moved to `review`) and test results; for create-story — the story key, path, and final status; for reviews — the verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low finding counts; for gate skills — the gate decision (PASS / CONCERNS / FAIL / WAIVED) and rationale"
@@ -50,7 +50,7 @@ profiles:
                        # effort knob; set reasoning per-agent-name in opencode.json if you want it tuned.
       variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
-  ab-high:
+  ab-standard:
     description: "auto-bmad delegate for substantive, well-scoped steps: applying the primary code-review fixes (`code-review` fix pass) plus test- and context-infrastructure work — per-story test authoring (`testarch-atdd` scaffolds, `testarch-automate` coverage), one-time test-framework/CI setup, and building/refreshing `project-context.md`. Invoked by the auto-bmad orchestrator; not meant for direct use."
     role_blurb: "substantive, well-scoped work: applying the fixes from the primary adversarial code review (the findings are already identified — implement them faithfully and re-verify), plus test- and context-infrastructure work — per-story test authoring (ATDD red-phase acceptance scaffolds and expanding automated coverage), the one-time test-framework + CI-pipeline setup, and building or refreshing `project-context.md`, the durable AI-rules doc every later story inherits. These are judgment-heavy — answer every interactive prompt yourself using the provided context and sensible judgment, and produce the complete output document."
     status_example: "for code-review fixes — which findings were resolved; for test authoring/setup — tests or framework/CI scaffolded, whether they pass, coverage expanded; for project-context — the file written/refreshed and the key facts captured"
@@ -65,7 +65,7 @@ profiles:
                        # default model. Agent files are model-only (no portable per-agent effort knob).
       variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
-  ab-alt-xhigh:
+  ab-alt-deep:
     description: "auto-bmad delegate for the alternate-model secondary code-review iterations (for model diversity): a second, independent adversarial reviewer on the same diff, run at full reasoning depth. Invoked by the auto-bmad orchestrator; not meant for direct use."
     role_blurb: "the diversity-oriented adversarial work: running the alternate-model secondary code-review iterations that give the review loop model diversity. Be exhaustive and skeptical — you are a second, independent pair of eyes on the same diff, run at full reasoning depth precisely to catch what the primary reviewer's model missed."
     status_example: "the verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low finding counts"
@@ -77,23 +77,23 @@ profiles:
       reasoning_effort: xhigh
     opencode:
       model: ""        # provider/model. BLANK => inherit your opencode default. For the alt profiles,
-                       # point this at a DIFFERENT vendor than ab-xhigh (e.g. a DeepSeek/Qwen/Gemini
+                       # point this at a DIFFERENT vendor than ab-deep (e.g. a DeepSeek/Qwen/Gemini
                        # model) to get a genuine cross-model second opinion no single-vendor host can.
       variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
-  ab-alt-high:
+  ab-alt-standard:
     description: "auto-bmad delegate for lighter-weight steps on a faster model: per-story risk triage and the epic retrospective. Invoked by the auto-bmad orchestrator; not meant for direct use."
     role_blurb: "the lighter-weight work: classifying per-story test risk (triage) and synthesizing the epic retrospective from accumulated notes."
     status_example: "for triage — the risk level (low/med/high) and selected TEA set; for the retrospective — key action items and any next-epic prep flagged"
     claude:
       model: sonnet
-      effort: medium     # rubric-driven classification + note synthesis — medium is sufficient, not the deep-reasoning tier
+      effort: high     # rubric-driven classification + note synthesis
     codex:
       model: gpt-5.4
-      reasoning_effort: medium
+      reasoning_effort: high
     opencode:
       model: ""        # provider/model. BLANK => inherit your opencode default. For the alt profiles,
-                       # point this at a DIFFERENT vendor than ab-xhigh for cross-model diversity.
+                       # point this at a DIFFERENT vendor than ab-deep for cross-model diversity.
       variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
 # Phase -> profile mapping. This is the SINGLE source of the phase->profile
@@ -102,14 +102,14 @@ profiles:
 # (its parser stops at the next top-level key), so editing here is renderer-safe.
 # Copied alongside `profiles` into config.yaml at first run; retune there.
 phase_profiles:
-  create_story: ab-xhigh
-  dev_story: ab-xhigh                          # highest-stakes coding step
-  code_review_review: ab-xhigh                 # primary reviewer (odd iters); drives all 4 fan-out delegates (3 lenses + triage)
-  code_review_review_secondary: ab-alt-xhigh   # secondary reviewer (even iters, when code_review.alternate_models); same 4 delegates
-  code_review_fix: ab-high                     # apply already-identified findings (mechanical vs the hunt)
-  tea_triage: ab-alt-high                      # Phase 0 story-risk classification (cheap)
-  tea_per_story: ab-high                       # Phase 4 ATDD, Phase 6 automate
-  tea_epic: ab-xhigh                           # Phase 2 epic test design, Phase 8 blocking trace gate (+ its remediation)
-  tea_epic_audit: ab-high                      # Phase 8 advisory gates (nfr + test-review) — one effort tier below the blocking trace gate
-  retrospective: ab-alt-high
-  project_context: ab-high                     # Phase 2 bootstrap + Phase 8 refresh
+  create_story: ab-deep
+  dev_story: ab-deep                        # highest-stakes coding step
+  code_review_review: ab-deep               # primary reviewer (odd iters); drives all 4 fan-out delegates (3 lenses + triage)
+  code_review_review_secondary: ab-alt-deep # secondary reviewer (even iters, when code_review.alternate_models); same 4 delegates
+  code_review_fix: ab-standard              # apply already-identified findings (mechanical vs the hunt)
+  tea_triage: ab-alt-standard               # Phase 0 story-risk classification (cheap)
+  tea_per_story: ab-standard                # Phase 4 ATDD, Phase 6 automate
+  tea_epic: ab-deep                         # Phase 2 epic test design, Phase 8 blocking trace gate (+ its remediation)
+  tea_epic_audit: ab-standard               # Phase 8 advisory gates (nfr + test-review) — one effort tier below the blocking trace gate
+  retrospective: ab-alt-standard
+  project_context: ab-standard              # Phase 2 bootstrap + Phase 8 refresh

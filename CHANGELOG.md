@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Delegate profiles renamed to role-tier names.** `ab-xhigh`/`ab-high`/`ab-alt-xhigh`/`ab-alt-high`
+  became `ab-deep`/`ab-standard`/`ab-alt-deep`/`ab-alt-standard`, so a name no longer bakes in the
+  Claude/Codex effort string (opencode has no effort knob, and effort is retunable). Existing projects
+  keep running on their old config until you re-seed: `/auto-bmad reset-defaults` then `/auto-bmad reprovision`.
+
+- **`reset-defaults` now prunes profiles the shipped asset dropped.** A whole-block reset (`profiles`
+  or both) removes profile blocks absent from the asset so the config matches shipped exactly — the
+  clean migration for a renamed profile — and the confirmation lists what it will delete. A
+  single-profile reset still leaves a user-added profile untouched.
+
+- **Fresh `config.yaml` now shows `cli_phases` usage examples.** The generated `delegation.cli_phases`
+  comment carries a few copy-paste examples (e.g. routing the secondary review to another vendor via
+  opencode), so opt-in per-phase external-CLI routing is discoverable without hunting the docs.
+
+### Fixed
+
+- **`cli_phases` validation error no longer omits `opencode`.** A bad `cli_phases` tool now reports the
+  full accepted set (`claude`, `codex`, `opencode`); the message previously listed only the first two
+  despite opencode being a valid target.
+
 ## [0.15.0] - 2026-06-09
 
 ### Added

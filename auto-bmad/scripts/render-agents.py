@@ -2,7 +2,7 @@
 """Render auto-bmad's tool-native delegate agents from a profiles definition.
 
 The auto-bmad orchestrator delegates each pipeline step to one of four profiles
-(``ab-xhigh``, ``ab-high``, ``ab-alt-xhigh``, ``ab-alt-high``). Each profile carries both
+(``ab-deep``, ``ab-standard``, ``ab-alt-deep``, ``ab-alt-standard``). Each profile carries both
 tool-neutral persona strings (``description`` / ``role_blurb`` /
 ``status_example``) and per-tool model + thinking/reasoning effort. This script
 fills ONE shared body template per tool with those values, so the four profiles
@@ -54,7 +54,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-PROFILE_NAMES = ("ab-xhigh", "ab-high", "ab-alt-xhigh", "ab-alt-high")
+PROFILE_NAMES = ("ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard")
 
 # tool -> (one shared body template, output dir + suffix, tool-specific placeholders)
 TOOLS = {
@@ -134,7 +134,7 @@ def parse_profiles(text: str) -> dict:
     Supports block style::
 
         profiles:
-          ab-xhigh:
+          ab-deep:
             description: "..."
             role_blurb: "..."
             status_example: "..."
@@ -145,7 +145,7 @@ def parse_profiles(text: str) -> dict:
     and an inline flow map at the tool level::
 
         profiles:
-          ab-xhigh:
+          ab-deep:
             claude: {model: opus, effort: xhigh}
 
     Per-profile scalar values (``description``, ``role_blurb``,
@@ -164,7 +164,7 @@ def parse_profiles(text: str) -> dict:
             continue
         indent = len(raw) - len(raw.lstrip(" "))
         # Indent comes from `raw`; strip any trailing comment so structural lines
-        # like `profiles:  # ...`, `ab-xhigh:  # ...`, `claude:  # ...` (the
+        # like `profiles:  # ...`, `ab-deep:  # ...`, `claude:  # ...` (the
         # documented config carries these) parse the same as bare ones.
         stripped = _strip_comment(raw.strip())
 
@@ -370,37 +370,37 @@ def _run_self_test() -> int:
         assert "model" in profiles[name]["opencode"], f"{name}.opencode.model key missing"
         assert "variant" in profiles[name]["opencode"], f"{name}.opencode.variant key missing"
         assert profiles[name]["opencode"]["model"] == "", f"{name}.opencode.model should ship blank"
-    assert profiles["ab-xhigh"]["claude"]["model"] == "opus"
-    assert profiles["ab-xhigh"]["claude"]["effort"] == "xhigh"
-    assert profiles["ab-alt-xhigh"]["claude"]["model"] == "sonnet"
-    assert profiles["ab-alt-xhigh"]["claude"]["effort"] == "xhigh"
-    assert profiles["ab-alt-high"]["claude"]["model"] == "sonnet"
+    assert profiles["ab-deep"]["claude"]["model"] == "opus"
+    assert profiles["ab-deep"]["claude"]["effort"] == "xhigh"
+    assert profiles["ab-alt-deep"]["claude"]["model"] == "sonnet"
+    assert profiles["ab-alt-deep"]["claude"]["effort"] == "xhigh"
+    assert profiles["ab-alt-standard"]["claude"]["model"] == "sonnet"
     # Descriptions carry the profile-distinctive signal — sanity-check the labels.
-    assert "highest-stakes, deep-reasoning" in profiles["ab-xhigh"]["description"]
-    assert "test- and context-infrastructure" in profiles["ab-high"]["description"]
-    assert "alternate-model secondary code-review" in profiles["ab-alt-xhigh"]["description"]
-    assert "lighter-weight" in profiles["ab-alt-high"]["description"]
+    assert "highest-stakes, deep-reasoning" in profiles["ab-deep"]["description"]
+    assert "test- and context-infrastructure" in profiles["ab-standard"]["description"]
+    assert "alternate-model secondary code-review" in profiles["ab-alt-deep"]["description"]
+    assert "lighter-weight" in profiles["ab-alt-standard"]["description"]
 
     # Inline-flow-map parsing.
     inline = parse_profiles(
-        "profiles:\n  ab-xhigh:\n    claude: {model: haiku, effort: low}\n    codex: {model: m, reasoning_effort: minimal}\n"
+        "profiles:\n  ab-deep:\n    claude: {model: haiku, effort: low}\n    codex: {model: m, reasoning_effort: minimal}\n"
     )
-    assert inline["ab-xhigh"]["claude"] == {"model": "haiku", "effort": "low"}, inline
+    assert inline["ab-deep"]["claude"] == {"model": "haiku", "effort": "low"}, inline
 
     # Comment + quote stripping and ignoring sibling top-level keys.
     mixed = parse_profiles(
         "tea:\n  enabled: true\n"
-        "profiles:\n  ab-xhigh:\n    claude:\n      model: \"opus\"  # the big one\n      effort: xhigh\n"
+        "profiles:\n  ab-deep:\n    claude:\n      model: \"opus\"  # the big one\n      effort: xhigh\n"
         "git:\n  mode: auto\n"
     )
-    assert mixed["ab-xhigh"]["claude"]["model"] == "opus", mixed
-    assert mixed["ab-xhigh"]["claude"]["effort"] == "xhigh", mixed
+    assert mixed["ab-deep"]["claude"]["model"] == "opus", mixed
+    assert mixed["ab-deep"]["claude"]["effort"] == "xhigh", mixed
     assert "git" not in mixed and "tea" not in mixed
 
     # Per-profile scalar metadata at indent 4, alongside the tool subsections.
     scalar = parse_profiles(
         "profiles:\n"
-        "  ab-xhigh:\n"
+        "  ab-deep:\n"
         "    description: \"big stakes\"\n"
         "    role_blurb: \"hard work\"\n"
         "    status_example: \"all green\"\n"
@@ -408,16 +408,16 @@ def _run_self_test() -> int:
         "      model: opus\n"
         "      effort: xhigh\n"
     )
-    assert scalar["ab-xhigh"]["description"] == "big stakes", scalar
-    assert scalar["ab-xhigh"]["role_blurb"] == "hard work", scalar
-    assert scalar["ab-xhigh"]["status_example"] == "all green", scalar
-    assert scalar["ab-xhigh"]["claude"]["model"] == "opus", scalar
+    assert scalar["ab-deep"]["description"] == "big stakes", scalar
+    assert scalar["ab-deep"]["role_blurb"] == "hard work", scalar
+    assert scalar["ab-deep"]["status_example"] == "all green", scalar
+    assert scalar["ab-deep"]["claude"]["model"] == "opus", scalar
 
     # Trailing comments on STRUCTURAL lines (profiles:/profile/tool), as the
     # documented runtime config carries them — must parse like bare lines.
     commented = parse_profiles(
         "profiles:                  # per-profile model + effort, PER TOOL\n"
-        "  ab-xhigh:                # reads to generate the agent files\n"
+        "  ab-deep:                # reads to generate the agent files\n"
         "    claude:                # keep block style; run reprovision after\n"
         "      model: opus\n"
         "      effort: xhigh\n"
@@ -425,8 +425,8 @@ def _run_self_test() -> int:
         "      model: gpt-5.5\n"
         "      reasoning_effort: high\n"
     )
-    assert commented["ab-xhigh"]["claude"] == {"model": "opus", "effort": "xhigh"}, commented
-    assert commented["ab-xhigh"]["codex"]["reasoning_effort"] == "high", commented
+    assert commented["ab-deep"]["claude"] == {"model": "opus", "effort": "xhigh"}, commented
+    assert commented["ab-deep"]["codex"]["reasoning_effort"] == "high", commented
 
     # End-to-end render into a temp project root, all three tools.
     with tempfile.TemporaryDirectory() as td:
@@ -435,39 +435,39 @@ def _run_self_test() -> int:
         assert result["status"] == "success", result
         assert not result["warnings"], f"unexpected warnings: {result['warnings']}"
 
-        claude_xhigh = (root / ".claude/agents/ab-xhigh.md").read_text(encoding="utf-8")
-        assert "model: opus" in claude_xhigh and "effort: xhigh" in claude_xhigh, claude_xhigh[:200]
-        assert "@@" not in claude_xhigh, "unfilled placeholder in Claude output"
-        assert "name: ab-xhigh" in claude_xhigh
+        claude_deep = (root / ".claude/agents/ab-deep.md").read_text(encoding="utf-8")
+        assert "model: opus" in claude_deep and "effort: xhigh" in claude_deep, claude_deep[:200]
+        assert "@@" not in claude_deep, "unfilled placeholder in Claude output"
+        assert "name: ab-deep" in claude_deep
         # Metadata flowed into the body.
-        assert "highest-stakes" in claude_xhigh, "description not substituted into Claude body"
-        assert "implementing story code" in claude_xhigh, "role_blurb not substituted"
-        assert "story moved to `review`" in claude_xhigh, "status_example not substituted"
+        assert "highest-stakes" in claude_deep, "description not substituted into Claude body"
+        assert "implementing story code" in claude_deep, "role_blurb not substituted"
+        assert "story moved to `review`" in claude_deep, "status_example not substituted"
 
-        codex_xhigh = (root / ".codex/agents/ab-xhigh.toml").read_text(encoding="utf-8")
-        assert 'model = "gpt-5.5"' in codex_xhigh, codex_xhigh[:200]
-        assert 'model_reasoning_effort = "xhigh"' in codex_xhigh, codex_xhigh[:200]
-        assert "@@" not in codex_xhigh, "unfilled placeholder in Codex output"
-        assert "highest-stakes" in codex_xhigh, "description not substituted into Codex body"
-        assert "implementing story code" in codex_xhigh, "role_blurb not substituted (codex)"
+        codex_deep = (root / ".codex/agents/ab-deep.toml").read_text(encoding="utf-8")
+        assert 'model = "gpt-5.5"' in codex_deep, codex_deep[:200]
+        assert 'model_reasoning_effort = "xhigh"' in codex_deep, codex_deep[:200]
+        assert "@@" not in codex_deep, "unfilled placeholder in Codex output"
+        assert "highest-stakes" in codex_deep, "description not substituted into Codex body"
+        assert "implementing story code" in codex_deep, "role_blurb not substituted (codex)"
 
         # opencode is MODEL-ONLY; the shipped model is blank => NO `model:` line (the subagent
         # inherits the user's opencode default), and there is no `name:`/`effort:` field.
-        oc_xhigh = (root / ".opencode/agent/ab-xhigh.md").read_text(encoding="utf-8")
-        assert "mode: subagent" in oc_xhigh, oc_xhigh[:200]
-        assert "\nmodel:" not in oc_xhigh, "blank opencode model must omit the model: line"
-        assert "\nname:" not in oc_xhigh, "opencode agents must not carry a name: field (filename is the name)"
-        assert "@@" not in oc_xhigh, "unfilled placeholder in opencode output"
-        assert "highest-stakes" in oc_xhigh, "description not substituted into opencode frontmatter"
-        assert "implementing story code" in oc_xhigh, "role_blurb not substituted (opencode)"
-        assert "story moved to `review`" in oc_xhigh, "status_example not substituted (opencode)"
+        oc_deep = (root / ".opencode/agent/ab-deep.md").read_text(encoding="utf-8")
+        assert "mode: subagent" in oc_deep, oc_deep[:200]
+        assert "\nmodel:" not in oc_deep, "blank opencode model must omit the model: line"
+        assert "\nname:" not in oc_deep, "opencode agents must not carry a name: field (filename is the name)"
+        assert "@@" not in oc_deep, "unfilled placeholder in opencode output"
+        assert "highest-stakes" in oc_deep, "description not substituted into opencode frontmatter"
+        assert "implementing story code" in oc_deep, "role_blurb not substituted (opencode)"
+        assert "story moved to `review`" in oc_deep, "status_example not substituted (opencode)"
 
         # opencode with a model SET => the `model:` frontmatter line IS emitted with that value.
         oc_set = json.loads(json.dumps(profiles))  # deep copy
-        oc_set["ab-xhigh"]["opencode"]["model"] = "anthropic/claude-opus-4-5"
+        oc_set["ab-deep"]["opencode"]["model"] = "anthropic/claude-opus-4-5"
         with tempfile.TemporaryDirectory() as td_oc:
             render(oc_set, ["opencode"], templates_dir, Path(td_oc))
-            body = (Path(td_oc) / ".opencode/agent/ab-xhigh.md").read_text(encoding="utf-8")
+            body = (Path(td_oc) / ".opencode/agent/ab-deep.md").read_text(encoding="utf-8")
             assert "model: anthropic/claude-opus-4-5" in body, body[:200]
             assert "@@" not in body, "unfilled placeholder with model set"
 
@@ -492,15 +492,15 @@ def _run_self_test() -> int:
         try:
             import tomllib  # py3.11+
 
-            parsed = tomllib.loads(codex_xhigh)
-            assert parsed["name"] == "ab-xhigh"
+            parsed = tomllib.loads(codex_deep)
+            assert parsed["name"] == "ab-deep"
             assert parsed["model"] == "gpt-5.5"
             assert parsed["model_reasoning_effort"] == "xhigh"
             assert parsed["developer_instructions"].strip()
             assert "highest-stakes" in parsed["description"]
         except ModuleNotFoundError:
             # Older Python: fall back to a structural sanity check.
-            assert codex_xhigh.count('"""') == 2, "developer_instructions block malformed"
+            assert codex_deep.count('"""') == 2, "developer_instructions block malformed"
 
         # All four profiles rendered for all three tools => 12 files.
         assert len(result["files_written"]) == 12, result["files_written"]
@@ -512,32 +512,32 @@ def _run_self_test() -> int:
 
         # Editing a profile makes that agent's rendered output differ -> stale.
         bumped = json.loads(json.dumps(profiles))  # deep copy
-        bumped["ab-alt-high"]["claude"]["model"] = "opus"
+        bumped["ab-alt-standard"]["claude"]["model"] = "opus"
         chk_stale = check(bumped, ["claude-code"], templates_dir, root)
         assert chk_stale["needs_reprovision"], chk_stale
-        assert any(p.endswith("ab-alt-high.md") for p in chk_stale["stale"]), chk_stale
+        assert any(p.endswith("ab-alt-standard.md") for p in chk_stale["stale"]), chk_stale
         assert not chk_stale["missing"], chk_stale
 
         # Editing a tool-neutral metadata key also marks both tools' outputs stale.
         bumped2 = json.loads(json.dumps(profiles))
-        bumped2["ab-high"]["role_blurb"] = "totally different blurb"
+        bumped2["ab-standard"]["role_blurb"] = "totally different blurb"
         chk_meta = check(bumped2, ["claude-code", "codex"], templates_dir, root)
         assert chk_meta["needs_reprovision"], chk_meta
-        assert any(p.endswith("ab-high.md") for p in chk_meta["stale"]), chk_meta
-        assert any(p.endswith("ab-high.toml") for p in chk_meta["stale"]), chk_meta
+        assert any(p.endswith("ab-standard.md") for p in chk_meta["stale"]), chk_meta
+        assert any(p.endswith("ab-standard.toml") for p in chk_meta["stale"]), chk_meta
 
         # Deleting a generated file -> missing.
-        (root / ".claude/agents/ab-xhigh.md").unlink()
+        (root / ".claude/agents/ab-deep.md").unlink()
         chk_missing = check(profiles, ["claude-code"], templates_dir, root)
         assert chk_missing["needs_reprovision"], chk_missing
-        assert any(p.endswith("ab-xhigh.md") for p in chk_missing["missing"]), chk_missing
+        assert any(p.endswith("ab-deep.md") for p in chk_missing["missing"]), chk_missing
 
         # A tool dropped from target_tools leaves 'extra' files (informational,
         # not on its own a reprovision trigger). Re-render to a clean state first.
         render(profiles, ["claude-code", "codex"], templates_dir, root)
         chk_extra = check(profiles, ["claude-code"], templates_dir, root)
         assert chk_extra["status"] == "fresh", chk_extra
-        assert any(p.endswith("ab-xhigh.toml") for p in chk_extra["extra"]), chk_extra
+        assert any(p.endswith("ab-deep.toml") for p in chk_extra["extra"]), chk_extra
 
         # dry-run writes nothing new.
         with tempfile.TemporaryDirectory() as td2:

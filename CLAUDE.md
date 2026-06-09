@@ -102,7 +102,9 @@ schema, first-run).
   - `config_plan.py` — detects and additively heals drift between the shipped defaults
     (`profiles.yaml` for `profiles`/`phase_profiles`; `config-defaults.yaml` for the constant-default
     setup-block keys) and a project's runtime `config.yaml`. Append-only (`--apply`); `--reset`
-    overwrites the profiles blocks back to shipped values but never the setup blocks.
+    overwrites the profiles blocks back to shipped values (a whole-block scope also **prunes**
+    profiles the asset no longer ships — the rename/drop remedy, surfaced as `removed_profiles`)
+    but never the setup blocks.
   - `review_findings.py` — Phase 7 reconciliation reader for a story's `### Review Findings`.
   - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
     builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-

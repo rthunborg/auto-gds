@@ -278,7 +278,7 @@ def resolve(
     tool_raw = cli_phases[phase].strip()
     tool = "claude" if tool_raw == "claude-code" else tool_raw
     if tool not in TOOL_BINARY:
-        errors.append(f"cli_phases[{phase}] = {tool_raw!r}; expected 'claude' or 'codex'")
+        errors.append(f"cli_phases[{phase}] = {tool_raw!r}; expected 'claude', 'codex' or 'opencode'")
 
     phase_profiles = parse_phase_profiles(lines)
     profile = phase_profiles.get(phase)
@@ -621,12 +621,12 @@ def _run_self_test() -> int:
         "  cli_phases:\n"
         "    dev_story: codex\n"
         "    create_story: claude\n"
-        "    tea_triage: opencode\n"        # opencode arm: model + variant set (via ab-xhigh)
+        "    tea_triage: opencode\n"        # opencode arm: model + variant set (via ab-deep)
         "    tea_per_story: opencode\n"     # opencode arm: blank model + variant (via ab-blank)
         "tea:\n"
         "  enabled: true\n"
         "profiles:\n"
-        "  ab-xhigh:\n"
+        "  ab-deep:\n"
         "    description: \"big\"\n"
         "    claude:\n"
         "      model: opus\n"
@@ -643,10 +643,10 @@ def _run_self_test() -> int:
         "      model: \"\"\n"
         "      variant: \"\"\n"
         "phase_profiles:\n"
-        "  create_story: ab-xhigh\n"
-        "  dev_story: ab-xhigh\n"
-        "  retrospective: ab-xhigh\n"
-        "  tea_triage: ab-xhigh\n"
+        "  create_story: ab-deep\n"
+        "  dev_story: ab-deep\n"
+        "  retrospective: ab-deep\n"
+        "  tea_triage: ab-deep\n"
         "  tea_per_story: ab-blank\n"
     )
 
@@ -656,7 +656,7 @@ def _run_self_test() -> int:
         "dev_story": "codex", "create_story": "claude",
         "tea_triage": "opencode", "tea_per_story": "opencode",
     }
-    assert parse_phase_profiles(lines)["dev_story"] == "ab-xhigh"
+    assert parse_phase_profiles(lines)["dev_story"] == "ab-deep"
 
     # --- codex arm ---
     cx = resolve("dev_story", cfg, "/proj", story_key="1-2-auth")
@@ -777,17 +777,17 @@ def _run_self_test() -> int:
     # Resolution errors: bad tool, missing profile block, unknown phase mapping.
     bad_tool = cfg.replace("dev_story: codex", "dev_story: gpt5")
     r = resolve("dev_story", bad_tool, "/proj")
-    assert r["routed"] and r["ok"] is False and any("expected 'claude' or 'codex'" in e for e in r["errors"]), r
+    assert r["routed"] and r["ok"] is False and any("expected 'claude', 'codex' or 'opencode'" in e for e in r["errors"]), r
 
     no_block = (
         "delegation:\n  cli_phases:\n    dev_story: codex\n"
-        "profiles:\n  ab-xhigh:\n    claude:\n      model: opus\n      effort: xhigh\n"
-        "phase_profiles:\n  dev_story: ab-xhigh\n"
-    )  # ab-xhigh has no codex block
+        "profiles:\n  ab-deep:\n    claude:\n      model: opus\n      effort: xhigh\n"
+        "phase_profiles:\n  dev_story: ab-deep\n"
+    )  # ab-deep has no codex block
     r = resolve("dev_story", no_block, "/proj")
     assert r["ok"] is False and any("no 'codex' block" in e for e in r["errors"]), r
 
-    no_map = "delegation:\n  cli_phases:\n    dev_story: codex\nprofiles:\n  ab-xhigh:\n    codex:\n      model: m\n      reasoning_effort: high\n"
+    no_map = "delegation:\n  cli_phases:\n    dev_story: codex\nprofiles:\n  ab-deep:\n    codex:\n      model: m\n      reasoning_effort: high\n"
     r = resolve("dev_story", no_map, "/proj")  # no phase_profiles mapping
     assert r["ok"] is False and any("no phase_profiles mapping" in e for e in r["errors"]), r
 

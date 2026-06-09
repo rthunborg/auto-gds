@@ -69,7 +69,7 @@ reference file at the moment its step calls for it.
   effort (opencode is model-only — no effort knob); `general-subagents` uses the host's generic
   subagent without effort tuning; `inline` runs the step in this context as a last resort.
   `phase_profiles` maps each phase to a profile
-  (`ab-xhigh`/`ab-high`/`ab-alt-xhigh`/`ab-alt-high`); `profiles` holds each profile's per-tool model +
+  (`ab-deep`/`ab-standard`/`ab-alt-deep`/`ab-alt-standard`); `profiles` holds each profile's per-tool model +
   effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`,
   `.opencode/agent/ab-*.md`) are rendered at setup by `scripts/render-agents.py` from those profiles.
 - **Opt-in external-CLI routing:** before picking a tier, check `delegation.cli_phases` — a phase

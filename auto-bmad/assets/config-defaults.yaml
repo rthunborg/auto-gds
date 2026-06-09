@@ -26,7 +26,13 @@
 # INVARIANT (same lockstep cost as profiles.yaml): every default here must stay equal to BOTH
 # the orchestrator's absent-key fallback AND the schema in references/state-and-resume.md.
 delegation:
-  cli_phases: {}            # OPT-IN per-phase external-CLI routing; empty => every phase uses its tier
+  cli_phases: {}            # OPT-IN per-phase external-CLI routing; empty => every phase uses its tier.
+                            # Map a phase_profiles key -> a tool (claude|codex|opencode) to run that
+                            # phase via the tool's CLI instead of an in-tool sub-agent (model + effort
+                            # still come from that phase's profile). A few examples:
+                            #   cli_phases: { code_review_review_secondary: opencode }  # 2nd-opinion review on a different vendor's model
+                            #   cli_phases: { retrospective: codex }                    # run the retro via `codex exec`
+                            #   cli_phases: { dev_story: claude, code_review_review: codex }
 tea:
   gate_max_iterations: 2    # Phase 8 trace-gate remediation cap before only waive/stop remain
   story_trace_advisory:     # per-story, non-blocking trace pass; self-activating on long high-risk epics

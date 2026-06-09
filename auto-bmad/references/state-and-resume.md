@@ -38,10 +38,11 @@ delegation:                # spawn mechanism — host/mode auto-detected each ru
                            # (claude|codex|opencode); model/effort come from that phase's profile's
                            # matching tool block (opencode: model + variant, both optional => inherit
                            # the user's opencode defaults). Empty/absent => every phase uses its tier.
-                           # Hand-edited
-                           # like profiles; older configs lacking the key behave as {}. See
-                           # delegation-runtime.md "Per-phase external-CLI routing". e.g.:
-                           #   cli_phases: { code_review_review_secondary: codex, retrospective: codex }
+                           # Hand-edited like profiles; older configs lacking the key behave as {}.
+                           # See delegation-runtime.md "Per-phase external-CLI routing". A few examples:
+                           #   cli_phases: { code_review_review_secondary: opencode }  # 2nd-opinion review on a different vendor's model
+                           #   cli_phases: { retrospective: codex }                    # run the retro via `codex exec`
+                           #   cli_phases: { dev_story: claude, code_review_review: codex }
 tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
@@ -64,7 +65,7 @@ code_review:
 # first run copies in verbatim. Edit that file (or this per-project copy) then `/auto-bmad
 # reprovision`; `/auto-bmad reset-defaults` discards edits and re-seeds from the asset (see
 # "reset-defaults" below). Shape only — see the asset for the actual model/effort defaults:
-profiles: {…}              # ab-xhigh | ab-high | ab-alt-xhigh | ab-alt-high, each:
+profiles: {…}              # ab-deep | ab-standard | ab-alt-deep | ab-alt-standard, each:
                            #   {claude: {model, effort}, codex: {model, reasoning_effort},
                            #    opencode: {model, variant}}  # opencode is model-only + ships model
                            #   BLANK (inherit your opencode default); variant is cli_phases-only
@@ -109,7 +110,7 @@ The single interactive episode in normal operation. Always confirm `target_tools
    probe with `find`/`test -f`, never a bare `ls playwright.config.*` / `ls .github/workflows/*`
    (unmatched it aborts under zsh/fish, same trap as the resume-scan above). Both
    present → `framework_ci: done` silently; missing → **ask** to run one-time
-   `/bmad-testarch-framework` + `/bmad-testarch-ci` now (delegate to `ab-high`) or `skip`. Heavy,
+   `/bmad-testarch-framework` + `/bmad-testarch-ci` now (delegate to `ab-standard`) or `skip`. Heavy,
    infra-choosing setup — never auto-run without asking.
 4. **Full only — extra prefs** (each prefilled with the default shown; the user changes only what
    they want): `git.mode` (auto | remote | local; default auto), `git.branch_prefix` (default
@@ -143,8 +144,11 @@ that already exists). **Config-only:** report what changed, then stop — never 
 
 **Scope** (the optional arg; bare = both asset blocks):
 - *(omitted)* — both `profiles` and `phase_profiles`.
-- `profiles` — every profile block (a user-added profile absent from the asset is left intact).
-- `<profile-name>` (e.g. `ab-high`) — that one profile.
+- `profiles` — every profile block; also **prunes** a profile present in the config but absent from
+  the asset, so the set matches shipped (the remedy for a renamed/dropped profile). Pruned names come
+  back on `removed_profiles`. (This scope doesn't touch `phase_profiles`, so pruning a profile a
+  *custom* mapping still points at leaves a dangling ref — use the bare/`both` scope to reset both.)
+- `<profile-name>` (e.g. `ab-standard`) — that one profile (never prunes — a user-added profile is left intact).
 - `phase_profiles` — the phase→profile mapping only.
 
 **Boundary (state it to the user):** reset-defaults touches **only** `profiles`, `phase_profiles`,
@@ -162,10 +166,13 @@ setup keys from `config-defaults.yaml`. Different operations, different scopes.)
    python3 {skill-root}/scripts/config_plan.py --reset <scope> --config <output_folder>/auto-bmad/config.yaml
    ```
    (the shipped `assets/agents/profiles.yaml` + `assets/module.yaml` resolve relative to the script).
-   Empty `would_change` → "Already at shipped defaults for `<scope>`." and stop.
+   Empty `would_change` **and** empty `removed_profiles` → "Already at shipped defaults for `<scope>`." and stop.
 3. **Confirm** with `AskUserQuestion`, showing the `current → default` diff (truncate long persona
-   strings). Options: **Reset** (discards the listed retunes) / **Cancel**. This is the sole
-   interactive moment; Cancel → stop, write nothing.
+   strings) **and, called out separately, any `removed_profiles`** — those blocks are deleted
+   outright (a whole-block reset prunes profiles the asset no longer ships), so a user-added profile
+   would be lost; make the removal explicit, never buried in the diff. Options: **Reset** (discards
+   the listed retunes and removals) / **Cancel**. This is the sole interactive moment; Cancel → stop,
+   write nothing.
 4. On confirm, write by re-running with `--write` (backs the prior config up to `config.yaml.bak`,
    then overwrites). Report the backup path and any `version_restamp`: a **full** reset restamps
    `profiles_source_version` to the module version; a **scoped** reset leaves it — a partial reset

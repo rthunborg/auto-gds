@@ -11,8 +11,8 @@ everything:
 - `delegation.cli_phases` — opt-in per-phase override that delegates a phase to an external CLI
   instead of an in-tool sub-agent (absent/empty ⇒ none; see "Per-phase external-CLI routing" below).
 
-`phase_profiles` (also in config) maps each phase to a profile name (`ab-xhigh`, `ab-high`,
-`ab-alt-xhigh`, `ab-alt-high`); `profiles` holds each profile's per-tool model + effort.
+`phase_profiles` (also in config) maps each phase to a profile name (`ab-deep`, `ab-standard`,
+`ab-alt-deep`, `ab-alt-standard`); `profiles` holds each profile's per-tool model + effort.
 
 ## Resolving host & mode (every run)
 
@@ -185,14 +185,14 @@ Full fidelity: the delegate runs in an isolated context at the profile's tuned m
 `phase_profiles`, then:
 
 - **Claude Code:** delegate with the Agent/Task tool, `subagent_type` = the profile name
-  (`ab-xhigh` / `ab-high` / `ab-alt-xhigh` / `ab-alt-high`). These resolve to the project-level
+  (`ab-deep` / `ab-standard` / `ab-alt-deep` / `ab-alt-standard`). These resolve to the project-level
   `.claude/agents/<name>.md` rendered at setup. (No plugin namespace prefix — they are project
   agents now.) The agent body already carries the autonomy directive; the prompt is the
   `delegation.md` body with placeholders filled.
 - **Codex:** Codex spawns a subagent only when explicitly asked, and identifies it by its
   `name`. Phrase the delegation unambiguously, e.g.:
 
-  > Use the **ab-xhigh** agent to do the following, then report back its full structured result
+  > Use the **ab-deep** agent to do the following, then report back its full structured result
   > block (Outcome / Files changed / Status / Open questions / Deferred work / Blockers / Retro
   > notes):
   > <the delegation.md prompt body>
@@ -201,14 +201,14 @@ Full fidelity: the delegate runs in an isolated context at the profile's tuned m
   (the pipeline is sequential — do not fan out). Parse the returned structured block exactly as
   on Claude Code.
 - **opencode:** opencode spawns a subagent on request and identifies it by name — delegate via its
-  Task tool or an `@ab-xhigh` mention (phrase it as unambiguously as the Codex example above).
+  Task tool or an `@ab-deep` mention (phrase it as unambiguously as the Codex example above).
   These resolve to the project-level `.opencode/agent/<name>.md` rendered at setup. **Fidelity
   caveat:** the delegate runs at the profile's `opencode.model` (or **inherits your opencode default
   model** when that is blank — the shipped default) but with **no effort tuning** — opencode agent
   files have no portable effort knob (its reasoning setting is provider-specific; set it
   per-agent-name in `opencode.json` if wanted). So opencode is Tier-1 for *isolation* but, by
   default, *untuned* — record that in the run report like the Tier-2 effort caveat, and note that
-  pointing `ab-alt-*` at a different vendor than `ab-xhigh` buys genuine cross-model review diversity.
+  pointing `ab-alt-*` at a different vendor than `ab-deep` buys genuine cross-model review diversity.
 
 In all cases, after the delegate returns: read the structured result, append Retro notes,
 checkpoint, update state.

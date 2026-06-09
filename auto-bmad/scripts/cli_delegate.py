@@ -3,44 +3,50 @@
 
 Most auto-bmad steps run in an *in-tool* sub-agent (the three tiers in
 ``delegation-runtime.md``). As an **opt-in, per-phase** alternative, a phase can
-instead be delegated to an **external CLI** — ``claude -p`` or ``codex exec`` —
-chosen by the ``delegation.cli_phases`` map in the runtime config::
+instead be delegated to an **external CLI** — ``claude -p``, ``codex exec`` or
+``opencode run`` — chosen by the ``delegation.cli_phases`` map in the runtime config::
 
     delegation:
       cli_phases:
-        code_review_review_secondary: codex   # run this phase on `codex exec`
-        retrospective: codex
+        code_review_review_secondary: codex      # run this phase on `codex exec`
+        retrospective: opencode                  # ...or on `opencode run` (any provider/model)
 
-The value names the *tool* (``claude`` | ``codex``); model + effort come from
-that tool's block of the phase's profile (``phase_profiles[phase]`` ->
-``profiles[<profile>][<tool>]``), exactly the same numbers ``render-agents.py``
-bakes into the in-tool delegate files. Nothing here changes the profiles or the
-three existing tiers — a phase absent from ``cli_phases`` is reported
-``routed: false`` and the orchestrator uses its normal tier.
+The value names the *tool* (``claude`` | ``codex`` | ``opencode``); model + effort come
+from that tool's block of the phase's profile (``phase_profiles[phase]`` ->
+``profiles[<profile>][<tool>]``), exactly the same values ``render-agents.py``
+bakes into the in-tool delegate files. opencode is the exception: its ``model`` and
+reasoning ``variant`` are BOTH optional (blank => inherit the user's opencode defaults).
+Nothing here changes the profiles or the three existing tiers — a phase absent from
+``cli_phases`` is reported ``routed: false`` and the orchestrator uses its normal tier.
 
 This script does two things and prints ONE JSON object on stdout:
 
   * ``resolve()`` — PURE (no subprocess, no filesystem): from the config text it
-    builds the tool, model, effort, the **argv** (without the prompt — the
-    orchestrator pipes the assembled delegate prompt to the child's stdin), the
-    ``cwd``, an OS-temp **capture-log** path (NEVER inside the repo, so transient
-    stdout can't be swept into a commit/PR), and how to read the structured
-    result back (claude: parse ``.result`` from the JSON envelope; codex: read
-    the ``-o`` last-message file). The per-tool flag divergence lives here, in
-    tested code, not in orchestrator prose.
+    builds the tool, model, effort, the **argv** (without the prompt), the ``cwd``,
+    an OS-temp **capture-log** path (NEVER inside the repo, so transient stdout can't
+    be swept into a commit/PR), how the prompt is delivered (``prompt_via``:
+    claude/codex pipe it to **stdin**; opencode does NOT read stdin, so the prompt is
+    appended as the final positional **arg**), and how to read the structured result
+    back (claude: parse ``.result`` from the JSON envelope; codex: read the ``-o``
+    last-message file; opencode: ``extract_opencode_result()`` on the captured
+    ``--format json`` event stream). The per-tool divergence lives here, in tested
+    code, not in orchestrator prose.
   * ``validate()`` — LIVE checks the orchestrator must pass before relying on a
     routed phase (it hard-stops up front, never mid-pipeline): the CLI binary is
     on PATH, that tool's BMAD skills are installed, and — for the *non-host* tool
     (the host the orchestrator runs in is authed by definition) — the CLI is
-    actually logged in (``claude auth status`` / ``codex login status``).
+    actually logged in (``claude auth status`` / ``codex login status``; opencode
+    is LENIENT — it supports keyless/local/config providers, so a clean
+    ``opencode auth list`` exit passes and "0 credentials" never hard-stops).
 
 Command shapes are spike-confirmed (see the plan / delegation-runtime.md):
-  claude:  claude -p --model M --effort E --output-format json --dangerously-skip-permissions
-  codex:   codex exec -m M -c model_reasoning_effort=E -s workspace-write -C ROOT -o LASTMSG --ephemeral
+  claude:   claude -p --model M --effort E --output-format json --dangerously-skip-permissions
+  codex:    codex exec -m M -c model_reasoning_effort=E -s workspace-write -C ROOT -o LASTMSG --ephemeral
+  opencode: opencode run [-m M] [--variant V] --format json --dir ROOT --dangerously-skip-permissions <prompt-arg>
 
 Usage:
     cli_delegate.py --phase PHASE --config FILE --project-root DIR \\
-        [--story-key KEY] [--host claude-code|codex] [--no-auth-probe]
+        [--story-key KEY] [--host claude-code|codex|opencode] [--no-auth-probe]
     cli_delegate.py --self-test
 
 Exit codes: 0 = routed and all validations passed (or routed:false, a clean
@@ -61,11 +67,15 @@ from typing import Sequence
 
 # Phases that may be routed: the same keys as phase_profiles. (Git/finalize work
 # is orchestrator-owned and never delegated, so it is not routable.)
-TOOL_BINARY = {"claude": "claude", "codex": "codex"}
+TOOL_BINARY = {"claude": "claude", "codex": "codex", "opencode": "opencode"}
 # host (delegation.host) <-> the tool name it IS, so we can skip the auth probe
 # for the host the orchestrator already runs inside.
-_HOST_TOOL = {"claude-code": "claude", "codex": "codex"}
+_HOST_TOOL = {"claude-code": "claude", "codex": "codex", "opencode": "opencode"}
 _AUTH_PROBE_TIMEOUT = 20  # seconds — keep short so a wedged probe can't hang preflight
+# opencode CLI surface (flags/dirs) AND the `run --format json` event schema are verified against
+# this version: extract_opencode_result() targets the verified shape (top-level type=="text" events,
+# part.text concatenated) with defensive fallbacks for any future schema drift.
+_OPENCODE_CLI_VERSION = "1.16.2"
 
 
 # --- dependency-free YAML-ish parsing (same style as config_plan.py / render-agents.py) ---
@@ -285,6 +295,13 @@ def resolve(
             tool_block = prof.get(tool)
             if not tool_block:
                 errors.append(f"profile '{profile}' has no '{tool}' block")
+            elif tool == "opencode":
+                # opencode is MULTI-PROVIDER and MODEL-ONLY: both the model and the reasoning
+                # `variant` are OPTIONAL. A blank model => the routed `opencode run` inherits the
+                # user's opencode default model; a blank variant => the model's default reasoning.
+                # So — unlike claude/codex — a missing value is NOT an error here.
+                model = tool_block.get("model") or None
+                effort = tool_block.get("variant") or None  # opencode's `--variant` knob
             else:
                 model = tool_block.get("model")
                 # claude uses `effort`; codex uses `reasoning_effort`.
@@ -334,7 +351,7 @@ def resolve(
         plan["result_format"] = "json"
         plan["result_field"] = "result"
         plan["error_field"] = "is_error"
-    else:  # codex
+    elif tool == "codex":
         last_msg = str(cap_dir / f"{base}.lastmsg")
         plan["argv"] = [
             "codex", "exec",
@@ -350,8 +367,118 @@ def resolve(
         plan["result_format"] = "text"
         plan["result_field"] = None
         plan["error_field"] = None
+    else:  # opencode
+        # opencode run does NOT read the prompt from stdin (verified) — the orchestrator appends the
+        # assembled prompt as the final positional `message` arg (prompt_via="arg"). `--dir` pins the
+        # working tree, so no `cd` is needed (unlike `claude -p`). `--variant` is opencode's
+        # provider-specific reasoning-effort knob; BOTH `-m` and `--variant` are omitted when blank,
+        # so the run falls back to the user's opencode default model / the model's default reasoning.
+        argv = ["opencode", "run"]
+        if model:
+            argv += ["-m", model]
+        if effort:
+            argv += ["--variant", effort]
+        argv += ["--format", "json", "--dir", root, "--dangerously-skip-permissions"]
+        plan["argv"] = argv
+        plan["prompt_via"] = "arg"
+        # `--format json` streams newline-delimited JSON events to stdout (capture_log). The event
+        # schema is undocumented/version-specific, so the orchestrator extracts the final message via
+        # extract_opencode_result() rather than a fixed field — result_field/error_field are None and
+        # an empty/unparseable extraction IS the failure signal.
+        plan["result_source"] = capture_log
+        plan["result_format"] = "opencode-json"
+        plan["result_field"] = None
+        plan["error_field"] = None
 
     return plan
+
+
+# --- opencode result extraction (defensive; the JSON event schema is undocumented) ---
+
+def _collect_opencode_text(node, acc: list) -> None:
+    """Recursively gather candidate assistant-text strings from an opencode JSON event/object.
+
+    Heuristic — the ``opencode run --format json`` event schema is version-specific and
+    undocumented, so we don't assert a shape: we collect the string value of any ``"text"`` key
+    and any string-valued ``"content"`` key, anywhere in the tree. The caller takes the LAST
+    non-empty result as the final assistant message (a user/echoed message sorts first; the
+    assistant's final answer sorts last), and hard-stops if there is none.
+    """
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k in ("text", "content") and isinstance(v, str):
+                acc.append(v)
+            else:
+                _collect_opencode_text(v, acc)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_opencode_text(item, acc)
+
+
+def extract_opencode_result(raw: str) -> tuple[str | None, str | None]:
+    """Pull the final assistant message out of ``opencode run`` output. Returns ``(message, error)``.
+
+    Schema-aware, verified against opencode 1.16.2 ``run --format json``: the output is newline-
+    delimited JSON events (JSONL); the assistant's reply arrives as events with top-level
+    ``type == "text"`` whose ``part.text`` holds a COMPLETE text segment (``part.time.start/end``
+    mark it done — it is NOT a streamed delta). A multi-part / multi-step reply yields several such
+    events; we concatenate their ``part.text`` in order to reconstruct the full message. Non-text
+    events (``step_start`` / ``step_finish`` / tool calls) are ignored.
+
+    Degrades gracefully: if no ``type:"text"`` event is found (a future schema shift, or a single
+    whole-JSON value) it falls back to collecting any ``text``/``content`` leaf; if the output isn't
+    JSON at all it treats the whole capture as plain text (the ``default`` format). ``message`` is
+    ``None`` only when nothing usable could be extracted — the orchestrator then hard-stops the
+    routed phase (the same way a claude ``is_error`` / empty ``.result`` is treated), rather than
+    silently delegating an empty result.
+    """
+    if not raw or not raw.strip():
+        return None, "empty opencode output (the routed `opencode run` produced nothing)"
+
+    # Parse the JSONL event stream (one JSON object per line). Non-JSON lines are ignored.
+    events: list = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except (ValueError, TypeError):
+            continue
+
+    if not events:
+        # Not JSONL: try the whole capture as one JSON value; else it's `default` plain text.
+        try:
+            whole = json.loads(raw)
+        except (ValueError, TypeError):
+            return raw.strip(), None
+        events = whole if isinstance(whole, list) else [whole]
+
+    # Primary (verified schema): assistant text = part.text of every top-level type=="text" event,
+    # concatenated in order.
+    parts = [
+        e["part"]["text"]
+        for e in events
+        if isinstance(e, dict) and e.get("type") == "text"
+        and isinstance(e.get("part"), dict) and isinstance(e["part"].get("text"), str)
+    ]
+    msg = "".join(parts).strip()
+    if msg:
+        return msg, None
+
+    # Fallback (schema drift): collect any text/content leaf anywhere; last non-empty wins.
+    acc: list = []
+    for e in events:
+        _collect_opencode_text(e, acc)
+    acc = [t.strip() for t in acc if isinstance(t, str) and t.strip()]
+    if acc:
+        return acc[-1], None
+
+    return None, (
+        "could not extract a final assistant message from opencode's JSON output — the event "
+        f"format may differ from what this parser expects (verified against opencode "
+        f"{_OPENCODE_CLI_VERSION}); re-run this phase in-tool or update extract_opencode_result()"
+    )
 
 
 # --- live validation (subprocess + filesystem) ---
@@ -359,6 +486,14 @@ def resolve(
 def _skills_dirs(tool: str, project_root: Path) -> list[Path]:
     if tool == "claude":
         return [project_root / ".claude" / "skills"]
+    if tool == "opencode":
+        # opencode loads skills (Anthropic SKILL.md standard) from `skills/*/SKILL.md` under the
+        # project's `.opencode/` or the user-global config dir (note: plural `skills`, unlike the
+        # singular `agent/` dir).
+        return [
+            project_root / ".opencode" / "skills",
+            Path.home() / ".config" / "opencode" / "skills",
+        ]
     # codex skills can live in either project layout, or the user-global dir.
     return [
         project_root / ".agents" / "skills",
@@ -389,7 +524,7 @@ def _probe_auth(tool: str) -> tuple[str, str | None]:
             except (ValueError, AttributeError):
                 logged = '"loggedIn": true' in p.stdout or '"loggedIn":true' in p.stdout
             return ("ok", None) if logged else ("failed", "not logged in")
-        else:  # codex
+        elif tool == "codex":
             p = subprocess.run(
                 ["codex", "login", "status"],
                 capture_output=True, text=True, timeout=_AUTH_PROBE_TIMEOUT,
@@ -398,6 +533,19 @@ def _probe_auth(tool: str) -> tuple[str, str | None]:
             if p.returncode == 0 and "logged in" in out.lower():
                 return "ok", None
             return "failed", out.strip()[:200] or "not logged in"
+        else:  # opencode
+            # opencode is LENIENT on auth: it supports keyless/local/config providers (an
+            # openai-compatible `baseURL` in opencode.json, a local LM Studio, etc.), so a "0
+            # credentials" listing does NOT mean unauthenticated — there is no reliable
+            # logged-out signal short of running the model. Treat a clean `auth list` exit as ok;
+            # never hard-stop a routed opencode phase on a false "not authed".
+            p = subprocess.run(
+                ["opencode", "auth", "list"],
+                capture_output=True, text=True, timeout=_AUTH_PROBE_TIMEOUT,
+            )
+            if p.returncode == 0:
+                return "ok", None
+            return "failed", (p.stderr or p.stdout or "").strip()[:200] or "auth list failed"
     except FileNotFoundError:
         return "unknown", "binary not found"
     except subprocess.TimeoutExpired:
@@ -473,6 +621,8 @@ def _run_self_test() -> int:
         "  cli_phases:\n"
         "    dev_story: codex\n"
         "    create_story: claude\n"
+        "    tea_triage: opencode\n"        # opencode arm: model + variant set (via ab-xhigh)
+        "    tea_per_story: opencode\n"     # opencode arm: blank model + variant (via ab-blank)
         "tea:\n"
         "  enabled: true\n"
         "profiles:\n"
@@ -484,15 +634,28 @@ def _run_self_test() -> int:
         "    codex:\n"
         "      model: gpt-5.5\n"
         "      reasoning_effort: xhigh\n"
+        "    opencode:\n"
+        "      model: anthropic/claude-opus-4-5\n"
+        "      variant: high\n"
+        "  ab-blank:\n"
+        "    description: \"inherit\"\n"
+        "    opencode:\n"
+        "      model: \"\"\n"
+        "      variant: \"\"\n"
         "phase_profiles:\n"
         "  create_story: ab-xhigh\n"
         "  dev_story: ab-xhigh\n"
         "  retrospective: ab-xhigh\n"
+        "  tea_triage: ab-xhigh\n"
+        "  tea_per_story: ab-blank\n"
     )
 
     # cli_phases / phase_profiles parsing.
     lines = cfg.splitlines()
-    assert parse_cli_phases(lines) == {"dev_story": "codex", "create_story": "claude"}
+    assert parse_cli_phases(lines) == {
+        "dev_story": "codex", "create_story": "claude",
+        "tea_triage": "opencode", "tea_per_story": "opencode",
+    }
     assert parse_phase_profiles(lines)["dev_story"] == "ab-xhigh"
 
     # --- codex arm ---
@@ -523,6 +686,65 @@ def _run_self_test() -> int:
     assert cl["result_format"] == "json" and cl["result_field"] == "result", cl
     assert cl["error_field"] == "is_error", cl
     assert cl["result_source"] == cl["capture_log"], cl
+
+    # --- opencode arm (model + variant SET) ---
+    oc = resolve("tea_triage", cfg, "/proj", story_key="1-2-auth")
+    assert oc["routed"] and not oc["errors"], oc
+    assert oc["tool"] == "opencode" and oc["model"] == "anthropic/claude-opus-4-5" and oc["effort"] == "high", oc
+    a = oc["argv"]
+    assert a[:2] == ["opencode", "run"], a
+    assert "-m" in a and a[a.index("-m") + 1] == "anthropic/claude-opus-4-5", a
+    # opencode effort is `--variant`, NEVER claude's `--effort` or codex's `-c model_reasoning_effort=`.
+    assert "--variant" in a and a[a.index("--variant") + 1] == "high", a
+    assert "--effort" not in a, a
+    assert not any(str(x).startswith("model_reasoning_effort=") for x in a), a
+    assert "--dir" in a and a[a.index("--dir") + 1] == "/proj", a
+    assert "--format" in a and "json" in a and "--dangerously-skip-permissions" in a, a
+    # opencode does NOT read stdin — the prompt is appended as a positional arg.
+    assert oc["prompt_via"] == "arg", oc
+    assert oc["result_format"] == "opencode-json" and oc["result_source"] == oc["capture_log"], oc
+    assert oc["result_field"] is None and oc["error_field"] is None, oc
+
+    # --- opencode arm (BLANK model + BLANK variant) => -m / --variant OMITTED, still ok (inherit) ---
+    ocb = resolve("tea_per_story", cfg, "/proj", story_key="1-2-auth")
+    assert ocb["routed"] and not ocb["errors"], ocb  # blank values are NOT an error for opencode
+    assert ocb["tool"] == "opencode" and ocb["model"] is None and ocb["effort"] is None, ocb
+    assert "-m" not in ocb["argv"] and "--variant" not in ocb["argv"], ocb["argv"]
+    assert ocb["argv"][:2] == ["opencode", "run"], ocb["argv"]
+    assert "--dir" in ocb["argv"] and ocb["prompt_via"] == "arg", ocb
+
+    # --- extract_opencode_result: validated against a REAL opencode 1.16.2 `run --format json`
+    # capture (OpenCode Zen / MiMo V2.5; opaque IDs abbreviated, structure verbatim). Assistant
+    # text = part.text of the top-level type=="text" event(s); step_start/step_finish are ignored.
+    real = (
+        '{"type":"step_start","sessionID":"ses_x","part":{"id":"prt_a","messageID":"msg_1","sessionID":"ses_x","snapshot":"f1c4","type":"step-start"}}\n'
+        '{"type":"text","timestamp":1781014936653,"sessionID":"ses_x","part":{"id":"prt_b","messageID":"msg_1","sessionID":"ses_x","type":"text","text":"PONG","time":{"start":1781014936622,"end":1781014936650}}}\n'
+        '{"type":"step_finish","sessionID":"ses_x","part":{"id":"prt_c","reason":"stop","messageID":"msg_1","type":"step-finish","tokens":{"total":24862,"input":18703,"output":5},"cost":0}}\n'
+    )
+    msg, err = extract_opencode_result(real)
+    assert err is None and msg == "PONG", (msg, err)
+    # Multi-part / multi-step reply: every type=="text" part.text is concatenated IN ORDER (not
+    # "last wins") — a streamed delta would break a last-only parser, complete segments don't.
+    multi = (
+        '{"type":"step_start","part":{"type":"step-start"}}\n'
+        '{"type":"text","part":{"type":"text","text":"Outcome: done\\n"}}\n'
+        '{"type":"text","part":{"type":"text","text":"Status: ok"}}\n'
+        '{"type":"step_finish","part":{"type":"step-finish","tokens":{"total":1}}}\n'
+    )
+    msg, err = extract_opencode_result(multi)
+    assert err is None and msg == "Outcome: done\nStatus: ok", (msg, err)
+    # `default` (formatted) output is plain text => the whole capture is the message.
+    msg, err = extract_opencode_result("just plain text result\n")
+    assert err is None and msg == "just plain text result", (msg, err)
+    # Fallback path: no top-level type=="text" event => collect any text/content leaf (last wins).
+    msg, err = extract_opencode_result('{"message":{"parts":[{"type":"text","text":"final answer"}]}}')
+    assert err is None and msg == "final answer", (msg, err)
+    # Empty output => error + no message (the orchestrator hard-stops, never delegates empty).
+    msg, err = extract_opencode_result("   \n")
+    assert msg is None and err, (msg, err)
+    # JSON present but no extractable assistant text => error (schema may have shifted).
+    msg, err = extract_opencode_result('{"type":"status","done":true}')
+    assert msg is None and err and "opencode" in err, (msg, err)
 
     # EXPLICIT claude-vs-codex argv divergence (the helper's reason to exist).
     assert ("--effort" in cl["argv"]) and ("--effort" not in cx["argv"])
@@ -594,6 +816,15 @@ def _run_self_test() -> int:
         v3 = validate(plan3, str(root), host="codex", run_auth_probe=False)
         assert v3["validation"]["auth"] == "skipped (probe disabled)", v3
 
+        # opencode: skills are looked up under `.opencode/skills/`; a host=opencode route skips
+        # the auth probe (the host the orchestrator runs in is authed by definition).
+        (root / ".opencode" / "skills" / "bmad-retrospective").mkdir(parents=True)
+        plan_oc = resolve("tea_triage", cfg, str(root), story_key="k")
+        v_oc = validate(plan_oc, str(root), host="opencode", run_auth_probe=False)
+        assert v_oc["validation"]["skills_present"] is True, v_oc
+        assert v_oc["validation"]["auth"] == "skipped (host tool)", v_oc
+        assert any(str(d).endswith(".opencode/skills") for d in v_oc["validation"]["skills_dirs_checked"]), v_oc
+
     print("SELF-TEST PASSED (all assertions)")
     return 0
 
@@ -608,7 +839,7 @@ def main() -> int:
     parser.add_argument("--project-root", help="Project root (cwd for the child; codex -C).")
     parser.add_argument("--story-key", default="story", help="Story key, for unique capture filenames.")
     parser.add_argument("--label", help="Extra capture-filename suffix; use a distinct one per fan-out delegate (e.g. blind-hunter) so their capture logs don't collide.")
-    parser.add_argument("--host", help="Resolved host (claude-code|codex); skips the auth probe for the host tool. Any other value (e.g. 'auto') ⇒ probe always.")
+    parser.add_argument("--host", help="Resolved host (claude-code|codex|opencode); skips the auth probe for the host tool. Any other value (e.g. 'auto') ⇒ probe always.")
     parser.add_argument("--no-auth-probe", action="store_true", help="Skip the live auth probe (resolution + binary/skills only).")
     parser.add_argument("--mkdir", action="store_true", help="Create the temp capture dir so the orchestrator's redirect succeeds.")
     args = parser.parse_args()

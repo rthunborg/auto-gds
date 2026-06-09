@@ -1,6 +1,6 @@
 code: abm
 name: "Auto-BMAD Orchestrator"
-description: "Drive the full BMAD story workflow end-to-end for one story at a time, delegating each step to model- and effort-tuned subagents on Claude Code or Codex."
+description: "Drive the full BMAD story workflow end-to-end for one story at a time, delegating each step to model- and effort-tuned subagents on Claude Code, Codex, or opencode."
 module_version: 0.14.0
 default_selected: false
 module_greeting: >
@@ -17,14 +17,17 @@ target_tools:
   prompt: >
     Which AI tools should auto-bmad provision delegate agents for? This defaults to the AIs your
     BMAD install already targets (detected from where the auto-bmad skill is installed —
-    .claude/skills for Claude Code, .agents/skills for Codex); confirm or adjust. Select more than
-    one to run this project in either tool without reconfiguring — the running tool is
-    auto-detected each run. This only controls which agent files get generated.
+    .claude/skills for Claude Code, .agents/skills for Codex, .opencode/skills for opencode);
+    confirm or adjust. Select more than one to run this project in any of those tools without
+    reconfiguring — the running tool is auto-detected each run. This only controls which agent
+    files get generated.
   multi-select:
     - value: claude-code
       label: "Claude Code  (.claude/agents — model + thinking effort)"
     - value: codex
       label: "Codex  (.codex/agents — model + reasoning effort)"
+    - value: opencode
+      label: "opencode  (.opencode/agent — any provider/model; ships inheriting your default)"
   default:
     - claude-code
 
@@ -32,5 +35,7 @@ post-install-notes: >
   Delegate agents were rendered for the tools you selected. To change which model or
   thinking/reasoning effort each pipeline step uses, edit the `profiles` block in
   `{output_folder}/auto-bmad/config.yaml` and run `/auto-bmad reprovision`. The generated
-  agent files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`) are local artifacts —
-  add them to your `.gitignore` if you do not want them committed.
+  agent files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`, `.opencode/agent/ab-*.md`) are
+  local artifacts — add them to your `.gitignore` if you do not want them committed. opencode
+  delegates ship inheriting your opencode default model; set `opencode.model` per profile for
+  per-phase model tiering and cross-vendor review diversity.

@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **opencode is now a supported delegation host.** Delegate steps to opencode on any provider/model
+  you've configured (Anthropic, DeepSeek, Qwen, a local model); agents render to `.opencode/agent/`
+  and inherit your opencode default model unless you set `opencode.model` per profile — so the
+  secondary reviewer can run on a different vendor for cross-model review diversity. opencode is also
+  an opt-in per-phase `cli_phases` target.
+
 ## [0.14.0] - 2026-06-09
 
 ### Added

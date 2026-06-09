@@ -12,8 +12,10 @@ _bmad-output/
 .claude/skills/*
 !.claude/skills/auto-bmad-compat-check/
 # Generated tool-native delegate agents (rendered by scripts/render-agents.py).
-# .claude/* already covers .claude/agents/; .codex/ is the Codex equivalent.
+# .claude/* already covers .claude/agents/; .codex/ and .opencode/ are the Codex
+# and opencode equivalents (.opencode/agent/ab-*.md + any local opencode config).
 .codex/
+.opencode/
 
 # --- OS / editor noise ---
 .DS_Store

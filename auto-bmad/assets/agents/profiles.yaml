@@ -2,19 +2,21 @@
 #
 # Each profile carries:
 #   * tool-neutral persona strings (description / role_blurb / status_example),
-#     used to render the SAME wording into both Claude and Codex agent files —
-#     this is where every per-profile difference lives, so Claude vs Codex
+#     used to render the SAME wording into the Claude, Codex AND opencode agent
+#     files — this is where every per-profile difference lives, so the three tools'
 #     output cannot drift;
 #   * per-tool model + effort, used to fill in the tool-native frontmatter
 #     (and read directly by scripts/cli_delegate.py when a phase is routed to an
-#     external CLI via delegation.cli_phases — the claude/codex block picks the
-#     model + --effort / model_reasoning_effort for that `claude -p` / `codex exec`).
+#     external CLI via delegation.cli_phases — the claude/codex/opencode block picks
+#     the model + --effort / model_reasoning_effort / --variant for that
+#     `claude -p` / `codex exec` / `opencode run`).
 #
 # `scripts/render-agents.py` reads this file (or the `profiles:` block of the
 # runtime config) and writes the tool-native delegate definitions from ONE
 # shared body template per tool:
 #   - Claude Code -> .claude/agents/<name>.md    (frontmatter `model:` / `effort:`)
 #   - Codex       -> .codex/agents/<name>.toml   (`model` / `model_reasoning_effort`)
+#   - opencode    -> .opencode/agent/<name>.md   (frontmatter `model:`; model-only — no effort)
 #
 # To retune: copy this block into {output_folder}/auto-bmad/config.yaml, edit it,
 # and run `/auto-bmad reprovision`. Keep the BLOCK style shown here (two-space
@@ -24,6 +26,13 @@
 # is the ceiling (older GPT-5 also exposed minimal/none). Claude effort is one of:
 # low | medium | high | xhigh | max (set via the sub-agent `effort:` frontmatter).
 # Model names are environment-specific — retune above if your Codex install differs.
+#
+# opencode is multi-provider: each profile's `opencode.model` is a `provider/model`
+# string (e.g. anthropic/claude-opus-4-5, openrouter/qwen/...). It ships BLANK so the
+# rendered agent inherits your opencode default model; agent files carry NO effort
+# (opencode's reasoning knob is provider-specific — set it per-agent-name in
+# opencode.json). The optional `opencode.variant` is read ONLY by the cli_phases route
+# (`opencode run --variant high|max|minimal`), never written into an agent file.
 profiles:
   ab-xhigh:
     description: "auto-bmad delegate for the highest-stakes, deep-reasoning steps: implementing story code (`dev-story`), building the story context file (`create-story`), primary adversarial code review, and the epic-level test design + release gates (trace/NFR/test-review). Invoked by the auto-bmad orchestrator; not meant for direct use."
@@ -35,6 +44,11 @@ profiles:
     codex:
       model: gpt-5.5
       reasoning_effort: xhigh
+    opencode:
+      model: ""        # provider/model, e.g. anthropic/claude-opus-4-5. BLANK => inherit your opencode
+                       # default model. Agent files are model-only — opencode has no portable per-agent
+                       # effort knob; set reasoning per-agent-name in opencode.json if you want it tuned.
+      variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
   ab-high:
     description: "auto-bmad delegate for substantive, well-scoped steps: applying the primary code-review fixes (`code-review` fix pass) plus test- and context-infrastructure work — per-story test authoring (`testarch-atdd` scaffolds, `testarch-automate` coverage), one-time test-framework/CI setup, and building/refreshing `project-context.md`. Invoked by the auto-bmad orchestrator; not meant for direct use."
@@ -46,6 +60,10 @@ profiles:
     codex:
       model: gpt-5.5
       reasoning_effort: high
+    opencode:
+      model: ""        # provider/model, e.g. anthropic/claude-opus-4-5. BLANK => inherit your opencode
+                       # default model. Agent files are model-only (no portable per-agent effort knob).
+      variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
   ab-alt-xhigh:
     description: "auto-bmad delegate for the alternate-model secondary code-review iterations (for model diversity): a second, independent adversarial reviewer on the same diff, run at full reasoning depth. Invoked by the auto-bmad orchestrator; not meant for direct use."
@@ -57,6 +75,11 @@ profiles:
     codex:
       model: gpt-5.4
       reasoning_effort: xhigh
+    opencode:
+      model: ""        # provider/model. BLANK => inherit your opencode default. For the alt profiles,
+                       # point this at a DIFFERENT vendor than ab-xhigh (e.g. a DeepSeek/Qwen/Gemini
+                       # model) to get a genuine cross-model second opinion no single-vendor host can.
+      variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
   ab-alt-high:
     description: "auto-bmad delegate for lighter-weight steps on a faster model: per-story risk triage and the epic retrospective. Invoked by the auto-bmad orchestrator; not meant for direct use."
@@ -68,6 +91,10 @@ profiles:
     codex:
       model: gpt-5.4
       reasoning_effort: medium
+    opencode:
+      model: ""        # provider/model. BLANK => inherit your opencode default. For the alt profiles,
+                       # point this at a DIFFERENT vendor than ab-xhigh for cross-model diversity.
+      variant: ""      # OPTIONAL, cli_phases route ONLY: --variant high|max|minimal. BLANK => model default.
 
 # Phase -> profile mapping. This is the SINGLE source of the phase->profile
 # binding: pipeline.md / delegation.md name these keys, never raw profile names.

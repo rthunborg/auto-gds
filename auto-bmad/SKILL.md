@@ -21,8 +21,8 @@ Before the procedure, handle module registration and delegate provisioning:
 - If invoked with `setup`, `configure`, `install`, or `reprovision`, **or** if
   `{project-root}/_bmad/config.yaml` has no `abm` section → load
   `{skill-root}/assets/module-setup.md` and complete it first. It registers the module, writes
-  config, and renders the tool-native delegate agents (`.claude/agents/ab-*.md` and/or
-  `.codex/agents/ab-*.toml`) for the selected `target_tools`. `reprovision` runs only the
+  config, and renders the tool-native delegate agents (`.claude/agents/ab-*.md`,
+  `.codex/agents/ab-*.toml` and/or `.opencode/agent/ab-*.md`) for the selected `target_tools`. `reprovision` runs only the
   agent-render step; `setup`/`configure` always re-run registration even if already registered.
 - If invoked with `reset-defaults [scope]`, run the **restore-shipped-defaults** flow in
   `references/state-and-resume.md` → "reset-defaults": overwrite the asset-sourced
@@ -57,22 +57,23 @@ on **Continue** you detect any external-review changes with a git-only check and
 re-review to the alternate reviewer — never an inline read.)
 
 `{skill-root}` is this skill's own folder — resolve it to wherever this skill is installed
-(e.g. `.claude/skills/auto-bmad/` or `.codex/skills/auto-bmad/`). Reference files live under
+(e.g. `.claude/skills/auto-bmad/`, `.codex/skills/auto-bmad/` or `.opencode/skills/auto-bmad/`). Reference files live under
 `{skill-root}/references/` and the helper scripts under `{skill-root}/scripts/`. Read a
 reference file at the moment its step calls for it.
 
 ## Delegation mechanics
 
 - **Pick the spawn method by host/tier — read `references/delegation-runtime.md`.** It uses
-  `delegation.host` + `delegation.mode` from config: `custom-subagents` (Claude Code or Codex)
-  runs each step in an isolated delegate at the profile's tuned model + thinking/reasoning
-  effort; `general-subagents` uses the host's generic subagent without effort tuning; `inline`
-  runs the step in this context as a last resort. `phase_profiles` maps each phase to a profile
+  `delegation.host` + `delegation.mode` from config: `custom-subagents` (Claude Code, Codex or
+  opencode) runs each step in an isolated delegate at the profile's tuned model + thinking/reasoning
+  effort (opencode is model-only — no effort knob); `general-subagents` uses the host's generic
+  subagent without effort tuning; `inline` runs the step in this context as a last resort.
+  `phase_profiles` maps each phase to a profile
   (`ab-xhigh`/`ab-high`/`ab-alt-xhigh`/`ab-alt-high`); `profiles` holds each profile's per-tool model +
-  effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`)
-  are rendered at setup by `scripts/render-agents.py` from those profiles.
+  effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`,
+  `.opencode/agent/ab-*.md`) are rendered at setup by `scripts/render-agents.py` from those profiles.
 - **Opt-in external-CLI routing:** before picking a tier, check `delegation.cli_phases` — a phase
-  listed there is delegated to an external CLI (`claude -p` / `codex exec`) instead of an in-tool
+  listed there is delegated to an external CLI (`claude -p` / `codex exec` / `opencode run`) instead of an in-tool
   sub-agent (resolve it with `scripts/cli_delegate.py`; see `references/delegation-runtime.md` →
   "Per-phase external-CLI routing"). Still delegation — you build the command and parse the result,
   never read code. Default is empty (all in-tool).

@@ -27,15 +27,18 @@ profiles_source_version: "0.14.0"  # abm version whose assets/agents/profiles.ya
                                   # omits environment-detected fields (git.base_branch,
                                   # delegation.target_tools, ...) so a static guess is never written.
 delegation:                # spawn mechanism — host/mode auto-detected each run
-  host: auto               # auto (detect each run) | claude-code | codex | other
+  host: auto               # auto (detect each run) | claude-code | codex | opencode | other
   mode: auto               # auto (derive from host) | custom-subagents | general-subagents | inline
   target_tools:            # tools to provision agents for; detected from installed skill dirs and
     - claude-code          # confirmed at first run (.claude/skills=>claude-code, .agents/skills=>
-    - codex                # codex). Listing more than one = run in either tool with no reconfig.
+    - codex                # codex, .opencode/skills=>opencode). May also list `opencode`. Listing
+                           # more than one = run in any of those tools with no reconfig.
   cli_phases: {}           # OPT-IN per-phase override: route a phase to an external CLI instead of
                            # an in-tool sub-agent. Keys = phase_profiles keys, value = tool name
-                           # (claude|codex); model/effort come from that phase's profile's matching
-                           # tool block. Empty/absent => every phase uses its normal tier. Hand-edited
+                           # (claude|codex|opencode); model/effort come from that phase's profile's
+                           # matching tool block (opencode: model + variant, both optional => inherit
+                           # the user's opencode defaults). Empty/absent => every phase uses its tier.
+                           # Hand-edited
                            # like profiles; older configs lacking the key behave as {}. See
                            # delegation-runtime.md "Per-phase external-CLI routing". e.g.:
                            #   cli_phases: { code_review_review_secondary: codex, retrospective: codex }
@@ -62,7 +65,9 @@ code_review:
 # reprovision`; `/auto-bmad reset-defaults` discards edits and re-seeds from the asset (see
 # "reset-defaults" below). Shape only — see the asset for the actual model/effort defaults:
 profiles: {…}              # ab-xhigh | ab-high | ab-alt-xhigh | ab-alt-high, each:
-                           #   {claude: {model, effort}, codex: {model, reasoning_effort}}
+                           #   {claude: {model, effort}, codex: {model, reasoning_effort},
+                           #    opencode: {model, variant}}  # opencode is model-only + ships model
+                           #   BLANK (inherit your opencode default); variant is cli_phases-only
 phase_profiles: {…}        # create_story, dev_story, code_review_review,
                            #   code_review_review_secondary, code_review_fix, tea_triage,
                            #   tea_per_story, tea_epic, tea_epic_audit, retrospective, project_context
@@ -73,7 +78,10 @@ phase_profiles: {…}        # create_story, dev_story, code_review_review,
 `config.yaml` comment above; first run copies it here verbatim, shape only, so asset and doc can't
 drift. `delegation.host`/`mode` are re-detected each run and `target_tools` only controls which
 agent files were provisioned (see `delegation-runtime.md`). Codex model names ship as real
-defaults; retune `profiles` (in the asset) if your install differs.
+defaults; retune `profiles` (in the asset) if your install differs. **opencode is the exception —
+its `model` ships BLANK** (no knowable provider), so out of the box opencode delegates inherit the
+user's opencode default model; set `opencode.model` per profile for per-phase tiering + cross-vendor
+review diversity.
 
 ## First-run flow (only when config.yaml is absent)
 The single interactive episode in normal operation. Always confirm `target_tools`, then offer

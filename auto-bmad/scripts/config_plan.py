@@ -406,8 +406,16 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
     manual_review: list[dict] = []
     for name, ainfo in asset_prof.items():
         if name in cfg_prof:
+            a_vals = _profile_leaf_values(asset_lines, ainfo["start"], ainfo["end"])
             for key in sorted(ainfo["keys"] - cfg_prof[name]["keys"]):
                 if key.endswith(":"):  # a tool *block* header alone — its sub-keys cover it
+                    continue
+                # A missing sub-key whose ASSET value is BLANK needs no action: the absent sub-block
+                # behaves identically to the shipped blank default (e.g. opencode.model: "" => the
+                # delegate inherits the user's opencode default model). Flagging it would nag every
+                # run — manual_review feeds status:drift (see check_file) — for zero benefit. Only
+                # surface missing sub-keys that carry a REAL default value to restore.
+                if a_vals.get(key, "") == "":
                     continue
                 manual_review.append({"profile": name, "missing_key": key})
 
@@ -791,6 +799,8 @@ def _run_self_test() -> int:
         assert name in a_prof, f"asset profiles missing {name}"
         assert "claude:model" in a_prof[name]["keys"], a_prof[name]["keys"]
         assert "codex:reasoning_effort" in a_prof[name]["keys"], a_prof[name]["keys"]
+        # opencode block (model-only; ships blank) — the key must be recognised even with an empty value.
+        assert "opencode:model" in a_prof[name]["keys"], a_prof[name]["keys"]
 
     # find_block: blank lines / comments are transparent; next top-level key ends it.
     sample = "version: 1\nphase_profiles:\n  a: x\n\n  # note\n  b: y\ngit:\n  mode: auto\n".splitlines(keepends=True)
@@ -814,6 +824,9 @@ def _run_self_test() -> int:
         '    codex:\n'
         '      model: gpt-x\n'
         '      reasoning_effort: medium\n'
+        '    opencode:\n'
+        '      model: ""\n'
+        '      variant: ""\n'
         '  ab-high:\n'
         '    description: "infra"\n'
         '    role_blurb: "infra work"\n'
@@ -824,6 +837,9 @@ def _run_self_test() -> int:
         '    codex:\n'
         '      model: gpt-x\n'
         '      reasoning_effort: high\n'
+        '    opencode:\n'
+        '      model: ""\n'
+        '      variant: ""\n'
         'phase_profiles:\n'
         '  create_story: ab-xhigh\n'
         '  dev_story: ab-xhigh\n'
@@ -887,6 +903,37 @@ def _run_self_test() -> int:
     res3 = apply(cfg_subkey, asset_text, "0.9.0", "0.9.0")
     assert not res3["reseeded_profiles"], res3
     assert "claude:effort" in {m["missing_key"] for m in res3["manual_review"]}, res3
+
+    # --- opencode migration: a PRE-opencode config must NOT nag every run. ---
+    # opencode.model/variant ship BLANK, so a missing opencode block == the blank default == inherit;
+    # flagging it as manual_review would feed status:drift (see check_file) on EVERY run for an
+    # existing user, for zero action. So blank-default missing sub-keys are suppressed — while a
+    # missing sub-key with a REAL default value is still flagged (info3 above proves that path).
+    # Build a COMPLETE current-version config that predates opencode by stripping the opencode
+    # sub-blocks (header + indented children/comments) out of the shipped asset.
+    pre_lines, skip = [], False
+    for ln in asset_text.splitlines(keepends=True):
+        s, ind = ln.strip(), len(ln) - len(ln.lstrip(" "))
+        if s == "opencode:" and ind == 4:
+            skip = True
+            continue
+        if skip:
+            if s == "" or ind > 4:  # children / comment-continuation of the opencode block
+                continue
+            skip = False
+        pre_lines.append(ln)
+    pre_full = 'profiles_source_version: "0.9.0"\n' + "".join(pre_lines)
+    assert "opencode:" not in pre_full, "fixture: opencode blocks not fully stripped"
+    info_pre = analyze(pre_full, asset_text, "0.9.0", "0.9.0")
+    # The opencode-relevant drift sources are all clear: every profile/phase_profile is present
+    # (no reseed), the version matches, and manual_review is EMPTY — the stripped (blank-default)
+    # opencode sub-keys contribute nothing. Since check_file folds manual_review into status:drift,
+    # an empty manual_review here is exactly what keeps a pre-opencode config from nagging each run.
+    # (Setup-block drift is a separate axis tested below; not relevant to opencode.)
+    assert not info_pre["needs_reseed"], _public(info_pre)
+    assert not info_pre["version"]["drift"], info_pre["version"]
+    assert not info_pre["manual_review"], \
+        f"blank-default opencode keys must NOT be flagged (would nag every run): {info_pre['manual_review']}"
 
     # --- version stamp absent entirely (very old config) => inserted after `version:`. ---
     no_stamp = "version: 1\nprofiles:\n  ab-xhigh:\n    claude:\n      model: opus\n      effort: xhigh\n"

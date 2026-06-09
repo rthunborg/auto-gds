@@ -2,7 +2,7 @@
 
 This repo is a **BMAD standalone module** (one skill + a Claude `marketplace.json`). The skill
 (`auto-bmad`) is an orchestrator that runs the full BMAD story workflow one story at a time, on
-**Claude Code or Codex**. This file is guidance for working **on the module**, not for using it.
+**Claude Code, Codex, or opencode**. This file is guidance for working **on the module**, not for using it.
 
 ## Core principle (do not violate)
 The orchestrator **delegates BMAD work and reports** — it must never implement story work or run
@@ -45,14 +45,18 @@ orchestrator does delegated step work itself is the `inline` delegation tier (se
 ## Delegation is tiered (the heart of the module)
 BMAD abstracts neither sub-agent delegation nor per-agent model/effort, so we supply those with
 tool-native files and degrade gracefully:
-- **Tier 1 `custom-subagents`** (Claude Code, Codex) — each step runs in an isolated delegate at the
-  profile's tuned model + effort (Claude `.claude/agents/ab-*.md`; Codex `.codex/agents/ab-*.toml`).
+- **Tier 1 `custom-subagents`** (Claude Code, Codex, opencode) — each step runs in an isolated
+  delegate at the profile's tuned model + effort (Claude `.claude/agents/ab-*.md`; Codex
+  `.codex/agents/ab-*.toml`; opencode `.opencode/agent/ab-*.md` — **model-only**: no effort knob,
+  and a blank model ⇒ the delegate inherits the user's opencode default model).
 - **Tier 2 `general-subagents`** — generic subagents, no effort knob (effort not honored).
 - **Tier 3 `inline`** — no subagents; run the step in-context (documented last resort).
 
 Orthogonal to the tiers, an **opt-in per-phase external-CLI route** (`delegation.cli_phases`) can send
-a chosen phase to `claude -p` / `codex exec` instead of an in-tool sub-agent — for cross-tool
-diversity. It reads the *same* `profiles` blocks (claude→`--effort`, codex→`model_reasoning_effort`),
+a chosen phase to `claude -p` / `codex exec` / `opencode run` instead of an in-tool sub-agent — for
+cross-tool (and, via opencode, cross-vendor) diversity. It reads the *same* `profiles` blocks
+(claude→`--effort`, codex→`model_reasoning_effort`, opencode→`--variant`; opencode's model + variant
+are both optional ⇒ inherit the user's opencode defaults),
 is still delegation (the orchestrator builds the command + parses the result, never reads code),
 hard-stops on a failed preflight (binary/skills/auth), and leaves the three tiers untouched. The
 per-tool flag matrix + validation live in `scripts/cli_delegate.py` (tested), not orchestrator prose;
@@ -61,8 +65,9 @@ keep them there. Default empty ⇒ all in-tool.
 `assets/agents/profiles.yaml` is the **single source of truth** (per-profile, per-tool model+effort
 plus tool-neutral persona strings); `phase_profiles` maps each phase to a profile; and
 `scripts/render-agents.py` generates the tool-native files from it. Host/mode are `auto` and
-re-detected every run, so one provisioned project runs under either tool with no reconfiguration;
-`target_tools` only controls which agent files get generated. Full detail: `delegation-runtime.md`
+re-detected every run, so one provisioned project runs under any of those tools with no
+reconfiguration; `target_tools` only controls which agent files get generated. Full detail:
+`delegation-runtime.md`
 (host detection + the tiers + the `cli_phases` route) and `state-and-resume.md` (config/profiles
 schema, first-run).
 
@@ -192,8 +197,19 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
   invoked by naming the agent in natural language — Codex spawns/collects them. Model names are
   environment-specific (retunable per install), so they're config, not hardcoded — the shipped
   defaults are real.
+- **opencode** (verified against v1.16.2): markdown subagents in `.opencode/agent/` (SINGULAR —
+  `agent list` registers plural too, but docs/convention are singular); frontmatter `mode: subagent`
+  + optional `model: provider/model`, **no `name:` needed** (filename is the agent name) and **no
+  portable per-agent effort knob** (reasoning is provider-shaped — `reasoningEffort`/`thinking` —
+  set per-agent-name in `opencode.json`, NOT in our agent files; that's why opencode is model-only).
+  Multi-provider, so there's no shippable default ⇒ `opencode.model` ships BLANK (inherit). opencode
+  injects **`OPENCODE_SESSION_ID`** into the shell env of commands it runs (host-detection signal).
+  Headless: `opencode run` — prompt is a positional **arg** (NOT stdin), `-m provider/model`,
+  `--variant high|max|minimal` (reasoning), `--dir` (cwd, no `cd` needed), `--format json` (a JSONL
+  event stream — parsed defensively by `cli_delegate.extract_opencode_result`, hard-stop on empty),
+  `--dangerously-skip-permissions`. Skills load from `.opencode/skills/` or `~/.config/opencode/skills/`.
 - **BMAD** has no portable abstraction for delegation or model/effort; modules are skills copied
-  into a tool's skills dir (`.claude/skills/`, `.codex/skills/`). Hence the tiered design.
+  into a tool's skills dir (`.claude/skills/`, `.codex/skills/`, `.opencode/skills/`). Hence the tiered design.
 - **BMAD update of a custom-source module (`abm`):** `--action quick-update` only re-pulls modules
   cached under `~/.bmad/cache/` and **skips custom-source re-cloning entirely** (`installer.js
   quickUpdate` adds a custom module only if `findModuleSourceByCode` hits a cached repo). And

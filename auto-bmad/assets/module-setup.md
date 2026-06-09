@@ -79,6 +79,7 @@ module is ready to run immediately after setup.
    - `claude-code` if `.claude/skills/auto-bmad/` exists;
    - `codex` if `.agents/skills/auto-bmad/` exists (BMAD installs Codex skills under `.agents/`),
      or if `.codex/skills/auto-bmad/` / `~/.codex/skills/auto-bmad/` exists.
+   - `opencode` if `.opencode/skills/auto-bmad/` or `~/.config/opencode/skills/auto-bmad/` exists.
 
    Use that detected set as the **default** for the `target_tools` question (fall back to
    `[claude-code]` if nothing matches), then **still ask** — the user confirms, drops one, or adds
@@ -86,8 +87,9 @@ module is ready to run immediately after setup.
    pipeline (that's auto-detected each run).
 2. **Confirm a supported host is present** (informational — `delegation.host`/`mode` stay `auto`
    and are re-detected on every run, not pinned here): Claude Code if `${CLAUDE_PLUGIN_ROOT}` is
-   set or a `.claude/` dir exists; Codex if a `.codex/` dir or the `codex` CLI is present.
-   Claude Code and Codex support `custom-subagents`; a host with only a generic subagent
+   set or a `.claude/` dir exists; opencode if `${OPENCODE_SESSION_ID}` is set or a `.opencode/` dir
+   or the `opencode` CLI is present; Codex if a `.codex/` dir or the `codex` CLI is present.
+   Claude Code, Codex and opencode support `custom-subagents`; a host with only a generic subagent
    mechanism uses `general-subagents`, and one with none uses `inline` (see
    `references/delegation-runtime.md`).
 3. **Render the delegate files** for the selected tools (resolve `{project-root}` to the real
@@ -97,12 +99,16 @@ module is ready to run immediately after setup.
    python3 ./scripts/render-agents.py --project-root "{project-root}" --tools "<comma-joined target_tools>"
    ```
 
-   This writes `.claude/agents/ab-*.md` and/or `.codex/agents/ab-*.toml`. Surface the JSON
-   result; if it exits non-zero or reports warnings, show them.
-4. Both Claude Code and Codex profiles ship with real defaults that need no change. Model names
+   This writes `.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml` and/or `.opencode/agent/ab-*.md`
+   (note: opencode's dir is singular `agent/`). Surface the JSON result; if it exits non-zero or
+   reports warnings, show them.
+4. Claude Code and Codex profiles ship with real model defaults that need no change. Model names
    are environment-specific, so if a tool's install exposes different names the user can retune the
    `profiles` block in `{output_folder}/auto-bmad/config.yaml` and run `/auto-bmad reprovision` —
-   but don't flag this as a required manual step.
+   but don't flag this as a required manual step. **opencode is different:** its `model` ships BLANK,
+   so opencode delegates inherit the user's opencode default model and run out of the box — but for
+   per-phase model tiering and cross-vendor review diversity (e.g. point `ab-alt-*` at a different
+   provider), the user sets `opencode.model` per profile. Mention this as optional, not required.
 
 **Reprovision-only path:** if the user invoked with `reprovision` (or asked only to regenerate
 agents after editing profiles), skip config collection entirely and run just step 3 above,

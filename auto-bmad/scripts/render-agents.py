@@ -13,11 +13,15 @@ output (no Claude-vs-Codex drift):
     ``model:`` / ``effort:``)
   - Codex       -> ``{project-root}/.codex/agents/<name>.toml``  (``model`` /
     ``model_reasoning_effort``)
+  - opencode    -> ``{project-root}/.opencode/agent/<name>.md``  (frontmatter ``model:``
+    only — MODEL-ONLY; opencode has no per-agent effort knob, and a blank model is
+    omitted so the subagent inherits the user's opencode default model)
 
-Templates live at ``assets/agents/claude/agent.md.tmpl`` and
-``assets/agents/codex/agent.toml.tmpl`` and contain the placeholders
-``@@NAME@@``, ``@@DESCRIPTION@@``, ``@@ROLE_BLURB@@``, ``@@STATUS_EXAMPLE@@``,
-``@@MODEL@@``, ``@@EFFORT@@`` (Claude), and ``@@REASONING_EFFORT@@`` (Codex).
+Templates live at ``assets/agents/claude/agent.md.tmpl``,
+``assets/agents/codex/agent.toml.tmpl`` and ``assets/agents/opencode/agent.md.tmpl``
+and contain the placeholders ``@@NAME@@``, ``@@DESCRIPTION@@``, ``@@ROLE_BLURB@@``,
+``@@STATUS_EXAMPLE@@``, ``@@MODEL@@``, ``@@EFFORT@@`` (Claude),
+``@@REASONING_EFFORT@@`` (Codex), and the whole-line ``@@MODEL_LINE@@`` (opencode).
 
 The profiles source can be either the shipped ``assets/agents/profiles.yaml`` or
 the ``profiles:`` block of the runtime config
@@ -70,6 +74,20 @@ TOOLS = {
         "out_suffix": ".toml",
         "subs": {"@@MODEL@@": "model", "@@REASONING_EFFORT@@": "reasoning_effort"},
         "cfg_key": "codex",
+    },
+    # opencode markdown agents live in `.opencode/agent/` (singular — verified against
+    # opencode 1.16.2 `agent list`). They are MODEL-ONLY: no per-agent effort knob exists,
+    # and the model is OPTIONAL (blank => the subagent inherits the user's opencode default
+    # model). So opencode has no fixed `@@MODEL@@` placeholder; the renderer fills the
+    # whole-line `@@MODEL_LINE@@` token specially (see _plan) — `model: <provider/model>` or
+    # nothing. `subs` is empty because every per-tool field is handled there.
+    "opencode": {
+        "tmpl_dir": "opencode",
+        "tmpl_name": "agent.md.tmpl",
+        "out_dir": ".opencode/agent",
+        "out_suffix": ".md",
+        "subs": {},
+        "cfg_key": "opencode",
     },
 }
 
@@ -231,6 +249,14 @@ def _plan(
                     continue
                 content = content.replace(placeholder, str(tool_cfg[key]))
 
+            # opencode: the model is optional. Replace the whole-line `@@MODEL_LINE@@` token
+            # (placeholder + its trailing newline) with `model: <provider/model>` when a model is
+            # set, or NOTHING when blank — so a blank model omits the frontmatter line cleanly and
+            # the subagent inherits the user's opencode default model.
+            if tool == "opencode":
+                model = str(tool_cfg.get("model", "")).strip()
+                content = content.replace("@@MODEL_LINE@@\n", f"model: {model}\n" if model else "")
+
             leftover = re.findall(r"@@[A-Z_]+@@", content)
             if leftover:
                 warnings.append(f"{name} ({tool}): unfilled placeholders {sorted(set(leftover))}")
@@ -338,6 +364,12 @@ def _run_self_test() -> int:
         assert profiles[name]["claude"].get("effort"), f"{name}.claude.effort empty"
         assert profiles[name]["codex"].get("model"), f"{name}.codex.model empty"
         assert profiles[name]["codex"].get("reasoning_effort"), f"{name}.codex.reasoning_effort empty"
+        # opencode is MODEL-ONLY and ships the model BLANK (inherit the user's default), so assert the
+        # KEYS are present — never that they're truthy (empty string is the intended shipped value).
+        assert "opencode" in profiles[name], f"{name} missing opencode block"
+        assert "model" in profiles[name]["opencode"], f"{name}.opencode.model key missing"
+        assert "variant" in profiles[name]["opencode"], f"{name}.opencode.variant key missing"
+        assert profiles[name]["opencode"]["model"] == "", f"{name}.opencode.model should ship blank"
     assert profiles["ab-xhigh"]["claude"]["model"] == "opus"
     assert profiles["ab-xhigh"]["claude"]["effort"] == "xhigh"
     assert profiles["ab-alt-xhigh"]["claude"]["model"] == "sonnet"
@@ -396,10 +428,10 @@ def _run_self_test() -> int:
     assert commented["ab-xhigh"]["claude"] == {"model": "opus", "effort": "xhigh"}, commented
     assert commented["ab-xhigh"]["codex"]["reasoning_effort"] == "high", commented
 
-    # End-to-end render into a temp project root, both tools.
+    # End-to-end render into a temp project root, all three tools.
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
-        result = render(profiles, ["claude-code", "codex"], templates_dir, root)
+        result = render(profiles, ["claude-code", "codex", "opencode"], templates_dir, root)
         assert result["status"] == "success", result
         assert not result["warnings"], f"unexpected warnings: {result['warnings']}"
 
@@ -418,6 +450,26 @@ def _run_self_test() -> int:
         assert "@@" not in codex_xhigh, "unfilled placeholder in Codex output"
         assert "highest-stakes" in codex_xhigh, "description not substituted into Codex body"
         assert "implementing story code" in codex_xhigh, "role_blurb not substituted (codex)"
+
+        # opencode is MODEL-ONLY; the shipped model is blank => NO `model:` line (the subagent
+        # inherits the user's opencode default), and there is no `name:`/`effort:` field.
+        oc_xhigh = (root / ".opencode/agent/ab-xhigh.md").read_text(encoding="utf-8")
+        assert "mode: subagent" in oc_xhigh, oc_xhigh[:200]
+        assert "\nmodel:" not in oc_xhigh, "blank opencode model must omit the model: line"
+        assert "\nname:" not in oc_xhigh, "opencode agents must not carry a name: field (filename is the name)"
+        assert "@@" not in oc_xhigh, "unfilled placeholder in opencode output"
+        assert "highest-stakes" in oc_xhigh, "description not substituted into opencode frontmatter"
+        assert "implementing story code" in oc_xhigh, "role_blurb not substituted (opencode)"
+        assert "story moved to `review`" in oc_xhigh, "status_example not substituted (opencode)"
+
+        # opencode with a model SET => the `model:` frontmatter line IS emitted with that value.
+        oc_set = json.loads(json.dumps(profiles))  # deep copy
+        oc_set["ab-xhigh"]["opencode"]["model"] = "anthropic/claude-opus-4-5"
+        with tempfile.TemporaryDirectory() as td_oc:
+            render(oc_set, ["opencode"], templates_dir, Path(td_oc))
+            body = (Path(td_oc) / ".opencode/agent/ab-xhigh.md").read_text(encoding="utf-8")
+            assert "model: anthropic/claude-opus-4-5" in body, body[:200]
+            assert "@@" not in body, "unfilled placeholder with model set"
 
         # Cross-tool drift guard: the persona strings are identical on both
         # sides because they came from the single profiles entry. If a future
@@ -450,13 +502,13 @@ def _run_self_test() -> int:
             # Older Python: fall back to a structural sanity check.
             assert codex_xhigh.count('"""') == 2, "developer_instructions block malformed"
 
-        # All four profiles rendered for both tools => 8 files.
-        assert len(result["files_written"]) == 8, result["files_written"]
+        # All four profiles rendered for all three tools => 12 files.
+        assert len(result["files_written"]) == 12, result["files_written"]
 
         # --check: right after a render, everything is fresh.
-        chk = check(profiles, ["claude-code", "codex"], templates_dir, root)
+        chk = check(profiles, ["claude-code", "codex", "opencode"], templates_dir, root)
         assert chk["status"] == "fresh" and not chk["needs_reprovision"], chk
-        assert len(chk["ok"]) == 8 and not chk["stale"] and not chk["missing"], chk
+        assert len(chk["ok"]) == 12 and not chk["stale"] and not chk["missing"], chk
 
         # Editing a profile makes that agent's rendered output differ -> stale.
         bumped = json.loads(json.dumps(profiles))  # deep copy
@@ -510,7 +562,7 @@ def main() -> int:
         help="Diff on-disk agents vs current profiles/templates; report if reprovision is needed. Exit 1 if stale.",
     )
     parser.add_argument("--project-root", help="Project root to write .claude/agents and/or .codex/agents into.")
-    parser.add_argument("--tools", default="claude-code", help="Comma-separated: claude-code,codex")
+    parser.add_argument("--tools", default="claude-code", help="Comma-separated: claude-code,codex,opencode")
     parser.add_argument("--profiles", help="Profiles source (YAML). Default: shipped assets/agents/profiles.yaml")
     parser.add_argument("--templates-dir", help="Templates dir. Default: assets/agents next to this script.")
     parser.add_argument("--dry-run", action="store_true", help="Report what would be written without writing.")

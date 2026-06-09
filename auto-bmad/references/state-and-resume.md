@@ -27,6 +27,13 @@ delegation:                # spawn mechanism — host/mode auto-detected each ru
   target_tools:            # tools to provision agents for; detected from installed skill dirs and
     - claude-code          # confirmed at first run (.claude/skills=>claude-code, .agents/skills=>
     - codex                # codex). Listing more than one = run in either tool with no reconfig.
+  cli_phases: {}           # OPT-IN per-phase override: route a phase to an external CLI instead of
+                           # an in-tool sub-agent. Keys = phase_profiles keys, value = tool name
+                           # (claude|codex); model/effort come from that phase's profile's matching
+                           # tool block. Empty/absent => every phase uses its normal tier. Hand-edited
+                           # like profiles; older configs lacking the key behave as {}. See
+                           # delegation-runtime.md "Per-phase external-CLI routing". e.g.:
+                           #   cli_phases: { code_review_review_secondary: codex, retrospective: codex }
 tea:
   enabled: true            # set at first run after checking TEA skills exist
   framework_ci: prompt     # prompt | done | skip  (resolved at first run)
@@ -68,11 +75,12 @@ The single interactive episode in normal operation. Always confirm `target_tools
 **quick vs full** setup. Use AskUserQuestion.
 
 0. **Seed delegation & profiles (non-interactive):** set `delegation.host`/`mode` to `auto`
-   (re-detected each run — see `delegation-runtime.md`). Copy the `profiles` and `phase_profiles`
-   defaults from `{skill-root}/assets/agents/profiles.yaml` — these are file-editable, never
-   interviewed (point the user to `config.yaml` + `/auto-bmad reprovision` to retune). Detect the
-   live host; if it needs `custom-subagents` but its agent files are missing, run `reprovision`
-   (`scripts/render-agents.py`) before the pipeline starts.
+   (re-detected each run — see `delegation-runtime.md`) and seed `delegation.cli_phases: {}` (the
+   opt-in external-CLI routing map, off by default — hand-edited later, never interviewed). Copy the
+   `profiles` and `phase_profiles` defaults from `{skill-root}/assets/agents/profiles.yaml` — these
+   are file-editable, never interviewed (point the user to `config.yaml` + `/auto-bmad reprovision`
+   to retune). Detect the live host; if it needs `custom-subagents` but its agent files are missing,
+   run `reprovision` (`scripts/render-agents.py`) before the pipeline starts.
 1. **Confirm `target_tools` (always):** detect from the installed skill dirs on disk and confirm
    with the user — same procedure as setup, see `assets/module-setup.md` → "Provision Delegate
    Agents" (Step 1) for the exact detection rules. If `module-setup.md` already ran *this session*

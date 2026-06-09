@@ -21,6 +21,8 @@ auto-bmad/                             # the BMAD standalone module (one skill)
     render-agents.py                   # generates tool-native delegate agents from profiles
     config_plan.py                     # detects/heals profiles<->config drift (Phase 0 self-heal)
     review_findings.py                 # reconciles code-review findings + the deferral ledger
+    cli_delegate.py                    # resolves opt-in per-phase external-CLI delegation
+                                       # (claude -p / codex exec) + preflight validation
 CHANGELOG.md                           # hand-maintained; source for release notes
 scripts/bump-version.py                # release helper (repo tooling; does NOT ship in the skill)
 ```
@@ -38,6 +40,7 @@ locally as a test sandbox; it is gitignored — never commit it.
    python3 auto-bmad/scripts/render-agents.py --self-test
    python3 auto-bmad/scripts/config_plan.py --self-test
    python3 auto-bmad/scripts/review_findings.py --self-test
+   python3 auto-bmad/scripts/cli_delegate.py --self-test
    python3 scripts/bump-version.py --self-test
    # story_plan.py also runs standalone:
    python3 auto-bmad/scripts/story_plan.py --sprint-status path/to/sprint-status.yaml
@@ -76,6 +79,9 @@ locally as a test sandbox; it is gitignored — never commit it.
   `agents/{claude,codex}/agent.{md,toml}.tmpl`) and are gitignored — never hand-edit them. Add a
   profile only when an existing one doesn't fit, then re-render (`/auto-bmad reprovision`).
 - **TEA selection rules** live in `auto-bmad/references/tea-policy.md`.
+- **External-CLI routing** (the opt-in `delegation.cli_phases` path) is documented in
+  `references/delegation-runtime.md`; its per-tool flag matrix + preflight validation live in the
+  tested `scripts/cli_delegate.py`, never in orchestrator prose — keep them there.
 - **Every user-facing change needs a `CHANGELOG.md` note** under `## [Unreleased]` (correct
   Keep-a-Changelog heading) in the same PR. Never bump the version files by hand — `scripts/bump-version.py`
   keeps the four version strings in sync at release time.

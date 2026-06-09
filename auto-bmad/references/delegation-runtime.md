@@ -4,10 +4,12 @@
 **how** to spawn it on the current host and degrade gracefully when the host can't do isolated,
 effort-tuned subagents.
 
-Two config fields (in `{output_folder}/auto-bmad/config.yaml`, see `state-and-resume.md`) drive
+Three config fields (in `{output_folder}/auto-bmad/config.yaml`, see `state-and-resume.md`) drive
 everything:
 - `delegation.host` — `claude-code` | `codex` | `other`
 - `delegation.mode` — `custom-subagents` | `general-subagents` | `inline`
+- `delegation.cli_phases` — opt-in per-phase override that delegates a phase to an external CLI
+  instead of an in-tool sub-agent (absent/empty ⇒ none; see "Per-phase external-CLI routing" below).
 
 `phase_profiles` (also in config) maps each phase to a profile name (`ab-xhigh`, `ab-high`,
 `ab-alt-xhigh`, `ab-alt-high`); `profiles` holds each profile's per-tool model + effort.
@@ -68,6 +70,76 @@ restart restores full fidelity. (Only a host with no custom-subagent mechanism a
 the tiers below.) This is also why the first-run stop (`state-and-resume.md`) sends the user to
 relaunch the tool, not merely open a fresh context.
 
+## Per-phase external-CLI routing (opt-in — sits *above* the tiers)
+
+A phase can be delegated to an **external CLI** — `claude -p` or `codex exec` — instead of an in-tool
+sub-agent. This is **opt-in and orthogonal**: it changes nothing about the three tiers below, and a
+phase that isn't routed falls straight through to them. The opt-in is the `delegation.cli_phases` map
+in config (keys = `phase_profiles` keys, value = a tool name; absent/empty ⇒ **every phase uses its
+normal tier**):
+
+```yaml
+delegation:
+  cli_phases:
+    code_review_review_secondary: codex   # run this phase on `codex exec` (cross-tool diversity)
+    retrospective: codex
+```
+
+**Before spawning any phase, check `cli_phases` first.** If the phase key is present, take the CLI
+path below; otherwise drop to the tiers. The CLI path is **still delegation** — you build a command,
+pipe a prompt, capture the child's structured-result block, then do your own git/finalize bookkeeping;
+you never read or write story code yourself. Same structured-result contract, state, resume, retro
+notes, and checkpoints as every other delegation.
+
+**Resolve the invocation with the helper — do not hand-build the command** (the per-tool flag matrix
+is exactly what it pins down):
+
+```bash
+python3 {skill-root}/scripts/cli_delegate.py --phase <phase> \
+  --config "{output_folder}/auto-bmad/config.yaml" --project-root "{project-root}" \
+  --story-key <story_key> --host <resolved-host: claude-code|codex> --mkdir
+```
+
+(Pass the **resolved** host you detected this run, not the literal config `auto`; the helper skips the
+auth probe for the host tool and probes the other. Omitting `--host` just always probes — safe.)
+
+It prints JSON. `routed:false` ⇒ use the normal tier. Otherwise it gives `tool`, `model`, `effort`
+(claude `effort` / codex `reasoning_effort` from the phase's profile's matching tool block — the same
+numbers `render-agents.py` bakes into the in-tool delegates), the `argv` (prompt-less — you pipe the
+prompt to **stdin**), `cwd`, the OS-temp `capture_log`, and how to read the result back. It also runs
+the **preflight `validation`** (binary on PATH, that tool's BMAD skills present, and — for the
+**non-host** tool only, since the host is authed by definition — `auth`). **`ok:false` ⇒ hard-stop**
+with its `errors`; never silently degrade to an agent (the user opted in deliberately, and falling
+back would hide the cross-tool intent). Skills are looked up in the tool's **skills dir** — claude
+`.claude/skills/`; codex `.agents/skills/` *or* `.codex/skills/` *or* `~/.codex/skills/` — **not**
+`target_tools` (the CLI path consumes no rendered agent files, so `target_tools` is irrelevant here;
+don't "fix" that). Echo the routed phases + resolved tool/model/effort in the Phase 0 preflight and
+the final report, next to `delegation.mode`.
+
+**Build the prompt exactly as Tier 2 does** (a CLI invocation has no pre-rendered agent persona):
+the shared autonomy directive from `delegation.md` **plus** the "How you operate / What you return"
+body from `assets/agents/claude/agent.md.tmpl`, with the mapped profile's `role_blurb` /
+`status_example` substituted, **plus** the `delegation.md` step body with placeholders filled (story
+id, absolute paths).
+
+**Spawn it in-place and capture:** run `argv` with the prompt on stdin, in the **same repo dir**
+(`cwd`) — no HOME/Docker isolation; the child edits the real working tree you then commit. **codex**
+pins its working root with `-C <cwd>` in the argv, but the **claude** argv has no equivalent — so for
+a `claude` route you MUST `cd "$cwd"` before the call (a headless `claude -p` edits whatever the shell
+cwd is). A routed step can outlive the 10-min foreground cap (`dev_story`), so run it in the
+**background** with stdout redirected to `capture_log` and monitor to process exit. Then read the
+result from `result_source`: claude → parse `result_field` (`.result`) out of the JSON envelope and
+treat `error_field` (`.is_error`) true as a failed delegation; codex → read the file verbatim (the
+`-o` last-message — the clean, complete block). `capture_log` is **debug-grade and lives outside the
+repo** — surface its path in the report **only when a delegation fails**.
+
+Notes: codex runs under its `-s workspace-write` sandbox (network-restricted) — a phase needing
+network/installs may not suit codex; route those to `claude` or leave them in-tool. Routing
+`code_review_review` / `code_review_review_secondary` sends **all four** code-review fan-out delegates
+(three lenses + triage) through the CLI — one invocation each, still sequential, but pass a distinct
+`--label` per delegate (e.g. `blind-hunter`, `edge-case`, `acceptance-auditor`, `triage`) so their
+`capture_log` / `-o` paths don't collide.
+
 ## Tier 1 — `custom-subagents` (Claude Code & Codex)
 
 Full fidelity: the delegate runs in an isolated context at the profile's tuned model + effort.
@@ -122,5 +194,7 @@ To keep the rest of the machinery intact:
 ## One rule that survives every tier
 
 The pipeline, phase conditions, TEA policy, git/PR conventions, resume logic, and the structured
-result contract are **identical across tiers**. Only the spawn mechanism changes. Never invent a
-delegation path not listed here; if the host fits none, use `inline`.
+result contract are **identical across tiers** — and across the opt-in external-CLI path above. Only
+the spawn mechanism changes. Never invent a delegation path not listed here (the tiers + the
+`cli_phases` route are the complete set); if a phase isn't CLI-routed and the host fits no tier, use
+`inline`.

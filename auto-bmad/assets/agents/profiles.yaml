@@ -5,7 +5,10 @@
 #     used to render the SAME wording into both Claude and Codex agent files —
 #     this is where every per-profile difference lives, so Claude vs Codex
 #     output cannot drift;
-#   * per-tool model + effort, used to fill in the tool-native frontmatter.
+#   * per-tool model + effort, used to fill in the tool-native frontmatter
+#     (and read directly by scripts/cli_delegate.py when a phase is routed to an
+#     external CLI via delegation.cli_phases — the claude/codex block picks the
+#     model + --effort / model_reasoning_effort for that `claude -p` / `codex exec`).
 #
 # `scripts/render-agents.py` reads this file (or the `profiles:` block of the
 # runtime config) and writes the tool-native delegate definitions from ONE

@@ -50,12 +50,21 @@ tool-native files and degrade gracefully:
 - **Tier 2 `general-subagents`** — generic subagents, no effort knob (effort not honored).
 - **Tier 3 `inline`** — no subagents; run the step in-context (documented last resort).
 
+Orthogonal to the tiers, an **opt-in per-phase external-CLI route** (`delegation.cli_phases`) can send
+a chosen phase to `claude -p` / `codex exec` instead of an in-tool sub-agent — for cross-tool
+diversity. It reads the *same* `profiles` blocks (claude→`--effort`, codex→`model_reasoning_effort`),
+is still delegation (the orchestrator builds the command + parses the result, never reads code),
+hard-stops on a failed preflight (binary/skills/auth), and leaves the three tiers untouched. The
+per-tool flag matrix + validation live in `scripts/cli_delegate.py` (tested), not orchestrator prose;
+keep them there. Default empty ⇒ all in-tool.
+
 `assets/agents/profiles.yaml` is the **single source of truth** (per-profile, per-tool model+effort
 plus tool-neutral persona strings); `phase_profiles` maps each phase to a profile; and
 `scripts/render-agents.py` generates the tool-native files from it. Host/mode are `auto` and
 re-detected every run, so one provisioned project runs under either tool with no reconfiguration;
 `target_tools` only controls which agent files get generated. Full detail: `delegation-runtime.md`
-(host detection + the tiers) and `state-and-resume.md` (config/profiles schema, first-run).
+(host detection + the tiers + the `cli_phases` route) and `state-and-resume.md` (config/profiles
+schema, first-run).
 
 ## Layout & where behavior lives
 - `.claude-plugin/marketplace.json` — Claude distribution (lists the single `./auto-bmad` skill).
@@ -81,6 +90,9 @@ re-detected every run, so one provisioned project runs under either tool with no
   - `config_plan.py` — detects and additively heals drift between the shipped `profiles.yaml` and a
     project's runtime `config.yaml`.
   - `review_findings.py` — Phase 7 reconciliation reader for a story's `### Review Findings`.
+  - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
+    builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-
+    validates binary/skills/auth. Pure `resolve()` + live `validate()`.
   - `merge-config.py` + `merge-help-csv.py` — config/CSV merge (BMAD template; PyYAML via the
     installer's environment).
 - **Repo-root tooling, NOT shipped in the skill:** `CHANGELOG.md` (hand-maintained),
@@ -95,6 +107,7 @@ python3 auto-bmad/scripts/state_plan.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
 python3 auto-bmad/scripts/config_plan.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test
+python3 auto-bmad/scripts/cli_delegate.py --self-test
 # Maintainer-only skill (tracked under .claude/ via gitignore exception; NOT shipped to users):
 python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test
 # Marketplace manifest is valid JSON:

@@ -71,6 +71,11 @@ reference file at the moment its step calls for it.
   (`ab-xhigh`/`ab-high`/`ab-alt-xhigh`/`ab-alt-high`); `profiles` holds each profile's per-tool model +
   effort. The tool-native delegate files (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`)
   are rendered at setup by `scripts/render-agents.py` from those profiles.
+- **Opt-in external-CLI routing:** before picking a tier, check `delegation.cli_phases` — a phase
+  listed there is delegated to an external CLI (`claude -p` / `codex exec`) instead of an in-tool
+  sub-agent (resolve it with `scripts/cli_delegate.py`; see `references/delegation-runtime.md` →
+  "Per-phase external-CLI routing"). Still delegation — you build the command and parse the result,
+  never read code. Default is empty (all in-tool).
 - The delegate prompt is always the **exact** content from `references/delegation.md` for that
   step, with placeholders filled (story id, absolute file paths). Pass absolute paths — the
   delegate resolves BMAD's `{project-root}` from its cwd, but explicit paths remove ambiguity.

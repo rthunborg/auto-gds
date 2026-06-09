@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Any pipeline phase can now be delegated to an external CLI instead of an in-tool sub-agent.** Set
+  `delegation.cli_phases` in `config.yaml` (e.g. `{ code_review_review_secondary: codex }`) to run a
+  chosen phase via `claude -p` or `codex exec` for cross-tool diversity; model + effort come from that
+  phase's profile. Opt-in and off by default — all phases use in-tool agents unless you route them.
+
 ## [0.13.6] - 2026-06-08
 
 ### Changed

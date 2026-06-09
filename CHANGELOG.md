@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Phase 9's CI wait now runs as a deterministic script.** `ci_wait.py` polls `gh pr checks`,
+  classifies the pinned `ci_status` verdict, and resolves the run URL by head SHA — replacing
+  the orchestrator's hand-rolled polling loop. (git-and-pr.md)
+
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage
   delegate must tag every persisted finding (`[Review][Patch][High] …`) and `review_findings.py`
   parses the tags (`open_severity`, `open_crit_high`; an untagged finding counts as Critical/High,

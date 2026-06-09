@@ -116,6 +116,8 @@ schema, first-run).
   - `review_findings.py` — Phase 7 reconciliation reader for a story's `### Review Findings`.
   - `review_loop.py` — Phase 7 loop driver: `prep-diff` builds the review diff in a temp dir,
     `gate` encodes the loop's decision table, `post-fix` verifies each fix pass.
+  - `ci_wait.py` — Phase 9 CI wait: polls `gh pr checks`, classifies the pinned `ci_status`
+    verdict (passed/failed/timeout/none), and resolves `ci_run_url` by head SHA.
   - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
     builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-
     validates binary/skills/auth. Pure `resolve()` + live `validate()`.
@@ -137,6 +139,7 @@ python3 auto-bmad/scripts/config_plan.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test
 python3 auto-bmad/scripts/review_loop.py --self-test
 python3 auto-bmad/scripts/cli_delegate.py --self-test
+python3 auto-bmad/scripts/ci_wait.py --self-test
 # Maintainer-only skill (tracked under .claude/ via gitignore exception; NOT shipped to users):
 python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test
 # Marketplace manifest is valid JSON:

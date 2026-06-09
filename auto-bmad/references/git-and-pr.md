@@ -144,21 +144,23 @@ shell. The rules below are the normative definition the script implements:
 - Capture the returned PR URL into state (`pr_url`) for the **chat** report (chat-only artifact).
 - **CI link & wait:** if the repo has CI workflows (test existence with `find .github/workflows
   -name '*.yml' -o -name '*.yaml'` or `test -d`, never a bare `ls .github/workflows/*` glob —
-  unmatched it aborts under zsh/fish), the push/PR will have triggered a run. Capture its URL — query the run for the pushed head SHA:
-  `gh run list --branch <branch> --limit 1 --json url,workflowName,status,headSha`
-  (match `headSha` to the pushed commit), falling back to `gh pr checks <pr-number>` or the
-  branch's Actions tab (`<repo_url>/actions?query=branch:<branch>`) if no run has registered yet.
-  Store it in state (`ci_run_url`).
+  unmatched it aborts under zsh/fish), the push/PR will have triggered a run. The URL capture and
+  the wait are one `ci_wait.py` call (see "How to wait" below) — store the `ci_run_url` it returns
+  in state; when it is `null` (no run registered yet), fall back to the branch's Actions tab
+  (`<repo_url>/actions?query=branch:<branch>`).
 
   Then evaluate `ci_status` and, when warranted, **wait for in-progress checks to finish**:
   - **When to wait:** only if the merge prompt is effectively enabled this run —
     `git.offer_merge: true` AND no `skip merge-prompt` override. When the prompt is off, do not
     wait — just link the run and leave `ci_status: unknown`.
-  - **How to wait:** poll `gh pr checks <pr-number> --json bucket,state,name` every ~20s until no
-    check is `pending`/`in_progress`, capped at `git.ci_wait_minutes` (default 30). `gh pr checks
-    --watch` is acceptable as long as the call honors the cap. Don't echo per-poll noise — print
-    one "waiting on CI (cap N min)" line, then the resolution.
-  - **Outcomes** (record in state as `ci_status`):
+  - **How to wait:** one deterministic call —
+    `python3 {skill-root}/scripts/ci_wait.py --pr <pr-number> --cap-minutes <git.ci_wait_minutes>
+    --resolve-run-url --branch <branch> --head-sha <sha>` — then read `ci_status` and `ci_run_url`
+    from its single JSON object. The script owns the poll cadence (~20s), the cap (default 30),
+    and the output discipline (one stderr "waiting on CI…" line, no per-poll noise). Exit 2 means
+    it couldn't evaluate CI (gh missing/errored) — leave `ci_status: unknown`, never `failed`.
+  - **Outcomes** (record in state as `ci_status` — this list is normative; `ci_wait.py` pins these
+    exact values):
     - `passed` — every required check is `success` (or `neutral`/`skipped`).
     - `failed` — any required check is `failure`/`cancelled`/`timed_out`/`action_required`.
     - `timeout` — cap reached with checks still running.

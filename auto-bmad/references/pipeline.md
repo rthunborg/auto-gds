@@ -502,15 +502,28 @@ runs — step 1.)
   on its own** — it folds into the single finalize commit below (alongside the BMAD-status flip),
   so the post-push bookkeeping is **one** commit, never a `mark done` + `record PR metadata` +
   `record CI status` chain.
-- **Advance the BMAD-level status on a clean completion only.** A **clean completion** = the full
-  negation of the draft predicate (see `git-and-pr.md` → "PR"); a **caveated completion** = any
-  predicate clause fires (draft PR, recorded blocker, waived gate, CI failed/timed-out). On a
-  clean completion, flip the story to `done` in the two BMAD-level sources so the next run
-  advances past it:
+- **Advance the BMAD-level status on a clean completion only.** Don't re-derive the verdict by
+  hand — evaluate the draft predicate deterministically (pass the live post-wait `ci_status` when
+  Phase 9 waited; pass `--no-pr-draft` when that override is active — it changes only `draft`,
+  never `clean_completion`):
+  ```
+  python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad/state \
+    --story-key {key} --finalize [--ci-status passed|failed|timeout|none] [--no-pr-draft]
+  ```
+  A **clean completion** = `clean_completion: true` (no clause fired — the full negation of the
+  draft predicate, see `git-and-pr.md` → "PR"); a **caveated completion** = any predicate clause
+  fires (draft PR, recorded blocker, waived gate, CI failed/timed-out — `reasons` names them).
+  When `flip_bmad_status` is true, flip the story to `done` in the two BMAD-level sources so the
+  next run advances past it — one idempotent call, value-only edits that preserve the rest of
+  both files:
+  ```
+  python3 {skill-root}/scripts/story_plan.py --mark-done {key} \
+    --sprint-status <impl>/sprint-status.yaml --story-file <impl>/{key}.md
+  ```
   - the **story file `Status:`** field (the same one `dev-story` set to `review`) → `done`;
   - the **`<impl>/sprint-status.yaml`** entry for `{key}` → `done` (the flat `development_status:`
-    map `story_plan.py` reads; change only that one line's value and preserve the rest of the file).
-  On a caveated completion, **leave both BMAD-level sources at `review`** so the story keeps
+    map `story_plan.py` reads; only that one line's value changes).
+  On a caveated completion (`flip_bmad_status: false`), **leave both BMAD-level sources at `review`** so the story keeps
   re-surfacing until a human acts (a re-run then finds the auto-bmad state already `done` and
   reports it complete rather than redoing it — see `state-and-resume.md`). This flip is
   orchestrator-owned finalize bookkeeping, **not** a delegated step (`git-and-pr.md` → "Ownership").

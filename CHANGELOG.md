@@ -40,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-check re-delegates a half-done fix once, then escalates to `needs-human`
   (review_loop.py post-fix).
 
+- **`story_plan.py --mark-done` flips a story's BMAD status to `done`.** One idempotent,
+  byte-preserving call updates the `sprint-status.yaml` entry and the story file's `Status:`
+  line, replacing the Phase 9 hand-edit.
+
+- **`state_plan.py --finalize` decides draft vs clean completion deterministically.** It
+  evaluates the four draft-predicate clauses from the story's state file plus the live
+  `--ci-status`, emitting `draft` / `clean_completion` / `flip_bmad_status` (`--no-pr-draft`
+  changes only `draft`).
+
 ### Changed
 
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage

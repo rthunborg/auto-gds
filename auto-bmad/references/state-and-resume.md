@@ -307,7 +307,9 @@ intervention that traps the pipeline: `story_plan.py` (precedence above) keeps r
 just-finished `review` story, but its auto-bmad `state/{key}.yaml` is already `done`, so the run
 reports "already complete" and stops — it never advances. To avoid this, **Phase 9 flips the
 BMAD-level status (story file `Status:` + the `sprint-status.yaml` entry) to `done` on a clean
-completion** (non-draft PR — see `pipeline.md` Phase 9), decoupling `done` from the human's
+completion** (the predicate `state_plan.py --finalize` evaluates is false ⇒ `flip_bmad_status:
+true`, executed by `story_plan.py --mark-done {key} --sprint-status … --story-file …` — see
+`pipeline.md` Phase 9), decoupling `done` from the human's
 merge so `story_plan.py` moves on to the next story. A **caveated** completion (draft PR / blocker
 / waived gate / CI red or timed-out) deliberately stays at `review`: it still needs a human, so it keeps re-surfacing —
 and a re-run, finding the auto-bmad state already `done`, reports it complete (per the rule below)

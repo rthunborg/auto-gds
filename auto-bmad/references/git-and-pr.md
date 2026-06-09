@@ -109,7 +109,9 @@ shell. The rules below are the normative definition the script implements:
 ## PR (Phase 9, mode `remote` only)
 - Push: `git push -u origin <branch>`.
 - Open PR: `gh pr create --base <base_branch> --head <branch> --title "<title>" --body "<body>"`.
-  Add `--draft` if **any** of these hold (the **draft predicate**):
+  Add `--draft` if **any** of these hold (the **draft predicate** — evaluated deterministically by
+  `scripts/state_plan.py --finalize` from the story's state file plus the live `--ci-status`; the
+  four clauses below remain the normative definition the script implements):
   1. a blocker was recorded;
   2. `convergence_unverified` is `true` (Phase 7: the review loop hit `max_iterations` while the
      last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High;
@@ -127,8 +129,10 @@ shell. The rules below are the normative definition the script implements:
   **The negation of this same draft predicate is the "clean completion" test** that decides
   whether Phase 9 also flips the BMAD-level story status (story file `Status:` + `sprint-status.yaml`)
   to `done` — predicate false ⇒ flip, any clause true ⇒ leave at `review` (see `pipeline.md`
-  Phase 9; it is the *predicate* that decides, not the PR's actual draft flag — `no_pr_draft` changes
-  only the flag). Keep the two coupled if you edit it.
+  Phase 9). `state_plan.py --finalize` emits both verdicts coupled in one JSON — `draft` and
+  `clean_completion`/`flip_bmad_status` — and it is the *predicate* that decides, not the PR's
+  actual draft flag: the `no_pr_draft` override (`--no-pr-draft`) forces only `draft` false and
+  never touches `clean_completion`. Keep the two coupled if you edit it.
 - Title: a conventional summary of the story, e.g. `feat(story-1-2): user authentication`.
 - Body must include:
   - one-paragraph summary of what the story delivered;

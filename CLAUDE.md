@@ -96,8 +96,10 @@ schema, first-run).
   capability registry, and the self-registration/provisioning flow.
 - `auto-bmad/scripts/` — dependency-free helpers, each with a `--self-test` and a self-documenting
   docstring (read the script for exact behavior):
-  - `story_plan.py` — sprint-status reader.
-  - `state_plan.py` — auto-bmad `state/{key}.yaml` reader (resume detection).
+  - `story_plan.py` — sprint-status reader; `--mark-done` performs the Phase 9 BMAD-status flip
+    (sprint entry + story-file `Status:` → `done`, byte-preserving, idempotent).
+  - `state_plan.py` — auto-bmad `state/{key}.yaml` reader (resume detection); `--finalize`
+    evaluates the Phase 9 draft predicate / clean-completion verdict (`flip_bmad_status`).
   - `state_update.py` — deterministic per-story state/report/retro writer: full-schema state
     writes (init / JSON patch / phase-done), the timing-start/-pause clock brackets, literal
     report-section rendering, and skip-empty retro appends. Lockstep-self-tested against the

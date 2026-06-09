@@ -115,7 +115,8 @@ are setup answers, not shipped defaults (reset *overwrites*, where the Phase 0 h
    ```
    python3 {skill-root}/scripts/config_plan.py --reset <scope> --config <output_folder>/auto-bmad/config.yaml
    ```
-   Empty `would_change` **and** empty `removed_profiles` → "Already at shipped defaults for `<scope>`." and stop.
+   Empty `would_change`, empty `removed_profiles`, **and** no `version_restamp` → "Already at
+   shipped defaults for `<scope>`." and stop.
 3. **Confirm** with `AskUserQuestion`, showing the `current → default` diff (truncate long persona
    strings) **and, called out separately — never buried in the diff — any `removed_profiles`**:
    those blocks are deleted outright, so a user-added profile would be lost. Options: **Reset** /
@@ -159,8 +160,8 @@ tea_selected: [atdd, automate]   # from triage; [] if trivial or TEA off; may al
 tea_rationale: "touches auth -> High risk"
 epic_story_count: 12             # stories under epic {e} (from sprint-status); gates the long-epic trace advisory
 stories_after_in_epic: 7         # epic stories ordered after this one (0=last); with epic_story_count, drives the trace-advisory distance gate (skip the last skip_last_stories)
-completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here only once BOTH its sub-step gates resolved (ran, or gate false)
-code_review_iterations: 1
+completed_phases: [0, 1, 2, 3, 4, 5, 6] # phase numbers from pipeline.md; gate-false no-op phases land here too (override-window skips do NOT); Phase 2 only once BOTH its sub-step gates resolved (ran, or gate false)
+code_review_iterations: 1      # the review-loop iteration currently in progress (1-based); on a mid-iteration resume, re-run THIS iteration's step-3 gate (it is pure) and obey its action
 code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (code_review.skip_hitl_on_clean_convergence=true AND convergence_unverified=false), in which case proceed to the Phase 7 tail without re-opening
 hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached)
 external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue; capped by code_review.max_iterations; 0 if none
@@ -208,7 +209,8 @@ overrides both and targets that story directly):
    story is the target — finish in-flight work before starting anything new. State files are
    named `{key}.yaml` (e.g. `1-2-user-auth.yaml`) — **no `story-` prefix**: the `story-{e}-{s}`
    form appears only in commit/PR scopes, never in a filename. **Don't hand-roll shell for this** —
-   never probe with raw shell globs (`CLAUDE.md` → "Shell globs"); call the deterministic reader:
+   never probe with raw shell globs (unmatched ⇒ `nomatch` abort under zsh/fish); call the
+   deterministic reader:
    ```
    python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad/state
    ```
@@ -233,7 +235,8 @@ python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad
 ```
 - `resume: true` (file exists, `status != done`) → **resume**: skip phases already in
   `completed_phases`; if Phase 7 is in progress, continue the review loop from
-  `code_review_iterations` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
+  `code_review_iterations` — re-run that iteration's step-3 gate (it is pure) and obey its
+  `action` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
   HITL halt rather than re-iterating — the re-opened halt re-runs its git-only change check, so a
   post-halt external-change re-review resumes naturally from `external_review_iterations`; but if
   the step-4 skip gate applies — `code_review.skip_hitl_on_clean_convergence` true and
@@ -297,7 +300,9 @@ and a draft's summary reason — is a summary, not an artifact: it belongs in th
   `(final — caveated)` (finalized but left at `review`: draft PR / blocker / waived gate / CI red),
   `(halted — <reason>)` for a stop before Phase 9 (`needs-human`, `override stop_before: <phase>`,
   `override stop_after: <phase>` — the override tokens spelled as in `overrides.md`). Lineage is
-  not in the tag — a prior section plus the `Continues:` line already mark a resume.
+  not in the tag — a prior section plus the `Continues:` line already mark a resume. (A clause-4
+  caveat — CI red/timeout — resolves only *after* the pre-push write, so it shows up in the chat
+  report and in a later resume section's tag, never in the section written before push.)
 - The **only** overwrite is a deliberate full re-run of an already-`done` story, after explicit
   user confirmation ("overwrite the existing report log for {key}?") — only then pass
   `--overwrite-confirmed` (without the flag the script always appends); if declined, append instead.

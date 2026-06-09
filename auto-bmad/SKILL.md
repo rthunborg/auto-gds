@@ -93,10 +93,13 @@ invocation carried any instructions — `references/overrides.md`, then:
    **echo the interpretation plus the resolved phase window/skips to the user**, and record them
    in state under `overrides`. If `dry_run`, print the plan and stop here. (`skip tea` flips
    `tea.enabled` off for this run, affecting sub-steps 1 and 4 below.)
-1. **Skill availability:** verify the BMAD skills required for the selected path exist
-   (core always; TEA set only if `tea.enabled`; epic-end skills if this is a last story) via
-   `preflight.py --require-skills <csv> --skills-dirs <host skills dirs>` (its `skills.missing`
-   list). Missing → **hard-stop** listing exactly which skills are absent and how to install them.
+1. **Skill availability:** the BMAD skills required for the selected path must exist — the
+   `/bmad-*` skills named in `delegation.md` for the phases that will run (core always; TEA set
+   only if `tea.enabled`; epic-end skills if this is a last story). Finalize the list AFTER
+   sub-step 2 picks the target, and check it via sub-step 4's single `preflight.py` call:
+   `--require-skills <csv> --skills-dirs <the host's per-tool skills dirs — the lookup list in
+   `delegation-runtime.md` → "Per-phase external-CLI routing">`; obey `skills.missing`.
+   Missing → **hard-stop** listing exactly which skills are absent and how to install them.
 2. **Target story** (precedence when NO `--story` argument is given):
    a. **Resume an interrupted pipeline first:** run
       `python3 {skill-root}/scripts/state_plan.py --state-dir <output_folder>/auto-bmad/state`.
@@ -108,7 +111,7 @@ invocation carried any instructions — `references/overrides.md`, then:
       backlog → retrospective`) resumes BMAD-level unfinished work before fresh backlog.
    With a `--story <arg>`: pass `--story <arg>` to the script (overrides the above). Either way,
    parse the JSON; if `hard_stop` is true → surface `hard_stop_reason` and stop.
-3. **Resume check:** for the chosen `story_key`, run the same reader with
+3. **Resume check:** for the chosen `story_key`, run `state_plan.py` again with
    `--story-key {story_key}` (exact-path lookup, no glob). `resume: true` ⇒ resume from the first
    phase not in `completed_phases` (and continue the review loop from `code_review_iterations`);
    otherwise initialize a fresh state file in Phase 1 — but first apply the **status-mismatch
@@ -120,7 +123,8 @@ invocation carried any instructions — `references/overrides.md`, then:
    (honor `hard_stop`/`hard_stop_reasons`) and `project_context.found` → record
    `needs_project_context_bootstrap` in state. Then, **only if TEA enabled**, delegate the
    story-risk classification to the `tea_triage` profile to pick per-story TEA skills; record
-   the decisions in state.
+   the decisions in state. (On a resume with Phase 0 already in `completed_phases`, reuse the
+   recorded `tea_risk`/`tea_selected` — don't re-delegate the triage.)
 
 ### Step 2 — Run the pipeline
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases

@@ -7,9 +7,12 @@ also names its `phase_profiles` **key** — the underscored form, e.g. `→ crea
 key → profile → model+effort via config — the mapping lives only in config, never hardcode a
 profile name here). `delegation.md` owns the exact `/bmad-*` command + prompt; spawn it for the
 current host/tier per `delegation-runtime.md` → read the result → if `blocked`/`needs-human`, stop
-and report → else update the state file (append retro notes, mark the phase done in
-`completed_phases`, record timing — see `state-and-resume.md`) and **commit it in the same single
-commit as the phase's artifacts** (see `git-and-pr.md` → "Commits"; **never** a standalone
+and report → else update the state file via `state_update.py` (`phase-done --phase N` with the
+folded `set` patch; retro notes via `retro-append`; timing via the brackets below — see
+`state-and-resume.md`) and **commit it in the same single
+commit as the phase's artifacts**. A phase whose own gates made it a no-op still enters
+`completed_phases` (recorded as skipped); phases excluded by an override window do **not**
+(`overrides.md`) (see `git-and-pr.md` → "Commits"; **never** a standalone
 state-only commit). Each phase below gives its `Commit:` **subject only** — every commit also
 carries a **required body** (and a footer when relevant), built from that phase's own facts, per
 `git-and-pr.md` → "Message body & footer". Record timing — never with hand-rolled `date`
@@ -38,7 +41,7 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   required-skills check, and (first-run) framework detection come back as a single JSON object;
   read its fields, never re-derive them in shell. Any probe that stays hand-rolled (here or in
   later phases) uses `find`/`test`/Python, **never a bare glob** — unmatched globs abort under
-  zsh/fish (`nomatch` ⇒ exit 1; `CLAUDE.md` → "Shell globs") — and probes by real on-disk names
+  zsh/fish (`nomatch` ⇒ exit 1) — and probes by real on-disk names
   (state `{key}.yaml`, story `{key}.md` — no `story-{e}-{s}` prefix). State-file enumeration
   stays in `scripts/state_plan.py` (the deterministic reader — call it, don't re-derive).
 - Verify required skills exist for the selected path (the preflight JSON's `skills.missing`, via
@@ -57,8 +60,8 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   ```
   (the shipped `assets/agents/profiles.yaml`, `assets/config-defaults.yaml`, and `assets/module.yaml`
   resolve relative to the script). On `status: drift` (exit 1 — missing `profiles`/`phase_profiles`
-  keys, `missing_setup` entries, and/or `profiles_source_version` older than the installed
-  `module_version`), **auto-apply** the additive heal — re-run with `--apply` — which appends only
+  keys, `missing_setup` entries, `manual_review` items, and/or a `profiles_source_version` that
+  differs from the installed `module_version`), **auto-apply** the additive heal — re-run with `--apply` — which appends only
   the MISSING keys (never overwriting a user value) and restamps `profiles_source_version`. Run
   this **before** the provisioning-freshness check below, so a re-seeded profile *value* is then
   caught there as a stale agent file. `manual_review` items (a sub-key missing from a profile that
@@ -112,8 +115,8 @@ were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this o
 
 1. **Project-context bootstrap** *(only if `needs_project_context_bootstrap` from Phase 0)* →
    `project_context`
-   - Delegate the **`generate-project-context`** entry. Pass `bootstrap_mode: true` — write
-     `project-context.md` from scratch rather than refresh an existing file (`delegation.md`).
+   - Delegate the **`generate-project-context`** entry with its Phase 2 `{bootstrap_intent}` fill —
+     write `project-context.md` from scratch rather than refresh an existing file (`delegation.md`).
    - Commit: `docs(project-context): bootstrap`.
    - Flip `needs_project_context_bootstrap` to `false` in state so re-invocations don't double-run.
    - Gate is independent of `is_first_in_epic` / `tea.enabled`.
@@ -174,8 +177,9 @@ For iteration `i` (1-based):
       (outside the work tree, never committed) and reserves the three lens-output paths
       (`blind_out` / `edge_out` / `auditor_out`). Hand the returned paths to the lenses and triage
       below. If `diff_empty` is true there is nothing to review — delete `review_tmp` and treat it
-      as a 0-finding pass through step 3 (gate it with `--lenses-failed 0`; with no failed lenses
-      it is a genuine clean pass — table row 2).
+      as a 0-finding pass through step 3 (for the gate's `--findings-json`, run
+      `review_findings.py --story-file <story_file> --expect-min 0`; gate with `--lenses-failed 0`
+      — with no failed lenses it is a genuine clean pass, table row 2).
    b. **Fan out the three lenses** at this iteration's reviewer profile, each writing to its own temp
       file: the **`code-review-blind`**, **`code-review-edge`**, and **`code-review-auditor`** entries.
       On **Claude Code** spawn them **in parallel**; on **Codex** and **opencode** run them
@@ -243,7 +247,8 @@ For iteration `i` (1-based):
    Critical or High** — file-derived: `open_crit_high == 0` AND `open_severity.untagged == 0` at
    gate time (a *deferred* Critical/High is a logged human decision and does not block convergence).
 
-   **Drive the loop — tool call, not prose.** Pipe the gate-time `review_findings.py` JSON to
+   **Drive the loop — tool call, not prose.** Pipe the gate-time `review_findings.py` JSON — the
+   one captured at step 1's reconciliation gate (post-triage, PRE-fix), not the post-fix re-run — to
    `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
    --max-iterations {cap} --alternate-models {cfg} --lenses-failed {failed-layer count from step 1b}
    --skip-hitl-on-clean-convergence {cfg}` (add `--convergence-unverified true` when state already
@@ -377,8 +382,9 @@ runs — step 1.)
      silent hard-stop). Summarize the uncovered requirements/ACs the trace flagged, then offer:
      - **Remediate & re-gate** *(recommended; offered only while `gate_iterations <
        tea.gate_max_iterations`, default 2)* — delegate the **`testarch-automate`** entry at **epic
-       scope** via `tea_epic` to close the flagged coverage gaps, commit `test(epic-{e}): close trace
-       coverage gaps (gate iter {i})`, increment `gate_iterations`, then re-run the
+       scope** via `tea_epic` to close the flagged coverage gaps, increment `gate_iterations`,
+       commit `test(epic-{e}): close trace coverage gaps (gate iter {i})` (`{i}` = the
+       just-incremented value; first remediation ⇒ 1), then re-run the
        **`testarch-trace`** entry and re-apply this same handling to the new verdict. (If the gaps are
        scope/spec drift rather than missing tests, the right heavier step is `/bmad-correct-course`
        — tell the user; do **not** auto-run it, as it changes story scope.)
@@ -395,8 +401,8 @@ runs — step 1.)
    profile. The Phase 8 refresh is fed the epic's accumulated retro notes (+ durable items from the
    deferred-work ledger) — the notes, not the retro doc (it doesn't exist until step 4), are the
    source. See `delegation.md` → `generate-project-context`.
-3. **Archive resolved deferred work** *(orchestrator-direct — `CLAUDE.md` → orchestrator-owned
-   actions):* trim the active ledger `<impl>/deferred-work.md` so create-story stops re-folding
+3. **Archive resolved deferred work** *(orchestrator-direct — connective bookkeeping, never
+   delegated):* trim the active ledger `<impl>/deferred-work.md` so create-story stops re-folding
    finished work into future stories. The mechanics are scripted — you own only the keep-vs-move
    judgment:
    1. Run `python3 {skill-root}/scripts/deferred_ledger.py plan --ledger <impl>/deferred-work.md`.
@@ -445,7 +451,7 @@ runs — step 1.)
   — and keep the section a session delta (on a resume, `phases_run` lists only the resumed phases
   and `continues` names the section it picks up from; full vocabulary in `state-and-resume.md` →
   "reports/{key}.md"). The file holds only the **story-level** outputs that aren't recorded
-  elsewhere (`SKILL.md` Step 3 lists the exact fields). The finalization **artifacts**
+  elsewhere (fields: `state-and-resume.md` → "Section template"). The finalization **artifacts**
   — PR URL, CI run link, merge method + branch-deleted state, and the BMAD-status-flip outcome —
   are deliberately **chat-only** (Step 3 prints them; rationale in `state-and-resume.md` →
   "reports/{key}.md"). The one-line **disposition** DOES belong in the file's `Pipeline status`
@@ -458,8 +464,9 @@ runs — step 1.)
 - **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the push/PR; leave
   the branch in place (with the report commit on it) and note it in the chat report. The CI wait
   and merge prompt below don't apply.
-- Mark the auto-bmad state file `done` — stamp `completed_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`) and
-  record `pr_url`, `ci_run_url`, `ci_status`, final `branch`, any `blockers`. **Don't commit this
+- Mark the auto-bmad state file `done` — one `state_update.py set` patch with `status: done`
+  (the script auto-stamps `completed_at`), recording `pr_url`, `ci_run_url`, `ci_status`, final
+  `branch`, any `blockers`. **Don't commit this
   on its own** — it folds into the single finalize commit below (alongside the BMAD-status flip),
   so the post-push bookkeeping is **one** commit, never a `mark done` + `record PR metadata` +
   `record CI status` chain.

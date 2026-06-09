@@ -67,7 +67,8 @@ custom-subagent mechanism at all degrades (see the tiers below).
 
 A phase can be delegated to an **external CLI** — `claude -p`, `codex exec` or `opencode run` — via
 the `delegation.cli_phases` map (keys = `phase_profiles` keys, value = a tool name; absent/empty ⇒
-**every phase uses its normal tier**; schema + examples in `state-and-resume.md`). **Opt-in and
+**every phase uses its normal tier**; schema: `state-and-resume.md`, examples:
+`assets/config-defaults.yaml`). **Opt-in and
 orthogonal** — an unrouted phase falls straight through to the tiers below.
 
 **Before spawning any phase, check `cli_phases` first**; if the phase key is present, take the CLI

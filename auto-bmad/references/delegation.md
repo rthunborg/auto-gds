@@ -31,7 +31,7 @@ already carry the full form, so the short version is enough.
 - `<project_root>` — absolute cwd.
 - `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
 - `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
-- `<review_tmp>` — a throwaway dir the orchestrator makes **outside the work tree** (`mktemp -d`) for
+- `<review_tmp>` — the throwaway dir `review_loop.py prep-diff` creates **outside the work tree** for
   the code-review fan-out, holding `<diff_file>` (the branch diff) and the three lens outputs
   `<blind_out>` / `<edge_out>` / `<auditor_out>`. Never under `<impl>` or the repo — it must not be
   committable. Deleted (`rm -rf`) once the iteration's reconciliation gate passes; on a
@@ -56,8 +56,8 @@ The orchestrator fills `{retro_notes_hint}` from on-disk state:
   notes), not as a generic "see retro-notes" reference.`
 - Else, if this is the **first story of epic {e}** AND a prior epic `{e-1}` closed with a
   retrospective document — locate it with `find <impl> -name 'epic-{e-1}-retro-*.md'` (BMAD writes
-  the retro there; never iterate a raw glob — see CLAUDE.md → shell-glob rule; use the newest match
-  if several, omit if none): `BEFORE drafting the story context, ALSO read the prior epic's
+  the retro there; never iterate a raw glob — unmatched globs abort under zsh/fish; use the newest
+  match if several, omit if none): `BEFORE drafting the story context, ALSO read the prior epic's
   retrospective document and focus on its FORWARD-looking sections (e.g. "Next Epic Preparation",
   "Preparation Checklist Before Epic {e}", "Conventions Ratified for All Epic {e}+ Stories", Action
   Items). These are the epic-transition prep + conventions the just-closed epic flagged for THIS

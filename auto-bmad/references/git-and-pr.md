@@ -60,9 +60,11 @@ shell. The rules below are the normative definition the script implements:
   - `docs` — story creation, epic-end docs (gate/context/retro), Phase 9 pipeline report
   - `feat` — story implementation
   - `fix` — addressing code-review findings
-- **One commit per phase — the state update folds in.** A phase mutates the project artifacts
-  *and* the auto-bmad state file (`<output_folder>/auto-bmad/state/{key}.yaml`); stage **both
-  together** and make a **single** commit. **Never** emit a standalone bookkeeping commit whose
+- **The state update folds into the phase's commit — never standalone.** A phase mutates the
+  project artifacts *and* the auto-bmad state file (`<output_folder>/auto-bmad/state/{key}.yaml`);
+  stage **both together** and make a **single** commit. (A phase with a documented multi-commit
+  flow — Phase 7's per-iteration commits, Phase 8's separate remediation commit — folds the state
+  write into each such commit; the rule is *no state-only commits*, not one-commit-per-phase-number.) **Never** emit a standalone bookkeeping commit whose
   only change is the state file — no `chore(story-{e}-{s}): record Phase N in pipeline state`, no
   `chore(...): update state/timestamps`. (Worked example: `pipeline.md` Phase 7's trace commit.)
 - **Recording each commit's own sha** can't happen inside that same commit (the sha doesn't exist
@@ -103,8 +105,10 @@ shell. The rules below are the normative definition the script implements:
 - Push: `git push -u origin <branch>`.
 - Open PR: `gh pr create --base <base_branch> --head <branch> --title "<title>" --body "<body>"`.
   Add `--draft` if **any** of these hold (the **draft predicate** — evaluated deterministically by
-  `scripts/state_plan.py --finalize` from the story's state file plus the live `--ci-status`; the
-  four clauses below remain the normative definition the script implements):
+  `scripts/state_plan.py --finalize` from the story's state file. Run it **twice**: pre-create
+  WITHOUT `--ci-status` (clauses 1–3 decide the initial `--draft`), and again after the CI wait
+  WITH the live `--ci-status` (the full verdict that also drives the status flip); the four
+  clauses below remain the normative definition the script implements):
   1. a blocker was recorded;
   2. `convergence_unverified` is `true` (Phase 7: the review loop hit `max_iterations` while the
      last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High;
@@ -145,7 +149,9 @@ shell. The rules below are the normative definition the script implements:
   Then evaluate `ci_status` and, when warranted, **wait for in-progress checks to finish**:
   - **When to wait:** only if the merge prompt is effectively enabled this run —
     `git.offer_merge: true` AND no `skip merge-prompt` override. When the prompt is off, do not
-    wait — just link the run and leave `ci_status: unknown`.
+    wait — just link the run and leave `ci_status: unknown`. Also skip the wait when clauses 1–3
+    already made the run caveated (the PR is already a draft, so the merge prompt can't fire) —
+    link the run, leave `ci_status: unknown`.
   - **How to wait:** one deterministic call —
     `python3 {skill-root}/scripts/ci_wait.py --pr <pr-number> --cap-minutes <git.ci_wait_minutes>
     --resolve-run-url --branch <branch> --head-sha <sha>` — then read `ci_status` and `ci_run_url`

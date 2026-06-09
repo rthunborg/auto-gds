@@ -1168,7 +1168,7 @@ def _run_self_test() -> int:
     assert "gate_max_iterations" in s_nodes["tea"]["children"], "asset missing tea.gate_max_iterations"
     sta = s_nodes["tea"]["children"].get("story_trace_advisory")
     assert sta and {"enabled", "min_epic_stories", "skip_last_stories"}.issubset(set(sta["children"])), "asset story_trace_advisory shape"
-    for k in ("max_iterations", "alternate_models"):
+    for k in ("max_iterations", "alternate_models", "skip_hitl_on_clean_convergence"):
         assert k in s_nodes["code_review"]["children"], f"asset missing code_review.{k}"
 
     # ... and DELIBERATELY EXCLUDES environment-detected / interviewed fields, so the heal can
@@ -1184,7 +1184,8 @@ def _run_self_test() -> int:
     # pin that their values still match the state-and-resume.md schema + orchestrator fallbacks
     # (the lockstep the asset header warns about). Cheap guard against a silent value edit.
     for kv in ("offer_merge: true", "ci_wait_minutes: 30", "min_epic_stories: 6",
-               "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2"):
+               "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2",
+               "skip_hitl_on_clean_convergence: false"):
         assert kv in setup_text, f"asset default drifted from the documented schema: expected `{kv}`"
 
     def _heal(cfg: str) -> tuple:
@@ -1311,7 +1312,8 @@ def _run_self_test() -> int:
                'tea:\n  gate_max_iterations: 2\n  story_trace_advisory:\n'
                '    enabled: true\n    min_epic_stories: 6\n    skip_last_stories: 3\n'
                'git:\n  branch_prefix: "story/"\n  ci_wait_minutes: 30\n'   # <- git.offer_merge missing
-               'code_review:\n  max_iterations: 2\n  alternate_models: true\n')
+               'code_review:\n  max_iterations: 2\n  alternate_models: true\n'
+               '  skip_hitl_on_clean_convergence: false\n')
         cfgp.write_text(cur, encoding="utf-8")
         chk = check_file(cfgp, asset, "0.9.0", setup_asset)
         assert chk["version"]["drift"] is False, "fixture must isolate the setup-only path (no version drift)"

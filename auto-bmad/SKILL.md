@@ -98,7 +98,8 @@ reference file at the moment its step calls for it.
    context that just did setup). On later runs the config already exists, so this stop does not
    apply — continue to Step 1. First-run is the main interactive moment; auto-bmad also halts at the
    end of the code-review loop on every run (Phase 7 — continue, optionally after an external review
-   whose changes then get re-reviewed, or stop), when an epic trace gate returns `FAIL` (Phase 8), and
+   whose changes then get re-reviewed, or stop; unless `code_review.skip_hitl_on_clean_convergence` is
+   on and the loop converged cleanly, in which case it auto-continues), when an epic trace gate returns `FAIL` (Phase 8), and
    at the very end on a clean-completion PR — whether to merge (Phase 9, opt-in via `git.offer_merge`).
 
 ### Step 1 — Preflight
@@ -188,8 +189,8 @@ restructuring per run, so PR reviewers always find each field in the same place)
 - **Overrides:** any invocation overrides applied this run (phase window, skips, caps); "none" if none.
 - **TEA:** which skills ran and outcomes; epic gate decision if last story; "disabled" if `tea.enabled=false`.
 - **Code review:** iterations run; per-iteration verdict + severity counts in the fixed form
-  `Critical N / High N / Medium N / Low N`; the end-of-loop HITL-halt outcome (continued / stopped),
-  and — if external-review changes triggered a post-halt re-review — its rounds, verdict + counts, and
+  `Critical N / High N / Medium N / Low N`; the end-of-loop HITL-halt outcome (continued / stopped /
+  skipped (clean convergence)); and — if external-review changes triggered a post-halt re-review — its rounds, verdict + counts, and
   the user's fix / fix-and-re-review / ignore decision.
 - **Open questions** surfaced by any step ("(none)" if empty — keep the heading).
 - **Deferred work** (anything intentionally postponed; also appended to the durable cross-story
@@ -227,7 +228,8 @@ external service, or manual action). Never push past a hard-stop — report and 
 (Note: three pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
 the code-review loop's end-of-loop HITL halt, asked every run (Phase 7 — continue, optionally after
 an external review, or stop; re-asked with fix / fix-and-re-review / ignore if that review's changes
-re-review as meaningful); a `FAIL` epic trace gate (Phase 8 — remediate & re-gate / waive /
+re-review as meaningful; skipped only when `code_review.skip_hitl_on_clean_convergence` is on and the
+loop converged cleanly); a `FAIL` epic trace gate (Phase 8 — remediate & re-gate / waive /
 stop); and the end-of-pipeline merge prompt on a clean-completion PR (Phase 9 — merge commit
 (default) / rebase / squash / don't merge, plus a delete-branch sub-question — opt-in via
 `git.offer_merge`, default on).)

@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Optional auto-continue past the Phase 7 review halt on a clean convergence.** New
+  `code_review.skip_hitl_on_clean_convergence` (default `false`) — when `true`, the end-of-loop HITL
+  halt is skipped if the loop converged cleanly, and still fires otherwise. Skipping forgoes the
+  external-review recommendation and the Stop option for those stories.
+
 ### Changed
 
 - **Delegate profiles renamed to role-tier names.** `ab-xhigh`/`ab-high`/`ab-alt-xhigh`/`ab-alt-high`
@@ -30,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opencode), so opt-in per-phase external-CLI routing is discoverable without hunting the docs.
 
 ### Fixed
+
+- **`code_review.max_iterations: 1` no longer ships an unverified review as a non-draft PR.** A
+  single review pass that found work (or ran with a failed lens) now exits with
+  `convergence_unverified` set, so Phase 9 opens a draft — matching the ≥ 2 cap-unconverged exit and
+  the state schema. Only a perfectly-clean single pass ships non-draft. (pipeline.md)
 
 - **`cli_phases` validation error no longer omits `opencode`.** A bad `cli_phases` tool now reports the
   full accepted set (`claude`, `codex`, `opencode`); the message previously listed only the first two

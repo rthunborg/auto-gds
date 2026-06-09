@@ -46,3 +46,4 @@ git:
 code_review:
   max_iterations: 2
   alternate_models: true    # odd iters use code_review_review, even iters code_review_review_secondary
+  skip_hitl_on_clean_convergence: false   # false: the Phase 7 HITL halt fires on every loop exit. true: skip the halt when the loop converged cleanly (convergence_unverified=false) — it still fires when the review did not converge cleanly. Trade-off: a skipped halt forgoes the external-review recommendation, the "Stop now" option, and a last look at any deferred Critical/High before the PR.

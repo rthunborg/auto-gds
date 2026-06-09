@@ -170,10 +170,13 @@ no-op, recorded as skipped). Sub-steps execute in this order:
 
 ## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean)
 The loop runs **at least two review passes — unless the first pass is perfectly clean** (found **0
-non-deferred findings**), in which case it exits after that single pass. Any first pass with **≥ 1**
+non-deferred findings**), in which case it exits after that single pass. (The lone exception is the
+degenerate `max_iterations: 1` config, where even a non-clean first pass can't get its second
+opinion — it exits as an unverified draft; see the cap edge in step 3.) Any first pass with **≥ 1**
 non-deferred finding still pulls a mandatory second opinion (the alternate model, when
 `code_review.alternate_models` is on) — then the loop exits as soon as a pass converges or the cap is
-hit, and **always ends at a human-in-the-loop halt** (step 4). A pass **converges** when it
+hit, and **ends at a human-in-the-loop halt** (step 4) — unless step 4's skip gate applies
+(`code_review.skip_hitl_on_clean_convergence` on and the loop converged cleanly). A pass **converges** when it
 found-and-fixed **≤ 3 non-deferred findings AND none
 were Critical or High**; it does **not** converge when it found **> 3 non-deferred findings OR ≥ 1
 non-deferred Critical/High**. Track `code_review_iterations` and `code_review_loop_done` in state
@@ -257,8 +260,10 @@ For iteration `i` (1-based):
    did not actually happen — **stop and report `needs-human`** ("code review incomplete — 0/3 lenses
    produced findings"); never let that count as clean. If **some but not all** lenses failed, a
    0-non-deferred-finding result is **not** trustworthy as "perfectly clean": it does **not** qualify
-   for the `i == 1` early-exit below — force at least a second pass, and carry an "incomplete review
-   (only N/3 lenses ran)" caveat into the report and the Phase 7 HITL-halt summary. If a pass with a
+   for the `i == 1` early-exit below — force at least a second pass (or, when `max_iterations == 1`,
+   exit the single pass as a draft via the `i == 1, i == max_iterations` bullet below — a missing lens
+   is "not perfectly clean"), and carry an "incomplete review (only N/3 lenses ran)" caveat into the
+   report and the Phase 7 HITL-halt summary. If a pass with a
    lens still missing is the loop's final one (it converges or hits the cap), also set
    `convergence_unverified: true` so Phase 9 ships a **draft** — an incomplete review is the same
    flavor of unverified-ness as a cap-unconverged exit (`git-and-pr.md` draft predicate).
@@ -267,9 +272,16 @@ For iteration `i` (1-based):
    - **`i == 1`, all three lenses ran, and the pass found 0 non-deferred findings** → **exit the loop**
      (perfectly clean — the second opinion is skipped; this is the only first-pass early exit). The
      pass trivially converged, so `convergence_unverified` stays false.
-   - **`i == 1` with ≥ 1 non-deferred finding** → **continue to iteration 2**, whatever else it found.
-     The second review is mandatory the moment the first pass surfaces anything actionable (even a
-     single ≤ 3-finding pass that would otherwise converge).
+   - **`i == 1`, not perfectly clean (≥ 1 non-deferred finding, OR a lens failed/returned empty),
+     `i < max_iterations`** → **continue to iteration 2**, whatever else it found. The second review
+     is mandatory the moment the first pass surfaces anything actionable (even a single ≤ 3-finding
+     pass that would otherwise converge).
+   - **`i == 1`, not perfectly clean, `i == max_iterations`** (only reachable when
+     `max_iterations == 1`) → **exit the loop**: the mandatory second opinion can't run, so this
+     single pass is unverified — set `convergence_unverified: true` (Phase 9 opens the PR as a draft,
+     exactly like the cap-unconverged `i ≥ 2` exit in the next bullet). This is what the state schema
+     means by `convergence_unverified` — `max_iterations` hit with the last pass not converged
+     (`state-and-resume.md`) — so a findings-bearing single pass must never ship non-draft.
    - **`i ≥ 2` and the pass converged** → exit the loop.
    - **`i ≥ 2`, not converged, `i < max_iterations`** → continue to iteration `i+1`.
    - **`i ≥ 2`, not converged, `i == max_iterations`** → exit the loop **unconverged**: set
@@ -277,10 +289,28 @@ For iteration `i` (1-based):
      predicate clause 2).
    On any exit, set `code_review_loop_done: true`, then go to step 4.
    (Edge: if `code_review.max_iterations` is `1` the second review can't run — the loop takes its
-   single pass and exits; note it in the report. At the default cap of 2 the loop runs 1–2 passes —
-   1 when the first pass is perfectly clean, otherwise 2.)
-4. **HITL halt — ASK the user, on every loop exit.** The loop *always* ends here (converged or
-   capped); this single human checkpoint replaces the old cap-only prompt. Summarize: iterations
+   single pass and exits (per the `i == 1, i == max_iterations` bullet above): a **perfectly clean**
+   single pass ships non-draft, while **any non-clean** single pass exits with
+   `convergence_unverified: true` (a draft PR), since its mandatory second opinion never ran. Note the
+   single-pass run in the report. At the default cap of 2 the loop runs 1–2 passes — 1 when the first
+   pass is perfectly clean, otherwise 2.)
+4. **HITL halt — ASK the user on every loop exit (unless configured to skip a clean convergence).**
+   **Skip gate — evaluate first, at step entry, on the loop-exit `convergence_unverified` value**
+   (the post-halt re-review below also writes this flag, so read it *before* that machinery runs): if
+   `code_review.skip_hitl_on_clean_convergence` is `true` **AND** `convergence_unverified` is `false`
+   (the loop converged cleanly — a perfectly-clean single pass or an `i ≥ 2` converged exit), **skip
+   the halt**: do **not** open `AskUserQuestion`. `log` one line ("review converged cleanly — Phase 7
+   HITL halt skipped per config"), record `hitl_halt: skipped (clean convergence)` in state + the
+   report's Code-review line, and proceed as the **Continue** path **with no external-change check**
+   (there was no human pause, so there are no external changes to detect) — straight to the Phase 7
+   tail. This deliberately forgoes the external-review recommendation, a last sighting of any
+   *deferred* Critical/High, and the Stop option — the user opted into no-pause for cleanly-converged
+   stories. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged,
+   incomplete-lens, or a non-clean `max_iterations: 1` single pass — those always halt). Default
+   (`false`) → always halt, as below.
+
+   Otherwise (option off, or the loop did not converge cleanly) the loop *always* ends here (converged
+   or capped); this single human checkpoint replaces the old cap-only prompt. Summarize: iterations
    run, each pass's verdict + `Critical N / High N / Medium N / Low N` counts, the total non-deferred
    findings found-and-fixed, and whether the loop converged or hit the cap unconverged
    (`convergence_unverified`). **Recommend an external review while the pipeline is paused** — a
@@ -329,11 +359,12 @@ For iteration `i` (1-based):
    each round's verdict + counts, and the user's fix/ignore decision), and any extra commits in state +
    the report. **Bracket every prompt here with `date +%s`** — the original ask and any re-opened halt
    — so the (possibly long) external-review waits land on human/idle, not `active_seconds` (see top of
-   this file). Phase 7 enters `completed_phases` only after this halt resolves (and the tail below,
-   when selected).
+   this file). Phase 7 enters `completed_phases` only after this halt resolves — or after the skip
+   gate above fires (a skipped halt counts as resolved) — and the tail below, when selected.
 
 ### Phase 7 tail — per-story trace advisory  *(conditional; non-blocking)*  → `tea_per_story`
-Runs **once on the Continue path, after the review loop and its HITL halt resolve**, only if
+Runs **once on the Continue path, after the review loop and its HITL halt resolve** (a halt skipped
+by the step-4 skip gate also reaches this path), only if
 `trace-advisory ∈ tea_selected` (set in Phase 0
 — high risk, not within the epic's last `skip_last_stories` stories, and the epic is long enough;
 see `tea-policy.md` → §3). Resume-safe:

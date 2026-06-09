@@ -63,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template carries every field's semantics; SKILL.md Step 3 is now a pointer, so the two can't
   drift.
 
+- **The runtime reference docs are ~13% shorter with zero contracts lost.** Historical narrative,
+  duplicated rationale, and prose the new scripts now own were cut from every reference file;
+  all commands, thresholds, vocabularies, and rules are unchanged.
+
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage
   delegate must tag every persisted finding (`[Review][Patch][High] …`) and `review_findings.py`
   parses the tags (`open_severity`, `open_crit_high`; an untagged finding counts as Critical/High,

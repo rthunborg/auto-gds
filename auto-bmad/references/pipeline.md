@@ -12,11 +12,10 @@ and report → else update the state file (append retro notes, mark the phase do
 commit as the phase's artifacts** (see `git-and-pr.md` → "Commits"; **never** a standalone
 state-only commit). Each phase below gives its `Commit:` **subject only** — every commit also
 carries a **required body** (and a footer when relevant), built from that phase's own facts, per
-`git-and-pr.md` → "Message body & footer". When updating state, also record timing — never with hand-rolled `date` arithmetic: bracket each
-phase with `python3 {skill-root}/scripts/state_update.py timing-start --state-file <state>` just
-before delegating and `… timing-pause …` when it returns (just before the state write + commit);
-the script owns the clock math and folds the interval into `active_seconds` — this is what lets
-the report split AI-run time from human/idle wait (`state-and-resume.md` → timing fields).
+`git-and-pr.md` → "Message body & footer". Record timing — never with hand-rolled `date`
+arithmetic: bracket each phase with `python3 {skill-root}/scripts/state_update.py timing-start
+--state-file <state>` just before delegating and `… timing-pause …` when it returns (just before
+the state write + commit); the script owns the clock math (`state-and-resume.md` → timing fields).
 **Don't count time spent waiting on the user:** if the phase opens an `AskUserQuestion` (e.g. the
 Phase 7 decision asks or the HITL halt), invert the bracket — `timing-pause` before the prompt,
 `timing-start` after — so the wait lands on human/idle, not active. (A `dropped_anchor: true`
@@ -50,33 +49,25 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   tree off the expected story branch → hard-stop; pass `--expected-branch` on a resume so
   in-flight dirt on the story branch is allowed). The normative rules live in `git-and-pr.md` →
   "Mode detection (Phase 0)"; `preflight.py` implements them.
-- **Config drift heal (orchestrator; all hosts):** the runtime `config.yaml` is seeded **once** at
-  first run and is never re-touched by a module update, so a newer asset's keys silently never reach
-  the project. Two axes drift: the `profiles`/`phase_profiles` blocks (e.g. a `tea_triage` phase
-  mapping added in a later version — and `render-agents.py --check` below can't see this, because it
-  only diffs the four rendered agent files and never reads `phase_profiles`), AND new
-  **setup-block** keys (`delegation`/`tea`/`git`/`code_review` — e.g. `git.offer_merge`,
-  `tea.story_trace_advisory`), which have no profiles-style asset and so are normally invisible until
-  a Full `configure` or a hand-edit. Reconcile both deterministically:
+- **Config drift heal (orchestrator; all hosts):** reconcile the runtime `config.yaml` against the
+  shipped assets — both the `profiles`/`phase_profiles` blocks AND the constant-default
+  **setup-block** keys (`delegation`/`tea`/`git`/`code_review`):
   ```
   python3 {skill-root}/scripts/config_plan.py --check --config <output_folder>/auto-bmad/config.yaml
   ```
   (the shipped `assets/agents/profiles.yaml`, `assets/config-defaults.yaml`, and `assets/module.yaml`
-  resolve relative to the script). On `status: drift` (exit 1 — asset `profiles`/`phase_profiles`
-  keys the config lacks, **constant-default setup keys it lacks** (`missing_setup`), and/or
-  `profiles_source_version` older than the installed `module_version`), **auto-apply** the additive
-  heal — re-run with `--apply` — which appends only the MISSING keys (never overwriting a user value;
-  the setup-defaults asset deliberately omits environment-detected fields like `git.base_branch`, so
-  the heal can't bake in a wrong guess) and restamps `profiles_source_version`. Run this **before** the provisioning-freshness
-  check below, so a re-seeded profile *value* is then caught there as a stale agent file (a re-seeded
-  `phase_profiles`/setup key needs no re-render — it maps to an existing profile or is delegate-free).
-  `manual_review` items (a sub-key missing from a profile that already exists — rare, value-bearing)
-  are **surfaced in the report**, not auto-written.
+  resolve relative to the script). On `status: drift` (exit 1 — missing `profiles`/`phase_profiles`
+  keys, `missing_setup` entries, and/or `profiles_source_version` older than the installed
+  `module_version`), **auto-apply** the additive heal — re-run with `--apply` — which appends only
+  the MISSING keys (never overwriting a user value) and restamps `profiles_source_version`. Run
+  this **before** the provisioning-freshness check below, so a re-seeded profile *value* is then
+  caught there as a stale agent file. `manual_review` items (a sub-key missing from a profile that
+  already exists) are **surfaced in the report**, not auto-written.
   - **Disclosure echo (only when the heal added a setup key — `--apply`'s `added_setup` is
     non-empty):** show a brief, **non-blocking** block in the preflight echo (and the final report),
-    then continue — the heal is behaviour-neutral (each default equals the orchestrator's absent-key
-    fallback), so there is nothing to approve; **never** open an `AskUserQuestion`/halt here. Read
-    the lists straight from the `--apply` JSON — don't recompute or read code. Render, in this shape:
+    then continue — the heal is behaviour-neutral, so there is nothing to approve; **never** open
+    an `AskUserQuestion`/halt here. Read the lists straight from the `--apply` JSON — don't
+    recompute or read code. Render, in this shape:
     - a **lead line** naming what happened — `config.yaml updated to match v<module_version>`;
     - *Added N new setting(s) (defaults; behaviour unchanged)* — one `path = value` per `added_setup`
       entry;
@@ -84,22 +75,17 @@ Runs during Step 1 of the SKILL procedure (before any commit).
       entry (omit this list entirely when `kept_setup` is empty);
     - a **closer line** that signals it did not block — `→ continuing pipeline…`.
 
-    If nothing was added (`added_setup` empty — the common case once a project is current), show
-    nothing. `reseeded_*` profile/phase_profile reseeds and the `manual_review` note stay in the
-    report as before.
+    If `added_setup` is empty, show nothing. `reseeded_*` profile/phase_profile reseeds and the
+    `manual_review` note stay in the report.
 - **Provisioning freshness (custom-subagents hosts):** run `render-agents.py --check`; if the
   delegate agents are missing or stale (module updated / profiles edited), auto-reprovision and
   note it in the preflight echo + final report. Not a human stop. See `delegation-runtime.md` →
   "Resolving host & mode".
-- **Project-context probe (orchestrator):** read the preflight JSON's `project_context.found` —
-  `preflight.py` mirrors the discovery the `bmad-generate-project-context` skill itself does
-  (primary `<output_folder>/project-context.md`, where `<output_folder>` comes from
-  `_bmad/bmm/config.yaml` and is passed as `--output-folder`; fallback: any `project-context.md`
-  under `<project_root>` excluding `node_modules`/`.venv`/`.git`). `found: false` → set
-  `needs_project_context_bootstrap: true` in state; Phase 2 will bootstrap it before
-  create-story. `found: true` → set the flag `false` (the existing file is good enough; Phase 8
-  still refreshes it on the last story of the epic). This covers both greenfield first-story and
-  brownfield mid-project adoption (a codebase that never ran `bmad-generate-project-context`).
+- **Project-context probe (orchestrator):** read the preflight JSON's `project_context.found`
+  (pass `<output_folder>` from `_bmad/bmm/config.yaml` as `--output-folder`; discovery internals
+  live in `preflight.py`). `found: false` → set `needs_project_context_bootstrap: true` in state;
+  Phase 2 will bootstrap it before create-story. `found: true` → set the flag `false` (Phase 8
+  still refreshes it on the last story of the epic).
 - **Triage (only if `tea.enabled`; delegated to `tea_triage`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_risk` (`low|med|high`) and `tea_selected`
   (e.g. `[atdd, automate]`, or `[]` for trivial) in state. Also record `epic_story_count` and
@@ -113,9 +99,8 @@ Runs during Step 1 of the SKILL procedure (before any commit).
 - Ensure we are NOT on the base branch. Create/checkout `{branch_prefix}{e}-{s}-{slug}`
   (default `story/{e}-{s}-{slug}`). If the branch already exists (resume), check it out.
 - Write the initial state file with `python3 {skill-root}/scripts/state_update.py init
-  --state-file <state> --json -` (it stamps `started_at` once and initializes
-  `completed_at: null`, `active_seconds: 0`; it refuses — exit 1 — if the file already exists, so
-  a **resume** can never re-init and `started_at`/`active_seconds` span all sessions). Commit it:
+  --state-file <state> --json -` (it refuses — exit 1 — if the file already exists, so a **resume**
+  can never re-init and `started_at`/`active_seconds` span all sessions). Commit it:
   `chore(story-{e}-{s}): start auto-bmad pipeline`.
 
 ## Phase 2 — Epic-start setup  *(conditional; two independently-gated sub-steps)*
@@ -127,27 +112,21 @@ were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this o
 
 1. **Project-context bootstrap** *(only if `needs_project_context_bootstrap` from Phase 0)* →
    `project_context`
-   - Delegate the **`generate-project-context`** entry. Pass `bootstrap_mode: true` so the prompt
-     instructs the delegate to write `project-context.md` from scratch (architecture / patterns /
-     stack scan of the existing codebase) rather than refresh an existing file.
+   - Delegate the **`generate-project-context`** entry. Pass `bootstrap_mode: true` — write
+     `project-context.md` from scratch rather than refresh an existing file (`delegation.md`).
    - Commit: `docs(project-context): bootstrap`.
    - Flip `needs_project_context_bootstrap` to `false` in state so re-invocations don't double-run.
-   - Gate is independent of `is_first_in_epic` / `tea.enabled` — a repo that adopts auto-bmad
-     mid-epic gets context built once, on the first story it runs.
+   - Gate is independent of `is_first_in_epic` / `tea.enabled`.
 2. **Epic test design** *(only if `is_first_in_epic` AND `tea.enabled`)* → `tea_epic`
    - Delegate the **`testarch-test-design`** entry (epic level) for epic `{e}`.
    - Commit: `test(epic-{e}): epic-level test design`.
-   - (If `tea.enabled` is false, skip. Non-TEA epic-start work is already handled by
-     sprint-planning having been run; nothing else is needed here.)
 
 ## Phase 3 — Create story  → `create_story`
 - Delegate the **`create-story`** entry for story {e}-{s}. The skill self-validates against its
   checklist and auto-fixes; do NOT add a separate validate pass.
 - The delegation is fed this epic's retro-notes + the deferred-work ledger; for the **first story
   of an epic** (no epic-{e} notes yet) it is instead fed the prior epic's retrospective forward
-  sections, so epic-transition prep crosses the boundary (see `delegation.md` → `create-story`).
-  Durable conventions arrive separately via `project-context.md` (persistent_facts; refreshed in
-  Phase 8).
+  sections (see `delegation.md` → `create-story`).
 - Capture any open questions the skill saved → retro notes + report.
 - Commit: `docs(story-{e}-{s}): create story context file`.
 
@@ -172,11 +151,10 @@ were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this o
 ## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean)
 The loop runs **at least two review passes — unless the first pass is perfectly clean** (0
 non-deferred findings, all three lenses ran), and **ends at a human-in-the-loop halt** (step 4)
-unless step 4's skip gate applies. A pass **converges** when it found-and-fixed **≤ 3 non-deferred
-findings AND none were Critical or High** (an untagged finding counts as Critical/High). Every
-continue/exit/halt rule is the `review_loop.py gate` decision table in step 3 — call the script and
-obey it, never re-derive the rules. Track `code_review_iterations` and `code_review_loop_done` in
-state (resume continues mid-loop, or re-opens the halt once the loop is done).
+unless step 4's skip gate applies. Convergence is defined in step 3. Every continue/exit/halt rule
+is the `review_loop.py gate` decision table in step 3 — call the script and obey it, never
+re-derive the rules. Track `code_review_iterations` and `code_review_loop_done` in state (resume
+continues mid-loop, or re-opens the halt once the loop is done).
 
 For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with the primary reviewer.** When
@@ -186,11 +164,10 @@ For iteration `i` (1-based):
    When alternation is off, every iteration is `code_review_review`. **This iteration's reviewer
    profile drives all four code-review delegates below.**
 
-   **Run the code-review fan-out (four delegates, not one skill call).** `/bmad-code-review` internally
-   spawns three review subagents — impossible from inside a delegate (no nested subagents) — so the
-   orchestrator hoists the fan-out (`delegation.md` → `code-review (fan-out)`; `CLAUDE.md` →
-   orchestrator-owned actions). It passes the diff and findings **by path, never by content**, so it
-   inspects no code:
+   **Run the code-review fan-out (four delegates, not one skill call).** A delegate can't spawn
+   `/bmad-code-review`'s three internal review subagents (no nested subagents), so the orchestrator
+   hoists the fan-out (`delegation.md` → `code-review (fan-out)`). It passes the diff and findings
+   **by path, never by content**, so it inspects no code:
    a. **Build the diff (orchestrator, tool call).** Run `python3 {skill-root}/scripts/review_loop.py
       prep-diff --project-root <project_root> --base {git.base_branch}` — it writes the branch diff
       (exclude pathspecs baked into the script) to `diff_file` inside a throwaway `review_tmp`
@@ -202,9 +179,9 @@ For iteration `i` (1-based):
    b. **Fan out the three lenses** at this iteration's reviewer profile, each writing to its own temp
       file: the **`code-review-blind`**, **`code-review-edge`**, and **`code-review-auditor`** entries.
       On **Claude Code** spawn them **in parallel**; on **Codex** and **opencode** run them
-      **sequentially** (Codex's no-fan-out rule — `delegation-runtime.md`; on opencode parallel
-      delegate fan-out is unverified, so stay conservative). Collect each lens's reported path +
-      count; note any empty/failed layer.
+      **sequentially** (Codex's no-fan-out rule — `delegation-runtime.md`; opencode parallel
+      fan-out is unverified). Collect each lens's reported path + count; note any empty/failed
+      layer.
    c. **Triage + persist** via the **`code-review-triage`** entry (same profile), handed the three lens
       paths + `<diff_file>` + `<story_file>` + the failed-layer list. It dedupes, classifies, and writes
       the `### Review Findings` section (`[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]`)
@@ -222,9 +199,8 @@ For iteration `i` (1-based):
    defer count). `reconciled: true` (exit 0) → proceed, and use **the file's** counts AND
    severities (`open_patch` / `open_decision` / `open_nondeferred` / `open_crit_high` /
    `open_severity`), not the chat report, to drive steps 2–3 — treat any `open_severity.untagged`
-   finding as Critical/High (conservative; the triage prompt mandates a severity tag on every
-   bullet). Once the gate passes, delete `<review_tmp>` (`rm -rf`) — the lens outputs are spent; on
-   a `needs-human` exit keep it and surface its path for debugging.
+   finding as Critical/High (conservative). Once the gate passes, delete `<review_tmp>` (`rm -rf`)
+   — the lens outputs are spent; on a `needs-human` exit keep it and surface its path for debugging.
    `reconciled: false` (exit 1 — section absent, fewer bullets than claimed, or defer findings not
    logged to the ledger) → the findings did NOT persist: **re-run the `code-review-triage` entry once
    more this iteration** — the lens findings are still on disk, so do NOT re-run the lenses — with the
@@ -232,8 +208,8 @@ For iteration `i` (1-based):
    still won't persist, **stop and report `needs-human`**
    ("code-review did not persist findings to `<story_file>`") rather than running the fix loop
    against an empty section.
-2. **Resolve `[Review][Decision]` items first — ASK the user.** These are the calls the reviewer
-   flagged as needing a human (the fix is ambiguous), so never auto-guess them. If this pass wrote
+2. **Resolve `[Review][Decision]` items first — ASK the user.** The reviewer flagged these as
+   needing a human — never auto-guess them. If this pass wrote
    any open `[Review][Decision]` items, batch them into `AskUserQuestion` **before** the fix: at
    most 4 findings per call (the tool's limit) — loop with more calls if there are >4. Present each
    finding's title, detail, and the reviewer's suggested options; the user picks the fix direction
@@ -243,8 +219,7 @@ For iteration `i` (1-based):
    item the user **defers**, also append it (with their one-line reason) to the durable cross-story
    ledger `<impl>/deferred-work.md` under this story's `## Deferred from: code review of {key}
    (<date>)` heading — the same file the `code-review-triage` delegate logs its own `[Review][Defer]`
-   findings to. This is a direct orchestrator write, like the report and retro-notes: it owns the
-   user-deferred decisions because it (not the delegate) resolved them.
+   findings to (a direct orchestrator write).
 3. **Fix, then classify the pass.** Read the verdict (Approve / Changes Requested / Blocked) from
    the triage report; the Critical/High/Med/Low counts come from **the file** (step 1's
    `open_severity` / `open_crit_high`), never the chat counts. When there is fixable work — `[Review][Patch]` items, or
@@ -260,8 +235,6 @@ For iteration `i` (1-based):
    attempt). Obey `action`: `proceed` → carry on; `retry-fix` → re-delegate the **`code-review fix`**
    entry once on the still-open items (this does not consume a loop iteration), then re-verify with
    `--retry-used`; `needs-human` → stop and report ("fix pass left open findings in `<story_file>`").
-   This guarantees the next gate's open counts are attributable to the next review pass, not a
-   half-done fix.
 
    Now classify the pass by its **non-deferred findings** — every finding it raised that was NOT
    routed to `[Review][Defer]` (the `[Review][Patch]` items plus the `[Review][Decision]` items the
@@ -305,14 +278,12 @@ For iteration `i` (1-based):
    HITL halt skipped per config"), record `hitl_halt: skipped (clean convergence)` in state + the
    report's Code-review line, and proceed as the **Continue** path **with no external-change check**
    (there was no human pause, so there are no external changes to detect) — straight to the Phase 7
-   tail. This deliberately forgoes the external-review recommendation, a last sighting of any
-   *deferred* Critical/High, and the Stop option — the user opted into no-pause for cleanly-converged
-   stories. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged,
+   tail. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged,
    incomplete-lens, or a non-clean `max_iterations: 1` single pass — those always halt). Default
    (`false`) → always halt, as below.
 
-   Otherwise (option off, or the loop did not converge cleanly) the loop *always* ends here (converged
-   or capped); this single human checkpoint replaces the old cap-only prompt. Summarize: iterations
+   Otherwise (option off, or the loop did not converge cleanly) the loop *always* ends here
+   (converged or capped). Summarize: iterations
    run, each pass's verdict + `Critical N / High N / Medium N / Low N` counts, the total non-deferred
    findings found-and-fixed, and whether the loop converged or hit the cap unconverged
    (`convergence_unverified`). **Recommend an external review while the pipeline is paused** — a
@@ -322,13 +293,11 @@ For iteration `i` (1-based):
      never reads the code) for new changes since the halt**: new commits and/or a dirty working tree
      from the external review. **If nothing changed, just continue.** If there are changes, commit
      them `fix(story-{e}-{s}): external review changes`, then **delegate a fresh whole-story
-     re-review** — this **replaces** the old "orchestrator reads the diff itself and summarizes it"
-     carve-out; the orchestrator no longer inspects code at any tier:
+     re-review**:
      - **Re-review (delegated, not an inline read).** Run the **code-review fan-out** (`delegation.md`
-       → `code-review (fan-out)`) at the `code_review_review_secondary` profile — the alternate model,
-       an independent second pair of eyes on the human's changes (deliberately the secondary profile
-       even when `code_review.alternate_models` is off: independence is the point here, not rotation)
-       — exactly like a loop pass (build the
+       → `code-review (fan-out)`) at the `code_review_review_secondary` profile (deliberately the
+       secondary profile even when `code_review.alternate_models` is off — independence, not
+       rotation) — exactly like a loop pass (build the
        diff, the three lenses, then `code-review-triage`). Apply the **same reconciliation gate** as
        step 1 (`review_findings.py`; one `code-review-triage` re-run on non-persist, else
        `needs-human`). Increment `external_review_iterations`.
@@ -353,8 +322,7 @@ For iteration `i` (1-based):
          stays unverified, like a converged exit's final fix pass).
        - **Ignore & continue** — proceed with the findings unaddressed: they stay open in
          `<story_file>`, surface in the report + PR `Needs attention` checklist, and set
-         `convergence_unverified: true` so Phase 9 ships a **draft** (a human waiver of real findings,
-         mirroring the Phase 8 gate waiver).
+         `convergence_unverified: true` so Phase 9 ships a **draft**.
        - **Stop now** — as the **Stop the pipeline now** option below; report the open findings as
          `needs-human`.
    - **Stop the pipeline now** — skip the remaining phases, go straight to the report (Step 3);
@@ -363,20 +331,17 @@ For iteration `i` (1-based):
    Record the choice, the external-change re-review outcome (if it ran — `external_review_iterations`,
    each round's verdict + counts, and the user's fix/ignore decision), and any extra commits in state +
    the report. **Bracket every prompt here with `state_update.py timing-pause`/`timing-start`** — the
-   original ask and any re-opened halt
-   — so the (possibly long) external-review waits land on human/idle, not `active_seconds` (see top of
-   this file). Phase 7 enters `completed_phases` only after this halt resolves — or after the skip
-   gate above fires (a skipped halt counts as resolved) — and the tail below, when selected.
+   original ask and any re-opened halt — so the external-review waits land on human/idle, not
+   `active_seconds` (see top of this file). Phase 7 enters `completed_phases` only after this halt
+   resolves — or after the skip gate above fires (a skipped halt counts as resolved) — and the tail
+   below, when selected.
 
 ### Phase 7 tail — per-story trace advisory  *(conditional; non-blocking)*  → `tea_per_story`
 Runs **once on the Continue path, after the review loop and its HITL halt resolve** (a halt skipped
-by the step-4 skip gate also reaches this path), only if
-`trace-advisory ∈ tea_selected` (set in Phase 0
-— high risk, not within the epic's last `skip_last_stories` stories, and the epic is long enough;
-see `tea-policy.md` → §3). Resume-safe:
-skip if `story_trace` is already non-null in state. Phase 7 lands in `completed_phases` only after
-this step (when selected) finishes, so a resume that re-enters a converged Phase 7 with
-`story_trace == null` runs just this step.
+by the step-4 skip gate also reaches this path), only if `trace-advisory ∈ tea_selected` (set in
+Phase 0 per `tea-policy.md` → §3). Resume-safe: skip if `story_trace` is already non-null in state.
+Phase 7 lands in `completed_phases` only after this step (when selected) finishes, so a resume that
+re-enters a converged Phase 7 with `story_trace == null` runs just this step.
 - Delegate the **`testarch-trace (story advisory)`** entry with `<story_file>` (story scope).
 - It mirrors the epic-end trace's *output* but never its *control flow*: **no `AskUserQuestion`, no
   remediation loop, no draft-PR forcing, no halt.** Whatever the verdict, the pipeline continues —
@@ -428,18 +393,12 @@ runs — step 1.)
      re-ask with only Waive / Stop. Run nfr + test-review on every path except **Stop**.
 2. **Project context:** delegate the **`generate-project-context`** entry via the `project_context`
    profile. The Phase 8 refresh is fed the epic's accumulated retro notes (+ durable items from the
-   deferred-work ledger) so its durable conventions/agreements distill into `project-context.md` —
-   the file every later story's create-story auto-loads as `persistent_facts` (`bmad-create-story`
-   `customize.toml`), and thus the channel that carries epic-N conventions into epic N+1's stories.
-   See `delegation.md` → `generate-project-context`. (A blind codebase-scan refresh drops
-   rules/agreements not inferable from code; the retro notes exist by this step, the synthesized
-   retro doc does not yet — step 4 — so notes, not the doc, are the source here.)
-3. **Archive resolved deferred work** *(orchestrator-direct — no `/bmad-*` skill prunes the ledger;
-   the orchestrator already writes this file at Phase 7, so this is connective bookkeeping, not a
-   delegated step. See `CLAUDE.md` → orchestrator-owned actions):* now that `project-context.md` has
-   distilled the epic's durable conventions, trim the active ledger `<impl>/deferred-work.md` so
-   create-story stops re-folding finished work into future stories. The mechanics are scripted —
-   you own only the keep-vs-move judgment:
+   deferred-work ledger) — the notes, not the retro doc (it doesn't exist until step 4), are the
+   source. See `delegation.md` → `generate-project-context`.
+3. **Archive resolved deferred work** *(orchestrator-direct — `CLAUDE.md` → orchestrator-owned
+   actions):* trim the active ledger `<impl>/deferred-work.md` so create-story stops re-folding
+   finished work into future stories. The mechanics are scripted — you own only the keep-vs-move
+   judgment:
    1. Run `python3 {skill-root}/scripts/deferred_ledger.py plan --ledger <impl>/deferred-work.md`.
       It returns every entry (`id`, `heading`, `text`), the `ledger_sha256`, and a `marker_hint`
       (`resolved`/`partial`/`open`) — the hint is a heuristic aid that focuses your read; it never
@@ -456,12 +415,8 @@ runs — step 1.)
       wrongly-kept resolved item is merely wasteful (create-story folds a done item once), but a
       wrongly-moved open item silently drops real follow-up work.
    3. Run `python3 {skill-root}/scripts/deferred_ledger.py archive --ledger <impl>/deferred-work.md
-      --archive <impl>/deferred-work-resolved.md --ids <move ids> --expect-sha <ledger_sha256>`. It
-      atomically appends each moved entry under a matching `## Deferred from:` heading in the
-      archive (created with a one-line title if absent; an identical heading is reused, else added),
-      removes it from the ledger, drops any ledger `## Deferred from:` heading left with zero
-      entries, and preserves the ledger's title/intro verbatim. A stale `--expect-sha` or unknown id
-      exits 1 with no writes — re-run `plan` and re-judge.
+      --archive <impl>/deferred-work-resolved.md --ids <move ids> --expect-sha <ledger_sha256>`.
+      A stale `--expect-sha` or unknown id exits 1 with no writes — re-run `plan` and re-judge.
    No-op if the ledger is absent or holds no resolved entry (skip `archive` when the move set is
    empty). Record the count moved (the result's `moved`) in state (`deferred_work_archived`) and the
    report's **Deferred work** field; the move lands in this phase's `docs(epic-{e})` commit.
@@ -474,8 +429,8 @@ runs — step 1.)
    and **never auto-acted**: recommend the upstream re-sync — refresh the codebase docs
    (`/bmad-document-project` only if `docs/` is stale, then `/bmad-generate-project-context`), then
    `/bmad-prd` (update intent) to reconcile the PRD in place; for **structural** drift,
-   `/bmad-correct-course` instead. Like the Phase 7 / trace-gate correct-course pointer, name the step
-   for the user but do **not** run it — it changes planning scope and is the user's call. `none` ⇒ omit.
+   `/bmad-correct-course` instead. Name the step for the user but do **not** run it — it changes
+   planning scope and is the user's call. `none` ⇒ omit.
 
 ## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).
@@ -489,21 +444,17 @@ runs — step 1.)
   `(final)` on a clean completion, `(final — caveated)` if the run finalized but stays at `review`
   — and keep the section a session delta (on a resume, `phases_run` lists only the resumed phases
   and `continues` names the section it picks up from; full vocabulary in `state-and-resume.md` →
-  "reports/{key}.md"). The file holds only the **story-level** outputs that aren't
-  recorded elsewhere — overrides, TEA outcomes, open questions, deferred work, blockers,
-  next-story preview (see `SKILL.md` Step 3 for the exact fields). The finalization **artifacts**
+  "reports/{key}.md"). The file holds only the **story-level** outputs that aren't recorded
+  elsewhere (`SKILL.md` Step 3 lists the exact fields). The finalization **artifacts**
   — PR URL, CI run link, merge method + branch-deleted state, and the BMAD-status-flip outcome —
   are deliberately **chat-only** (Step 3 prints them; rationale in `state-and-resume.md` →
   "reports/{key}.md"). The one-line **disposition** DOES belong in the file's `Pipeline status`
   line — clean / caveated / halted at Phase N, and a draft's summary reason (CI red / waived gate /
-  blocker); it's a summary, not a retrievable artifact, so it is **not** chat-only. Commit it:
-  `docs(story-{e}-{s}): pipeline report`. (Orchestrator-owned, never delegated —
-  `git-and-pr.md` → "Ownership".)
+  blocker) — it is **not** chat-only. Commit it: `docs(story-{e}-{s}): pipeline report`.
 - **git mode `remote`:** push the branch, open the PR, evaluate CI, and convert to draft if
   warranted — all per `git-and-pr.md` ("PR" + "CI link & wait" + draft predicate clauses 1–4).
   Capture `pr_url`, `ci_run_url`, and `ci_status`. PR body = conventional summary + link to the
-  story file + a checklist of open questions / deferred work / human-action items. (The committed
-  report file is now part of the PR diff.)
+  story file + a checklist of open questions / deferred work / human-action items.
 - **git mode `local`** (or the user chose "stop without a PR" in Phase 7): skip the push/PR; leave
   the branch in place (with the report commit on it) and note it in the chat report. The CI wait
   and merge prompt below don't apply.
@@ -520,9 +471,9 @@ runs — step 1.)
   python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad/state \
     --story-key {key} --finalize [--ci-status passed|failed|timeout|none] [--no-pr-draft]
   ```
-  A **clean completion** = `clean_completion: true` (no clause fired — the full negation of the
-  draft predicate, see `git-and-pr.md` → "PR"); a **caveated completion** = any predicate clause
-  fires (draft PR, recorded blocker, waived gate, CI failed/timed-out — `reasons` names them).
+  A **clean completion** = `clean_completion: true` (no draft-predicate clause fired —
+  `git-and-pr.md` → "PR"); a **caveated completion** = any predicate clause fires (`reasons`
+  names them).
   When `flip_bmad_status` is true, flip the story to `done` in the two BMAD-level sources so the
   next run advances past it — one idempotent call, value-only edits that preserve the rest of
   both files:
@@ -530,13 +481,10 @@ runs — step 1.)
   python3 {skill-root}/scripts/story_plan.py --mark-done {key} \
     --sprint-status <impl>/sprint-status.yaml --story-file <impl>/{key}.md
   ```
-  - the **story file `Status:`** field (the same one `dev-story` set to `review`) → `done`;
-  - the **`<impl>/sprint-status.yaml`** entry for `{key}` → `done` (the flat `development_status:`
-    map `story_plan.py` reads; only that one line's value changes).
-  On a caveated completion (`flip_bmad_status: false`), **leave both BMAD-level sources at `review`** so the story keeps
-  re-surfacing until a human acts (a re-run then finds the auto-bmad state already `done` and
-  reports it complete rather than redoing it — see `state-and-resume.md`). This flip is
-  orchestrator-owned finalize bookkeeping, **not** a delegated step (`git-and-pr.md` → "Ownership").
+  - the **story file `Status:`** field → `done`;
+  - the **`<impl>/sprint-status.yaml`** entry for `{key}` → `done`.
+  On a caveated completion (`flip_bmad_status: false`), **leave both BMAD-level sources at
+  `review`** so the story keeps re-surfacing until a human acts (see `state-and-resume.md`).
   **Commit the state→`done` write and these two BMAD-status flips together as the single
   `chore(story-{e}-{s}): finalize (mark done + BMAD status)` commit**, then push it so it lands on
   the branch/PR. On a **caveated** completion (no BMAD flip), the lone state→`done` write is still
@@ -546,7 +494,6 @@ runs — step 1.)
 - **Merge prompt** (only on a clean completion with `git.offer_merge: true`, mode `remote`, a PR
   was opened, no `skip merge-prompt` override): ask the user how to merge and execute their choice
   per `git-and-pr.md` → "Merging the PR". Records `pr_merged` / `merge_method` / `branch_deleted`
-  in state. This is the third interactive moment in normal operation (after first-run setup and
-  the Phase 7 cap; the Phase 8 trace-FAIL ask is also interactive).
+  in state.
 - Hand control back to the SKILL's Step 3, which **prints the final chat report** (the committed
   file portion plus PR / CI / merge / final-status details).

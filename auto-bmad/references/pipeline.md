@@ -120,9 +120,11 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   they span all sessions.
 
 ## Phase 2 — Epic-start setup  *(conditional; two independently-gated sub-steps)*
-Two sub-steps that each carry their own gate; either, both, or neither may run. Mark Phase 2 as
-done in `completed_phases` if any sub-step ran (or if both gates were false — Phase 2 is then a
-no-op, recorded as skipped). Sub-steps execute in this order:
+Two sub-steps that each carry their own gate; either, both, or neither may run. **Phase 2 enters
+`completed_phases` only after BOTH gates have resolved** (each sub-step ran, or its gate was
+false) — never in sub-step 1's folded state write, so a crash between the sub-steps re-enters
+Phase 2 on resume (sub-step 1 won't double-run: its flag already flipped `false`). If both gates
+were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this order:
 
 1. **Project-context bootstrap** *(only if `needs_project_context_bootstrap` from Phase 0)* →
    `project_context`
@@ -198,13 +200,14 @@ For iteration `i` (1-based):
    a. **Build the diff (orchestrator, git).** Write the branch diff (`git.base_branch...HEAD` with the
       `:(exclude)` pathspecs in `delegation.md`) to `<diff_file>` inside a throwaway `mktemp -d`
       `<review_tmp>` (outside the work tree, never committed). If `<diff_file>` is empty there is
-      nothing to review — treat it as a 0-finding pass through step 3 (the iteration-exit logic
-      applies; with no failed lenses it is a genuine clean pass).
+      nothing to review — delete `<review_tmp>` and treat it as a 0-finding pass through step 3
+      (the iteration-exit logic applies; with no failed lenses it is a genuine clean pass).
    b. **Fan out the three lenses** at this iteration's reviewer profile, each writing to its own temp
       file: the **`code-review-blind`**, **`code-review-edge`**, and **`code-review-auditor`** entries.
-      On **Claude Code** spawn them **in parallel**; on **Codex** run them **sequentially** (its
-      no-fan-out rule — `delegation-runtime.md`). Collect each lens's reported path + count; note any
-      empty/failed layer.
+      On **Claude Code** spawn them **in parallel**; on **Codex** and **opencode** run them
+      **sequentially** (Codex's no-fan-out rule — `delegation-runtime.md`; on opencode parallel
+      delegate fan-out is unverified, so stay conservative). Collect each lens's reported path +
+      count; note any empty/failed layer.
    c. **Triage + persist** via the **`code-review-triage`** entry (same profile), handed the three lens
       paths + `<diff_file>` + `<story_file>` + the failed-layer list. It dedupes, classifies, and writes
       the `### Review Findings` section (`[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]`)
@@ -219,8 +222,12 @@ For iteration `i` (1-based):
    reported `Findings persisted:` count (fall back to its total raised-findings count if that line
    is missing). The same gate confirms the `### Review Findings` section persisted AND that every
    `[Review][Defer]` finding reached the durable ledger (`deferred_work_logged >=` the story's
-   defer count). `reconciled: true` (exit 0) → proceed, and use **the file's** counts (`open_patch`
-   / `open_decision`), not the chat report, to drive steps 2–3.
+   defer count). `reconciled: true` (exit 0) → proceed, and use **the file's** counts AND
+   severities (`open_patch` / `open_decision` / `open_nondeferred` / `open_crit_high` /
+   `open_severity`), not the chat report, to drive steps 2–3 — treat any `open_severity.untagged`
+   finding as Critical/High (conservative; the triage prompt mandates a severity tag on every
+   bullet). Once the gate passes, delete `<review_tmp>` (`rm -rf`) — the lens outputs are spent; on
+   a `needs-human` exit keep it and surface its path for debugging.
    `reconciled: false` (exit 1 — section absent, fewer bullets than claimed, or defer findings not
    logged to the ledger) → the findings did NOT persist: **re-run the `code-review-triage` entry once
    more this iteration** — the lens findings are still on disk, so do NOT re-run the lenses — with the
@@ -241,8 +248,9 @@ For iteration `i` (1-based):
    (<date>)` heading — the same file the `code-review-triage` delegate logs its own `[Review][Defer]`
    findings to. This is a direct orchestrator write, like the report and retro-notes: it owns the
    user-deferred decisions because it (not the delegate) resolved them.
-3. **Fix, then classify the pass.** Read the verdict (Approve / Changes Requested / Blocked) and the
-   Critical/High/Med/Low counts. When there is fixable work — `[Review][Patch]` items, or
+3. **Fix, then classify the pass.** Read the verdict (Approve / Changes Requested / Blocked) from
+   the triage report; the Critical/High/Med/Low counts come from **the file** (step 1's
+   `open_severity` / `open_crit_high`), never the chat counts. When there is fixable work — `[Review][Patch]` items, or
    `[Review][Decision]` items the user just resolved to fix — delegate the fix via the
    **`code-review fix`** entry (profile `code_review_fix`), focused on those items, implementing each
    resolved decision in its chosen direction and checking it off, then commit
@@ -251,9 +259,10 @@ For iteration `i` (1-based):
 
    Now classify the pass by its **non-deferred findings** — every finding it raised that was NOT
    routed to `[Review][Defer]` (the `[Review][Patch]` items plus the `[Review][Decision]` items the
-   user chose to fix; use **the file's** reconciled counts from step 1, not the chat report). The
-   pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were Critical or
-   High** (a *deferred* Critical/High is a logged human decision and does not block convergence).
+   user chose to fix; use **the file's** reconciled counts and severities from step 1, not the chat
+   report). The pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were
+   Critical or High** — file-derived: `open_crit_high == 0` AND `open_severity.untagged == 0` at
+   gate time (a *deferred* Critical/High is a logged human decision and does not block convergence).
 
    **Incomplete-review guard (failed lenses) — apply before the loop-drive below.** Fold in the
    fan-out's failed-layer list (step 1b): if **all three lenses failed or returned empty**, the review
@@ -324,13 +333,16 @@ For iteration `i` (1-based):
      carve-out; the orchestrator no longer inspects code at any tier:
      - **Re-review (delegated, not an inline read).** Run the **code-review fan-out** (`delegation.md`
        → `code-review (fan-out)`) at the `code_review_review_secondary` profile — the alternate model,
-       an independent second pair of eyes on the human's changes — exactly like a loop pass (build the
+       an independent second pair of eyes on the human's changes (deliberately the secondary profile
+       even when `code_review.alternate_models` is off: independence is the point here, not rotation)
+       — exactly like a loop pass (build the
        diff, the three lenses, then `code-review-triage`). Apply the **same reconciliation gate** as
        step 1 (`review_findings.py`; one `code-review-triage` re-run on non-persist, else
        `needs-human`). Increment `external_review_iterations`.
      - **Gate on the FILE, not the chat.** Read the `### Review Findings` counts via
        `review_findings.py` (never the reviewer's chat report). The changes are **meaningful** iff
-       this review's non-deferred findings are **> 3 OR include ≥ 1 Critical/High** (the loop's
+       this review's non-deferred findings are **> 3 OR include ≥ 1 Critical/High** — file-derived:
+       `open_nondeferred > 3 OR open_crit_high ≥ 1 OR open_severity.untagged ≥ 1` (the loop's
        non-convergence rule, step 3). **Not meaningful** (≤ 3 non-deferred, none Critical/High) →
        commit the checkpoint `chore(story-{e}-{s}): re-review external changes` and continue, no
        re-halt.

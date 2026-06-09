@@ -35,7 +35,8 @@ already carry the full form, so the short version is enough.
 - `<review_tmp>` — a throwaway dir the orchestrator makes **outside the work tree** (`mktemp -d`) for
   the code-review fan-out, holding `<diff_file>` (the branch diff it writes) and the three lens
   outputs `<blind_out>` / `<edge_out>` / `<auditor_out>`. Never under `<impl>` or the repo — it must
-  not be committable.
+  not be committable. The orchestrator deletes it (`rm -rf`) once the iteration's reconciliation
+  gate passes; on a `needs-human` exit it is kept and its path surfaced for debugging.
 
 ---
 
@@ -182,9 +183,12 @@ TRIAGE:
 PERSIST (this is the deliverable the orchestrator gates on):
 - In <story_file>, add/append a `### Review Findings` section with one bullet per surviving finding,
   Decision first, then Patch, then Defer:
-    - [ ] [Review][Decision] <title> — <detail>
-    - [ ] [Review][Patch] <title> [<file>:<line>]
-    - [x] [Review][Defer] <title> [<file>:<line>] — deferred, pre-existing
+    - [ ] [Review][Decision][<Critical|High|Med|Low>] <title> — <detail>
+    - [ ] [Review][Patch][<Critical|High|Med|Low>] <title> [<file>:<line>]
+    - [x] [Review][Defer][<Critical|High|Med|Low>] <title> [<file>:<line>] — deferred, pre-existing
+  Tag EVERY bullet with its severity, directly after the type tag as shown. The orchestrator reads
+  severity from THIS FILE (an untagged finding is treated as Critical/High), never from your chat
+  counts — an untagged bullet can force an extra review iteration.
 - Copy every `[Review][Defer]` finding to <impl>/deferred-work.md (create it if absent) under a
   `## Deferred from: code review of {key} (<date>)` heading — one bullet each.
 

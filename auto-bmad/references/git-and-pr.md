@@ -45,7 +45,10 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 ## Branching (Phase 1)
 - Branch name: `{git.branch_prefix}{e}-{s}-{slug}` (default prefix `story/`), e.g.
   `story/1-2-user-auth`. Slug = the story-key title part (already kebab-case).
-- `git switch -c <branch>` from the base branch (or `git switch <branch>` if it already exists).
+- Create it explicitly off base — `git switch -c <branch> <base_branch>`, never a bare
+  `git switch -c <branch>` (preflight allows a clean tree on an unrelated branch, and a bare `-c`
+  would branch off it, leaking foreign commits into the PR). On resume, `git switch <branch>` if
+  it already exists.
 - Never `commit`/`push` to the base branch.
 
 ## Commits (between phases)
@@ -108,7 +111,9 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
   2. `convergence_unverified` is `true` (Phase 7: the review loop hit `max_iterations` while the
      last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High;
      **or** a post-halt re-review of external changes surfaced meaningful findings the user chose to
-     **Ignore & continue**, or its Fix & re-review rounds hit the cap — see `pipeline.md` Phase 7 step 4);
+     **Ignore & continue**, or its Fix & re-review rounds hit the cap — see `pipeline.md` Phase 7 step 4;
+     **or** Phase 7 was skipped outright by the `skip code-review` override — zero review passes,
+     see `overrides.md`);
   3. `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
      trace skill — chose to ship despite the coverage gaps);
   4. **CI is red or unknown** when the CI wait below resolves (a required check failed, or the wait
@@ -118,8 +123,9 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
      `--draft` for clauses 1–3 only).
   **The negation of this same draft predicate is the "clean completion" test** that decides
   whether Phase 9 also flips the BMAD-level story status (story file `Status:` + `sprint-status.yaml`)
-  to `done` — non-draft ⇒ flip, draft ⇒ leave at `review` (see `pipeline.md` Phase 9). Keep the two
-  coupled if you edit it.
+  to `done` — predicate false ⇒ flip, any clause true ⇒ leave at `review` (see `pipeline.md`
+  Phase 9; it is the *predicate* that decides, not the PR's actual draft flag — `no_pr_draft` changes
+  only the flag). Keep the two coupled if you edit it.
 - Title: a conventional summary of the story, e.g. `feat(story-1-2): user authentication`.
 - Body must include:
   - one-paragraph summary of what the story delivered;
@@ -154,6 +160,10 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
     `gh pr ready --undo <pr-number>` and leave story at `review`.
   - `passed` or `none` ⇒ clause 4 does not fire; the existing clauses 1–3 still decide draft vs
     non-draft.
+  - **Inherent lag:** the verdict above is evaluated on the pre-finalize HEAD — the Phase 9
+    finalize commit pushed *after* it supersedes that SHA and may re-trigger CI. That commit is
+    bookkeeping-only (state/report/status files, no code), so the verdict remains meaningful for
+    the story's code; on a protected branch the pending-checks merge fallback below covers the gap.
 
 ## Merging the PR (Phase 9, only when clean) — orchestrator
 auto-bmad never merges automatically. When the run is a **clean completion** (full draft
@@ -172,6 +182,12 @@ clean.
   - `gh pr merge <pr-number> --merge` *(or `--rebase` / `--squash`)* `[--delete-branch]`.
   - On success: `git switch <base_branch>` then `git pull --ff-only` so the local tree matches
     `origin/<base_branch>` post-merge.
+  - **Pending-checks fallback:** if the merge fails because required checks are
+    pending/expected on the head SHA (the finalize push superseded the CI-validated commit — the
+    "inherent lag" above), retry **once** with `--auto` added: the user already chose to merge, and
+    auto-merge completes it when the checks pass — tell them that's what happened ("merge queued;
+    completes when checks pass"). If the `--auto` retry also fails (e.g. auto-merge disabled in the
+    repo), fall through to the failure handling below.
   - On failure (branch protection, required reviews, conflict, CI required check missing, etc.):
     don't retry, don't error out — capture the `gh` stderr verbatim into the report under "Needs
     attention" ("PR merge failed: …; merge manually at `<pr_url>`") and leave the PR open. The

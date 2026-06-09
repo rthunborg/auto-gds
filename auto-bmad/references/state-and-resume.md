@@ -220,12 +220,12 @@ tea_selected: [atdd, automate]   # from triage; [] if trivial or TEA off; may al
 tea_rationale: "touches auth -> High risk"
 epic_story_count: 12             # stories under epic {e} (from sprint-status); gates the long-epic trace advisory
 stories_after_in_epic: 7         # epic stories ordered after this one (0=last); with epic_story_count, drives the trace-advisory distance gate (skip the last skip_last_stories)
-completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here if EITHER sub-step ran
+completed_phases: [0, 1, 3, 5]   # phase numbers from pipeline.md; Phase 2 lands here only once BOTH its sub-step gates resolved (ran, or gate false)
 code_review_iterations: 1
 code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (code_review.skip_hitl_on_clean_convergence=true AND convergence_unverified=false), in which case proceed to the Phase 7 tail without re-opening
 hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached)
 external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue; capped by code_review.max_iterations; 0 if none
-convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (>3 non-deferred findings, or >=1 non-deferred Critical/High) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings the user chose to Ignore & continue, or its Fix & re-review rounds hit the cap -> Phase 9 opens the PR as a draft
+convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (>3 non-deferred findings, or >=1 non-deferred Critical/High) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings the user chose to Ignore & continue, or its Fix & re-review rounds hit the cap, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
@@ -313,9 +313,20 @@ no glob to misname (`story-*`) or to abort under zsh/fish.
   step-4 skip gate applies — `code_review.skip_hitl_on_clean_convergence` true and
   `convergence_unverified` false — proceed to the Phase 7 tail without re-opening). Re-detect
   git mode/branch (cheap) rather than trusting stale values if the branch is missing.
-- Else → start fresh (initialize the state file in Phase 1).
+- Else → start fresh (initialize the state file in Phase 1) — **after the status-mismatch guard:**
+  check the story's BMAD status from the `story_plan.py` read (`current_status` / `next_action`).
+  `backlog`/`ready-for-dev` ⇒ start fresh as above. But **`review` or `in-progress` with NO state
+  file** means the work happened outside auto-bmad (a hand-driven/brownfield story, or a lost state
+  dir) — running the full pipeline would re-create and re-implement an already-built story. **ASK
+  the user** (`AskUserQuestion`): **Enter at the matching phase** *(recommended — `in-progress` ⇒
+  Phase 5 dev-story, `review` ⇒ Phase 7 code-review; first validate that phase's `start_phase`
+  prerequisites per `overrides.md` and hard-stop if they fail)* / **Run the full pipeline anyway**
+  (a deliberate redo) / **Stop**. Record the chosen entry as `start_phase` in `overrides`.
 - A `done` state file for the requested story → tell the user it's already complete and show the
-  recorded `pr_url`; do not redo it (unless they explicitly force a re-run).
+  recorded `pr_url`; do not redo it (unless they explicitly force a re-run). When this happens on a
+  **no-arg** run — a *caveated* completion still parked at `review` keeps being re-picked — also
+  name the way forward: resolve the recorded caveat (then flip the BMAD status to `done`), or work
+  another story explicitly with `/auto-bmad <story-id>` in the meantime.
 
 Git commits are the secondary safety net: even if the state file is lost, the per-phase commits
 on the story branch show how far the pipeline got.

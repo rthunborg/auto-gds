@@ -58,7 +58,10 @@ override; it is the existing target selector.
 - **skip project-context-bootstrap:** suppress only Phase 2's project-context bootstrap sub-step,
   even when `needs_project_context_bootstrap` is true. Use sparingly — every create-story in the
   epic will then run without persistent_facts injection (see Phase 0 → "Project-context probe").
-- **skip code-review:** skip Phase 7 entirely. ⚠️ Quality gate removed — flag prominently.
+- **skip code-review:** skip Phase 7 entirely AND set `convergence_unverified: true` — zero review
+  passes is the strongest form of unverified, so the PR opens as a **draft** and the story stays at
+  `review` (draft-predicate clause 2; combine with `no_pr_draft` to ship non-draft anyway — the
+  story still stays at `review`). ⚠️ Quality gate removed — flag prominently.
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
 - **skip trace-advisory:** suppress only the Phase 7 tail per-story trace advisory for this run,
   even when its conditions hold (high risk, long epic — see `tea-policy.md` §3). It is already

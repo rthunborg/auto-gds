@@ -13,6 +13,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Code-review severity is now read from the story file, not the reviewer's chat.** The triage
+  delegate must tag every persisted finding (`[Review][Patch][High] …`) and `review_findings.py`
+  parses the tags (`open_severity`, `open_crit_high`; an untagged finding counts as Critical/High,
+  conservatively) — so the convergence rule and the post-halt "meaningful changes" gate are fully
+  file-driven. Takes effect on module update — no reprovision needed.
+
+- **`skip code-review` now ships a draft PR and leaves the story at `review`.** Zero review passes
+  sets `convergence_unverified` — previously the override shipped non-draft and auto-flipped the
+  story `done`, cleaner than a reviewed-but-unverified single pass. `no_pr_draft` still forces a
+  non-draft PR.
+
+- **A `review`/`in-progress` story with no auto-bmad state no longer silently re-runs the full
+  pipeline.** Target selection now asks — enter at the matching phase (`review` ⇒ code-review,
+  `in-progress` ⇒ dev), redo in full, or stop — instead of re-creating an already-implemented
+  story. (state-and-resume.md)
+
+- **opencode now runs the three review lenses sequentially.** Parallel delegate fan-out is
+  unverified there (previously unspecified), so the code-review fan-out stays conservative.
+
+- **A story stuck at `review` after a caveated run now gets move-on guidance.** The "already
+  complete" stop names the recorded caveat and the `/auto-bmad <story-id>` escape to work another
+  story meanwhile.
+
+- **Code-review temp dirs are cleaned up after each iteration.** The fan-out's `mktemp` dir is
+  removed once the reconciliation gate passes; on a `needs-human` exit it is kept and its path
+  surfaced for debugging.
+
+### Fixed
+
+- **`gh pr merge` no longer predictably fails on protected branches after the finalize push.** The
+  finalize commit supersedes the CI-validated SHA; when the merge fails on pending required checks,
+  auto-bmad retries once with `--auto` so the user's chosen merge completes when checks pass.
+  (git-and-pr.md)
+
+- **A perfectly clean review pass no longer false-fails the Phase 7 reconciliation gate.**
+  `review_findings.py --expect-min 0` now reconciles a story with no `### Review Findings` section
+  (a 0-finding triage may legitimately write none); any positive claim still requires the section.
+
+- **A crash between Phase 2's sub-steps no longer skips the epic test design on resume.** Phase 2
+  now enters `completed_phases` only after both sub-step gates resolve, so an interrupted Phase 2
+  is re-entered. (pipeline.md)
+
+- **The story branch is now created explicitly off the base branch.** Branching pins the start
+  point (`git switch -c <branch> <base>`), so starting from a clean but unrelated branch can no
+  longer leak its commits into the story PR. (git-and-pr.md)
+
 ## [0.16.0] - 2026-06-09
 
 ### Added

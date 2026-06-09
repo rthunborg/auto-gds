@@ -129,7 +129,9 @@ invocation carried any instructions — `references/overrides.md`, then:
 3. **Resume check:** for the chosen `story_key`, run the same reader with
    `--story-key {story_key}` (exact-path lookup, no glob). `resume: true` ⇒ resume from the first
    phase not in `completed_phases` (and continue the review loop from `code_review_iterations`);
-   otherwise initialize a fresh state file in Phase 1.
+   otherwise initialize a fresh state file in Phase 1 — but first apply the **status-mismatch
+   guard** (`state-and-resume.md` → "Target selection & resume logic"): a story already at
+   `review`/`in-progress` with no state file asks the user before running the full pipeline.
 4. **Git preflight, project-context probe & triage** (per Phase 0 of the pipeline): **you run the
    git preflight and the project-context probe directly** — detect repo, clean tree, git mode,
    base branch; then probe for an existing `project-context.md` at the BMAD-canonical write path

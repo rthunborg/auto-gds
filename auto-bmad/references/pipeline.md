@@ -170,18 +170,13 @@ were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this o
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
 ## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean)
-The loop runs **at least two review passes — unless the first pass is perfectly clean** (found **0
-non-deferred findings**), in which case it exits after that single pass. (The lone exception is the
-degenerate `max_iterations: 1` config, where even a non-clean first pass can't get its second
-opinion — it exits as an unverified draft; see the cap edge in step 3.) Any first pass with **≥ 1**
-non-deferred finding still pulls a mandatory second opinion (the alternate model, when
-`code_review.alternate_models` is on) — then the loop exits as soon as a pass converges or the cap is
-hit, and **ends at a human-in-the-loop halt** (step 4) — unless step 4's skip gate applies
-(`code_review.skip_hitl_on_clean_convergence` on and the loop converged cleanly). A pass **converges** when it
-found-and-fixed **≤ 3 non-deferred findings AND none
-were Critical or High**; it does **not** converge when it found **> 3 non-deferred findings OR ≥ 1
-non-deferred Critical/High**. Track `code_review_iterations` and `code_review_loop_done` in state
-(resume continues mid-loop, or re-opens the halt once the loop is done).
+The loop runs **at least two review passes — unless the first pass is perfectly clean** (0
+non-deferred findings, all three lenses ran), and **ends at a human-in-the-loop halt** (step 4)
+unless step 4's skip gate applies. A pass **converges** when it found-and-fixed **≤ 3 non-deferred
+findings AND none were Critical or High** (an untagged finding counts as Critical/High). Every
+continue/exit/halt rule is the `review_loop.py gate` decision table in step 3 — call the script and
+obey it, never re-derive the rules. Track `code_review_iterations` and `code_review_loop_done` in
+state (resume continues mid-loop, or re-opens the halt once the loop is done).
 
 For iteration `i` (1-based):
 1. **Reviewer profile** — **always start with the primary reviewer.** When
@@ -196,11 +191,14 @@ For iteration `i` (1-based):
    orchestrator hoists the fan-out (`delegation.md` → `code-review (fan-out)`; `CLAUDE.md` →
    orchestrator-owned actions). It passes the diff and findings **by path, never by content**, so it
    inspects no code:
-   a. **Build the diff (orchestrator, git).** Write the branch diff (`git.base_branch...HEAD` with the
-      `:(exclude)` pathspecs in `delegation.md`) to `<diff_file>` inside a throwaway `mktemp -d`
-      `<review_tmp>` (outside the work tree, never committed). If `<diff_file>` is empty there is
-      nothing to review — delete `<review_tmp>` and treat it as a 0-finding pass through step 3
-      (the iteration-exit logic applies; with no failed lenses it is a genuine clean pass).
+   a. **Build the diff (orchestrator, tool call).** Run `python3 {skill-root}/scripts/review_loop.py
+      prep-diff --project-root <project_root> --base {git.base_branch}` — it writes the branch diff
+      (exclude pathspecs baked into the script) to `diff_file` inside a throwaway `review_tmp`
+      (outside the work tree, never committed) and reserves the three lens-output paths
+      (`blind_out` / `edge_out` / `auditor_out`). Hand the returned paths to the lenses and triage
+      below. If `diff_empty` is true there is nothing to review — delete `review_tmp` and treat it
+      as a 0-finding pass through step 3 (gate it with `--lenses-failed 0`; with no failed lenses
+      it is a genuine clean pass — table row 2).
    b. **Fan out the three lenses** at this iteration's reviewer profile, each writing to its own temp
       file: the **`code-review-blind`**, **`code-review-edge`**, and **`code-review-auditor`** entries.
       On **Claude Code** spawn them **in parallel**; on **Codex** and **opencode** run them
@@ -256,6 +254,15 @@ For iteration `i` (1-based):
    `fix(story-{e}-{s}): address code review (iter {i})`. A pass with **no fixable findings** instead
    commits the checkpoint `chore(story-{e}-{s}): code review passed (iter {i})`.
 
+   **Post-fix verification — after EVERY fix delegate, before the commit.** Re-run
+   `review_findings.py` (same flags as step 1's gate) and pipe its JSON to `python3
+   {skill-root}/scripts/review_loop.py post-fix --findings-json -` (add `--retry-used` on the second
+   attempt). Obey `action`: `proceed` → carry on; `retry-fix` → re-delegate the **`code-review fix`**
+   entry once on the still-open items (this does not consume a loop iteration), then re-verify with
+   `--retry-used`; `needs-human` → stop and report ("fix pass left open findings in `<story_file>`").
+   This guarantees the next gate's open counts are attributable to the next review pass, not a
+   half-done fix.
+
    Now classify the pass by its **non-deferred findings** — every finding it raised that was NOT
    routed to `[Review][Defer]` (the `[Review][Patch]` items plus the `[Review][Decision]` items the
    user chose to fix; use **the file's** reconciled counts and severities from step 1, not the chat
@@ -263,45 +270,32 @@ For iteration `i` (1-based):
    Critical or High** — file-derived: `open_crit_high == 0` AND `open_severity.untagged == 0` at
    gate time (a *deferred* Critical/High is a logged human decision and does not block convergence).
 
-   **Incomplete-review guard (failed lenses) — apply before the loop-drive below.** Fold in the
-   fan-out's failed-layer list (step 1b): if **all three lenses failed or returned empty**, the review
-   did not actually happen — **stop and report `needs-human`** ("code review incomplete — 0/3 lenses
-   produced findings"); never let that count as clean. If **some but not all** lenses failed, a
-   0-non-deferred-finding result is **not** trustworthy as "perfectly clean": it does **not** qualify
-   for the `i == 1` early-exit below — force at least a second pass (or, when `max_iterations == 1`,
-   exit the single pass as a draft via the `i == 1, i == max_iterations` bullet below — a missing lens
-   is "not perfectly clean"), and carry an "incomplete review (only N/3 lenses ran)" caveat into the
-   report and the Phase 7 HITL-halt summary. If a pass with a
-   lens still missing is the loop's final one (it converges or hits the cap), also set
-   `convergence_unverified: true` so Phase 9 ships a **draft** — an incomplete review is the same
-   flavor of unverified-ness as a cap-unconverged exit (`git-and-pr.md` draft predicate).
+   **Drive the loop — tool call, not prose.** Pipe the gate-time `review_findings.py` JSON to
+   `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
+   --max-iterations {cap} --alternate-models {cfg} --lenses-failed {failed-layer count from step 1b}
+   --skip-hitl-on-clean-convergence {cfg}` (add `--convergence-unverified true` when state already
+   holds the sticky flag) and **OBEY its `action`, `hitl`, and `convergence_unverified`**: `continue`
+   → run iteration `i+1` at `reviewer_next_iter`; `exit-clean`/`exit-unconverged` → exit the loop,
+   persist `convergence_unverified` to state (`true` ⇒ Phase 9 ships a **draft** — `git-and-pr.md`
+   draft predicate), and enter step 4 with `hitl` (`halt` → the ask runs; `skip-halt` → step 4's
+   skip gate fires); `needs-human` → stop and report `needs-human` ("code review incomplete — 0/3
+   lenses produced findings"), keeping `<review_tmp>` for debugging. Carry the gate's `reason` (it
+   includes any "incomplete review (only N/3 lenses ran)" caveat) into the report and the step-4
+   halt summary. The table below is the normative contract — the script's self-test pins every row:
 
-   Drive the loop:
-   - **`i == 1`, all three lenses ran, and the pass found 0 non-deferred findings** → **exit the loop**
-     (perfectly clean — the second opinion is skipped; this is the only first-pass early exit). The
-     pass trivially converged, so `convergence_unverified` stays false.
-   - **`i == 1`, not perfectly clean (≥ 1 non-deferred finding, OR a lens failed/returned empty),
-     `i < max_iterations`** → **continue to iteration 2**, whatever else it found. The second review
-     is mandatory the moment the first pass surfaces anything actionable (even a single ≤ 3-finding
-     pass that would otherwise converge).
-   - **`i == 1`, not perfectly clean, `i == max_iterations`** (only reachable when
-     `max_iterations == 1`) → **exit the loop**: the mandatory second opinion can't run, so this
-     single pass is unverified — set `convergence_unverified: true` (Phase 9 opens the PR as a draft,
-     exactly like the cap-unconverged `i ≥ 2` exit in the next bullet). This is what the state schema
-     means by `convergence_unverified` — `max_iterations` hit with the last pass not converged
-     (`state-and-resume.md`) — so a findings-bearing single pass must never ship non-draft.
-   - **`i ≥ 2` and the pass converged** → exit the loop.
-   - **`i ≥ 2`, not converged, `i < max_iterations`** → continue to iteration `i+1`.
-   - **`i ≥ 2`, not converged, `i == max_iterations`** → exit the loop **unconverged**: set
-     `convergence_unverified: true` (Phase 9 then opens the PR as a draft — `git-and-pr.md` draft
-     predicate clause 2).
+   | # | i | lenses-failed | findings | cap (i==max)? | action | convergence_unverified | hitl |
+   |---|---|---|---|---|---|---|---|
+   | 1 | any | 3 | — | — | needs-human ("0/3 lenses produced findings") | input value (unchanged) | null |
+   | 2 | 1 | 0 | clean | — | exit-clean (only first-pass early exit) | false (or input true) | skip-halt if cfg else halt |
+   | 3 | 1 | 0 | not clean | no | continue (second opinion mandatory) | false/input | null |
+   | 4 | 1 | 1–2 | any (even 0 findings — untrustworthy) | no | continue | false/input | null |
+   | 5 | 1 | any≤2 | not perfectly clean (≥1 finding OR ≥1 lens failed) | yes (max==1) | exit-unconverged | true | halt |
+   | 6 | ≥2 | 0 | converged | — | exit-clean | false/input | skip-halt if cfg else halt |
+   | 7 | ≥2 | 1–2 | converged | — | exit-unconverged (reason notes "incomplete review N/3 lenses") | true | halt |
+   | 8 | ≥2 | ≤2 | not converged | no | continue | false/input | null |
+   | 9 | ≥2 | ≤2 | not converged | yes | exit-unconverged | true | halt |
+
    On any exit, set `code_review_loop_done: true`, then go to step 4.
-   (Edge: if `code_review.max_iterations` is `1` the second review can't run — the loop takes its
-   single pass and exits (per the `i == 1, i == max_iterations` bullet above): a **perfectly clean**
-   single pass ships non-draft, while **any non-clean** single pass exits with
-   `convergence_unverified: true` (a draft PR), since its mandatory second opinion never ran. Note the
-   single-pass run in the report. At the default cap of 2 the loop runs 1–2 passes — 1 when the first
-   pass is perfectly clean, otherwise 2.)
 4. **HITL halt — ASK the user on every loop exit (unless configured to skip a clean convergence).**
    **Skip gate — evaluate first, at step entry, on the loop-exit `convergence_unverified` value**
    (the post-halt re-review below also writes this flag, so read it *before* that machinery runs): if

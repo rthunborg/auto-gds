@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ~8 hand-rolled shell probes (git preflight + mode, project-context, CI, required skills,
   framework detection) with a single JSON answer and built-in hard-stop rules.
 
+- **Phase 7's review-loop decisions are now scripted, not prose.** New `review_loop.py` builds the
+  review diff, gates every pass into continue/exit/halt (+ the draft flag), and its `--self-test`
+  pins the full decision table.
+
+- **Every code-review fix pass is now verified before the next gate.** A post-fix findings
+  re-check re-delegates a half-done fix once, then escalates to `needs-human`
+  (review_loop.py post-fix).
+
 ### Changed
 
 - **Code-review severity is now read from the story file, not the reviewer's chat.** The triage

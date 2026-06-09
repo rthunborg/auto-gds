@@ -115,17 +115,12 @@ just its output-file path + finding count, and its `Deferred work` / `Retro note
 `code-review-triage` reads the findings. (Triage's own report carries counts + verdict — metadata, not
 code — which the orchestrator needs for the loop.)
 
-**Diff construction (orchestrator, git — by path, no ingestion).** Make `<review_tmp>` with `mktemp -d`
-(outside the work tree), then write the branch diff to `<diff_file>`:
-```
-git diff <base>...HEAD -- ':(exclude)_bmad' ':(exclude)_bmad-output' \
-  ':(exclude)**/__pycache__' ':(exclude)**/*.pyc' ':(exclude)**/.DS_Store' > <diff_file>
-```
-`<base>` = `git.base_branch` (Phase 0). **Three-dot** = exactly what this branch changed since it
-diverged from base. The single-quoted `:(exclude)` pathspecs are read by git, not the shell — safe under
-zsh/fish (`CLAUDE.md` → "Shell globs"). "Obvious non-code files" beyond these excludes is **not** a path
-rule (it was reviewer judgment) — it is handled in `code-review-triage` (dismiss findings whose only
-locus is a lockfile / generated / vendored file). If `<diff_file>` is empty, there is nothing to review.
+**Diff construction (orchestrator — tool call, by path, no ingestion).** `review_loop.py prep-diff
+--project-root <project_root> --base {git.base_branch}` builds `<review_tmp>`, `<diff_file>` and the
+three lens-output paths (three-dot diff; the `:(exclude)` pathspecs live in the script — `pipeline.md`
+Phase 7 step 1a). "Obvious non-code files" beyond those excludes is **not** a path rule (it was
+reviewer judgment) — it is handled in `code-review-triage` (dismiss findings whose only locus is a
+lockfile / generated / vendored file). If `diff_empty`, there is nothing to review.
 
 #### code-review-blind  (Blind Hunter — diff only, unanchored)
 ```

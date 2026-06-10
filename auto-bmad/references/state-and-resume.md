@@ -153,7 +153,7 @@ timing_anchor: null         # epoch seconds while a phase (or a bracketed user p
                             #   idle. Non-null on resume = crash tail (timing notes below).
 is_first_in_epic: false
 is_last_in_epic: false
-needs_project_context_bootstrap: false  # set at Phase 0; flipped to false by Phase 2's bootstrap sub-step
+needs_project_context_bootstrap: false  # decided at Phase 0 (carried into Phase 1's init --json — no state file exists during Phase 0); flipped to false by Phase 2's bootstrap sub-step
 git_mode: remote
 base_branch: main
 tea_risk: high                   # low|med|high from Phase 0 triage; gates per-story TEA + the long-epic trace advisory
@@ -247,7 +247,10 @@ python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad
   capture had fixable work (`open_patch > 0`, or decisions the user resolved to fix), re-enter
   step 3 at the fix delegate first; then re-run the gate with the capsule's counts +
   `lenses_failed` — rebuild its findings JSON from the capsule, **never** from a fresh
-  story-file read (post-fix check-offs would fake a clean pass) — and obey its
+  story-file read (post-fix check-offs would fake a clean pass). The capsule is FLAT while the
+  gate wants the `review_findings.py` shape: map `untagged` → `open_severity: {"untagged": …}`
+  and pass `open_nondeferred`/`open_crit_high` through (the other `open_severity` buckets aren't
+  consumed; the gate errors by name on a missing key if the mapping is skipped). Obey its
   `action` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
   HITL halt rather than re-iterating — the re-opened halt re-runs its git-only change check, so a
   post-halt external-change re-review resumes naturally from `external_review_iterations`; but if
@@ -325,6 +328,13 @@ semantics (`SKILL.md` Step 3 only points here). `state_update.py report-section`
 literally — Story/Branch/Timing lines (and the `resumed N×` count) derive from the state file +
 prior sections, prose snippets come from `--json`, and a heading is never dropped: an empty field
 keeps its heading with `(none)`. Timing-split semantics: the timing fields above.
+
+**`--json` payload keys (exact names — the script REJECTS unknown keys, because a misspelled key
+would silently render its heading `(none)`):** `disposition_tag` (the heading tag),
+`pipeline_status`, `continues`, `phases_run`, `skipped`, `overrides`, `tea`, `code_review`,
+`open_questions` (list), `deferred_work` (list) + `deferred_archived_note` (the Phase 8 archive
+line appended under it), `planning_drift`, `needs_human` (list — the ⚠️ heading), `next`,
+`head_sha` (the Branch line's short SHA).
 
 ```markdown
 ## Report — <ISO timestamp UTC> (<disposition tag — the closed vocabulary above: (final) / (final — caveated) / (halted — <reason>) — tagging the heading keeps the log skim-readable from its outline>)

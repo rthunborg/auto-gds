@@ -90,8 +90,9 @@ reference file at the moment its step calls for it.
 Read `references/state-and-resume.md`, `references/pipeline.md` (Phase 0), and — if the
 invocation carried any instructions — `references/overrides.md`, then:
 0. **Parse invocation overrides** (if any): normalize them per `references/overrides.md`,
-   **echo the interpretation plus the resolved phase window/skips to the user**, and record them
-   in state under `overrides`. If `dry_run`, print the plan and stop here. (`skip tea` flips
+   **echo the interpretation plus the resolved phase window/skips to the user**, and carry them
+   into Phase 1's `init --json` under `overrides` (no state file exists yet — pipeline.md, the
+   Phase 0 exception). If `dry_run`, print the plan and stop here. (`skip tea` flips
    `tea.enabled` off for this run, affecting sub-steps 1 and 4 below.)
 1. **Skill availability:** the BMAD skills required for the selected path must exist — the
    `/bmad-*` skills named in `delegation.md` for the phases that will run (core always; TEA set
@@ -120,11 +121,13 @@ invocation carried any instructions — `references/overrides.md`, then:
 4. **Git preflight, project-context probe & triage** (per Phase 0 of the pipeline): run
    `python3 {skill-root}/scripts/preflight.py --project-root <project_root> --output-folder
    <output_folder>` (one call, one JSON — field semantics in Phase 0); obey its `git` block
-   (honor `hard_stop`/`hard_stop_reasons`) and `project_context.found` → record
-   `needs_project_context_bootstrap` in state. Then, **only if TEA enabled**, delegate the
-   story-risk classification to the `tea_triage` profile to pick per-story TEA skills; record
-   the decisions in state. (On a resume with Phase 0 already in `completed_phases`, reuse the
-   recorded `tea_risk`/`tea_selected` — don't re-delegate the triage.)
+   (honor `hard_stop`/`hard_stop_reasons`) and `project_context.found` → note
+   `needs_project_context_bootstrap`. Then, **only if TEA enabled**, delegate the
+   story-risk classification to the `tea_triage` profile to pick per-story TEA skills. All of
+   these decisions ride in Phase 1's `init --json` payload — Phase 0 never writes state
+   (pipeline.md, the Phase 0 exception). (On a resume with Phase 0 already in
+   `completed_phases`, reuse the recorded `tea_risk`/`tea_selected` — don't re-delegate the
+   triage.)
 
 ### Step 2 — Run the pipeline
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases
@@ -149,7 +152,10 @@ line). Both are always printed to the user.
   didn't reach that pre-push write (a hard-stop in Phases 0–8, `needs-human`, or an override
   that ended the run early), Step 3 writes it now as a fallback: append a new
   `## Report — <ISO timestamp>` section, tagged `(halted — <reason>)` on this pre-finalize path,
-  preserving any earlier sections; **no commit** (the human commits alongside their fix). Never
+  preserving any earlier sections; **no commit** (the human commits alongside their fix). On a
+  hard-stop BEFORE Phase 1's `init` (no state file yet — e.g. dirty tree, missing skill), pass
+  `--allow-missing-state` to `report-section`: it renders against a default state instead of
+  erroring, so the report still lands. Never
   overwrite on resume; the ONLY overwrite is a deliberate full re-run of an already-`done`
   story, after explicit user confirmation — if declined, append.
 - **Chat-only** (printed at the end of every run; not written to the file): the full file

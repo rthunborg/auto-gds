@@ -19,6 +19,10 @@ carries a **required body** (and a footer when relevant), built from that phase'
 arithmetic: bracket each phase with `python3 {skill-root}/scripts/state_update.py timing-start
 --state-file <state>` just before delegating and `… timing-pause …` when it returns (just before
 the state write + commit); the script owns the clock math (`state-and-resume.md` → timing fields).
+**Exception — Phase 0:** the state file does not exist until Phase 1's `init` (and every
+`state_update.py` subcommand except `init` refuses a missing file), so Phase 0 is never bracketed
+and never writes state — its triage time goes untracked (accepted), and every Phase-0 "record …"
+decision is **carried into Phase 1's `init --json` payload**, not written during Phase 0.
 **Don't count time spent waiting on the user:** if the phase opens an `AskUserQuestion` (e.g. the
 Phase 7 decision asks or the HITL halt), invert the bracket — `timing-pause` before the prompt,
 `timing-start` after — so the wait lands on human/idle, not active. (A `dropped_anchor: true`
@@ -86,24 +90,29 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   "Resolving host & mode".
 - **Project-context probe (orchestrator):** read the preflight JSON's `project_context.found`
   (pass `<output_folder>` from `_bmad/bmm/config.yaml` as `--output-folder`; discovery internals
-  live in `preflight.py`). `found: false` → set `needs_project_context_bootstrap: true` in state;
-  Phase 2 will bootstrap it before create-story. `found: true` → set the flag `false` (Phase 8
-  still refreshes it on the last story of the epic).
+  live in `preflight.py`). `found: false` → record `needs_project_context_bootstrap: true`;
+  Phase 2 will bootstrap it before create-story. `found: true` → record the flag `false` (Phase 8
+  still refreshes it on the last story of the epic). Like every Phase-0 decision, this rides in
+  Phase 1's `init --json` (no state file exists yet).
 - **Triage (only if `tea.enabled`; delegated to `tea_triage`)**: classify the story `low | med | high` and choose the
   per-story TEA set using `tea-policy.md`. Record `tea_risk` (`low|med|high`) and `tea_selected`
-  (e.g. `[atdd, automate]`, or `[]` for trivial) in state. Also record `epic_story_count` and
+  (e.g. `[atdd, automate]`, or `[]` for trivial). Also record `epic_story_count` and
   `stories_after_in_epic` (both from the sprint-status read that set `is_first/last_in_epic`) and, when
   `tea-policy.md` §3's conditions all hold (high risk, **not within the epic's last
   `skip_last_stories`** — i.e. `stories_after_in_epic >= skip_last_stories`, default 3 — and a
   long-enough epic), add `trace-advisory` to `tea_selected` — Phase 7's tail runs it.
-- No commit (nothing changed yet). Persist decisions to state.
+- No commit (nothing changed yet). **No state writes** (no state file exists yet — see the Phase 0
+  exception in the header): carry the decisions (`needs_project_context_bootstrap`, `tea_risk`,
+  `tea_selected`, `epic_story_count`, `stories_after_in_epic`, any invocation `overrides`) forward
+  into Phase 1's `init --json` payload.
 
 ## Phase 1 — Branch  *(orchestrator)*
 - Ensure we are NOT on the base branch. Create/checkout `{branch_prefix}{e}-{s}-{slug}`
   (default `story/{e}-{s}-{slug}`). If the branch already exists (resume), check it out.
 - Write the initial state file with `python3 {skill-root}/scripts/state_update.py init
   --state-file <state> --json -` (it refuses — exit 1 — if the file already exists, so a **resume**
-  can never re-init and `started_at`/`active_seconds` span all sessions). Commit it:
+  can never re-init and `started_at`/`active_seconds` span all sessions). The `init` payload is
+  where every Phase-0 decision lands (the fields listed at the end of Phase 0). Commit it:
   `chore(story-{e}-{s}): start auto-bmad pipeline`.
 
 ## Phase 2 — Epic-start setup  *(conditional; two independently-gated sub-steps)*
@@ -186,7 +195,12 @@ For iteration `i` (1-based):
       **sequentially** (Codex's no-fan-out rule — `delegation-runtime.md`; opencode parallel
       fan-out is unverified). Collect each lens's reported path + count; note any empty/failed
       layer.
-   c. **Triage + persist** via the **`code-review-triage`** entry (same profile), handed the three lens
+   c. **Capture the persistence baseline, then triage + persist.** First run
+      `python3 {skill-root}/scripts/review_findings.py --story-file <story_file>` and note its
+      `total` as `{B}` — the section's bullet count BEFORE this pass (0 on a fresh story; on
+      iteration ≥ 2 it holds the earlier passes' bullets). The reconciliation gate below subtracts
+      it, so a prior pass's bullets can never vacuously satisfy this pass's persistence claim.
+      Then delegate the **`code-review-triage`** entry (same profile), handed the three lens
       paths + `<diff_file>` + `<story_file>` + the failed-layer list. It dedupes, classifies, and writes
       the `### Review Findings` section (`[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]`)
       plus the deferral ledger, then returns the verdict + counts. It is the **only** code-review
@@ -196,9 +210,10 @@ For iteration `i` (1-based):
    the one that persists; never take its chat counts on faith (a mis-bound write leaves the section
    empty while chat claims findings). After it returns, run
    `python3 {skill-root}/scripts/review_findings.py --story-file <story_file> --expect-min {N}
-   --deferred-work-file <impl>/deferred-work.md --story-key {key}` where `{N}` is the reviewer's
-   reported `Findings persisted:` count (fall back to its total raised-findings count if that line
-   is missing). The same gate confirms the `### Review Findings` section persisted AND that every
+   --baseline {B} --deferred-work-file <impl>/deferred-work.md --story-key {key}` where `{N}` is
+   the reviewer's reported `Findings persisted:` count (fall back to its total raised-findings
+   count if that line is missing) and `{B}` is step 1c's pre-triage baseline — the gate passes
+   only if the section gained ≥ `{N}` bullets THIS pass. The same gate confirms the `### Review Findings` section persisted AND that every
    `[Review][Defer]` finding reached the durable ledger (`deferred_work_logged >=` the story's
    defer count). `reconciled: true` (exit 0) → proceed, and use **the file's** counts AND
    severities (`open_patch` / `open_decision` / `open_nondeferred` / `open_crit_high` /
@@ -272,7 +287,9 @@ For iteration `i` (1-based):
    skip gate fires); `needs-human` → stop and report `needs-human` ("code review incomplete — 0/3
    lenses produced findings"), keeping `<review_tmp>` for debugging. Carry the gate's `reason` (it
    includes any "incomplete review (only N/3 lenses ran)" caveat) into the report and the step-4
-   halt summary. The table below is the normative contract — the script's self-test pins every row:
+   halt summary. **The normative contract is `review_loop.py`** — its docstring carries the
+   decision table and its `--self-test` pins every row; the copy below is a courtesy reference
+   only. On any discrepancy the script's JSON wins — obey it, never re-derive from this table:
 
    | # | i | lenses-failed | findings | cap (i==max)? | action | convergence_unverified | hitl |
    |---|---|---|---|---|---|---|---|
@@ -319,13 +336,12 @@ For iteration `i` (1-based):
        diff, the three lenses, then `code-review-triage`). Apply the **same reconciliation gate** as
        step 1 (`review_findings.py`; one `code-review-triage` re-run on non-persist, else
        `needs-human`). Increment `external_review_iterations`.
-     - **Gate on the FILE, not the chat.** Read the `### Review Findings` counts via
-       `review_findings.py` (never the reviewer's chat report). The changes are **meaningful** iff
-       this review's non-deferred findings are **> 3 OR include ≥ 1 Critical/High** — file-derived:
-       `open_nondeferred > 3 OR open_crit_high ≥ 1 OR open_severity.untagged ≥ 1` (the loop's
-       non-convergence rule, step 3). **Not meaningful** (≤ 3 non-deferred, none Critical/High) →
-       commit the checkpoint `chore(story-{e}-{s}): re-review external changes` and continue, no
-       re-halt.
+     - **Gate on the FILE, not the chat — tool call, not prose.** Pipe this re-review's
+       `review_findings.py` JSON (never the reviewer's chat report) to `python3
+       {skill-root}/scripts/review_loop.py converged --findings-json -` and read **`meaningful`**
+       (= NOT converged — the same convergence rule as the loop gate; the threshold lives only in
+       the script, never re-derive it here). `meaningful: false` → commit the checkpoint
+       `chore(story-{e}-{s}): re-review external changes` and continue, no re-halt.
      - **Meaningful → re-open this same halt.** Commit the persisted findings
        `chore(story-{e}-{s}): re-review external changes`, then **ask again** (`AskUserQuestion`),
        summarizing the new findings (verdict + `Critical N / High N / Medium N / Low N` + the
@@ -459,7 +475,11 @@ runs — step 1.)
   `## Report — <ISO timestamp>` section (creating the file if absent, never touching earlier
   sections) and derives the Story/Branch/Timing lines from state; you supply the prose snippets
   (`disposition_tag`, `pipeline_status`, `continues`, `phases_run`, `skipped`, `overrides`, `tea`,
-  `code_review`, lists, `next`, `head_sha`) in the JSON. Tag it with this section's disposition —
+  `code_review`, `next`, `head_sha`) plus the **list keys** `open_questions`, `deferred_work`,
+  `deferred_archived_note` (Phase 8's archive line), `planning_drift`, and `needs_human` in the
+  JSON — these exact names: the script REJECTS an unknown key (a misspelled one would otherwise
+  render its section `(none)` and silently drop content; the key↔heading map is pinned next to
+  the Section template in `state-and-resume.md`). Tag it with this section's disposition —
   `(final)` on a clean completion, `(final — caveated)` if the run finalized but stays at `review`
   — and keep the section a session delta (on a resume, `phases_run` lists only the resumed phases
   and `continues` names the section it picks up from; full vocabulary in `state-and-resume.md` →

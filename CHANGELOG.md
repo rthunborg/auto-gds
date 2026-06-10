@@ -74,9 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file-driven. Takes effect on module update — no reprovision needed.
 
 - **`skip code-review` now ships a draft PR and leaves the story at `review`.** Zero review passes
-  sets `convergence_unverified` — previously the override shipped non-draft and auto-flipped the
-  story `done`, cleaner than a reviewed-but-unverified single pass. `no_pr_draft` still forces a
-  non-draft PR.
+  sets `convergence_unverified`. `no_pr_draft` still forces a non-draft PR.
+
+- **A run already caveated as a draft skips the Phase 9 CI wait.** When draft-predicate clauses
+  1–3 already apply, auto-bmad no longer waits up to 30 minutes on CI; `ci_status` stays
+  `unknown` and the run is still linked. (git-and-pr.md)
 
 - **A `review`/`in-progress` story with no auto-bmad state no longer silently re-runs the full
   pipeline.** Target selection now asks — enter at the matching phase (`review` ⇒ code-review,

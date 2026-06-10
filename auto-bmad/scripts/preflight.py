@@ -15,7 +15,9 @@ Encoded rules (the normative definitions live in the reference docs):
 * **git** (git-and-pr.md → "Mode detection (Phase 0)"):
   - ``is_repo``: ``git rev-parse --is-inside-work-tree`` succeeds.
   - ``tree_clean``: ``git status --porcelain`` output is empty;
-    ``dirty_files_count`` = its non-empty line count.
+    ``dirty_files_count`` = its non-empty line count. If the status probe FAILS
+    (rc != 0 — e.g. timeout), both are ``null`` and ``status_error`` carries a
+    stderr snippet — the gate fails CLOSED (hard stop), never reads as clean.
   - ``base_branch``: remote HEAD via ``git symbolic-ref refs/remotes/origin/HEAD``
     (``refs/remotes/origin/`` prefix stripped), else the current branch.
   - ``mode``: ``remote`` iff ``gh --version`` works AND ``gh auth status`` exits 0
@@ -32,13 +34,16 @@ Encoded rules (the normative definitions live in the reference docs):
 * **framework** (state-and-resume.md → First-run step 3; only with
   ``--detect-framework-ci``, else ``null``): project-root configs among
   ``playwright.config.*``, ``cypress.config.*``, ``jest.config.*``,
-  ``vitest.config.*``, ``pytest.ini``, ``pyproject.toml`` containing
-  ``[tool.pytest``, ``setup.cfg`` containing ``[tool:pytest]``;
-  ``ci_present`` mirrors ``ci.workflows_present``.
-* **hard_stop** (true, with reasons) when: not a git repo; dirty tree AND
+  ``vitest.config.*`` (final extension must be js/cjs/mjs/ts/cts/mts/json —
+  multi-dot names like ``jest.config.e2e.js`` count, ``*.bak``/``*.orig`` don't),
+  ``pytest.ini``, ``pyproject.toml`` containing ``[tool.pytest``, ``setup.cfg``
+  containing ``[tool:pytest]``; ``ci_present`` mirrors ``ci.workflows_present``.
+* **hard_stop** (true, with reasons) when: not a git repo; working tree state
+  unknown (``git status`` failed — fail closed); dirty tree AND
   (no ``--expected-branch`` given OR ``current_branch != expected-branch``)
-  — dirty ON the expected story branch is the fine resume case; or any
-  required skill is missing.
+  — dirty ON the expected story branch is the fine resume case; detached/unknown
+  HEAD even on a clean tree (a null branch poisons ``base_branch`` downstream);
+  or any required skill is missing.
 
 Structure mirrors ``cli_delegate.py``: pure classification functions over
 injected probe results (``classify(...)`` takes a ``run`` callable) + a real
@@ -76,6 +81,11 @@ _FRAMEWORK_PREFIXES = (
     "vitest.config.",
 )
 
+# Final extensions real framework configs use (jest also takes .json). Filtering on
+# the FINAL suffix keeps multi-dot configs (jest.config.e2e.js) while rejecting
+# stale copies (jest.config.js.bak, playwright.config.ts.orig).
+_FRAMEWORK_CONFIG_SUFFIXES = {".js", ".cjs", ".mjs", ".ts", ".cts", ".mts", ".json"}
+
 
 def real_runner(argv: Sequence[str], cwd: str | None = None) -> tuple[int, str, str]:
     """Run ``argv`` via subprocess; FileNotFoundError/timeout degrade to rc=127."""
@@ -96,17 +106,24 @@ def classify_git(run: Runner) -> dict:
     is_repo = rc == 0
 
     current_branch = None
-    tree_clean = True
-    dirty_files_count = 0
+    tree_clean: bool | None = True
+    dirty_files_count: int | None = 0
+    status_error = None
     base_branch = None
     if is_repo:
         rc, out, _ = run(["git", "branch", "--show-current"])
         current_branch = out.strip() or None if rc == 0 else None
 
-        rc, out, _ = run(["git", "status", "--porcelain"])
-        dirty_lines = [l for l in out.splitlines() if l.strip()] if rc == 0 else []
-        dirty_files_count = len(dirty_lines)
-        tree_clean = dirty_files_count == 0
+        rc, out, err = run(["git", "status", "--porcelain"])
+        if rc == 0:
+            dirty_lines = [l for l in out.splitlines() if l.strip()]
+            dirty_files_count = len(dirty_lines)
+            tree_clean = dirty_files_count == 0
+        else:
+            # Fail CLOSED: an unevaluable tree must never read as clean.
+            tree_clean = None
+            dirty_files_count = None
+            status_error = (err.strip() or f"exit {rc}").splitlines()[0][:200]
 
         rc, out, _ = run(["git", "symbolic-ref", "refs/remotes/origin/HEAD"])
         if rc == 0 and out.strip():
@@ -135,6 +152,7 @@ def classify_git(run: Runner) -> dict:
         "current_branch": current_branch,
         "tree_clean": tree_clean,
         "dirty_files_count": dirty_files_count,
+        "status_error": status_error,
         "base_branch": base_branch,
         "mode": mode,
         "gh_installed": gh_installed,
@@ -189,7 +207,10 @@ def detect_framework(project_root: Path, ci_present: bool) -> dict:
     except OSError:
         entries = []
     for name in entries:
-        if name.startswith(_FRAMEWORK_PREFIXES) or name == "pytest.ini":
+        if name == "pytest.ini" or (
+            name.startswith(_FRAMEWORK_PREFIXES)
+            and Path(name).suffix in _FRAMEWORK_CONFIG_SUFFIXES
+        ):
             configs.append(name)
     for name, marker in (("pyproject.toml", "[tool.pytest"), ("setup.cfg", "[tool:pytest]")):
         f = project_root / name
@@ -203,18 +224,32 @@ def detect_framework(project_root: Path, ci_present: bool) -> dict:
 
 
 def classify_hard_stop(git: dict, skills: dict, expected_branch: str | None) -> tuple[bool, list[str]]:
-    """Hard-stop rules: not a repo; dirty off the expected branch; missing skills."""
+    """Hard-stop rules: not a repo; tree state unknown (fail closed); dirty off the
+    expected branch; detached/unknown HEAD; missing skills."""
     reasons: list[str] = []
     if not git["is_repo"]:
         reasons.append("not a git repo (run `git init` first — the local-branch flow needs a repo)")
-    elif not git["tree_clean"]:
-        # Dirty ON the expected story branch is fine — the resume case.
-        if expected_branch is None or git["current_branch"] != expected_branch:
-            where = f"on branch {git['current_branch']!r}" if git["current_branch"] else "with detached/unknown branch"
+    else:
+        if git["tree_clean"] is None:
+            # Fail CLOSED: the dirty-tree gate could not run, so we must not proceed.
             reasons.append(
-                f"working tree dirty ({git['dirty_files_count']} file(s)) {where}"
-                + ("" if expected_branch is None else f", not the expected story branch {expected_branch!r}")
-                + " — commit or stash first"
+                f"could not evaluate working tree (git status failed: {git['status_error']})"
+                " — fix git and re-run preflight"
+            )
+        elif not git["tree_clean"]:
+            # Dirty ON the expected story branch is fine — the resume case.
+            if expected_branch is None or git["current_branch"] != expected_branch:
+                where = f"on branch {git['current_branch']!r}" if git["current_branch"] else "with detached/unknown branch"
+                reasons.append(
+                    f"working tree dirty ({git['dirty_files_count']} file(s)) {where}"
+                    + ("" if expected_branch is None else f", not the expected story branch {expected_branch!r}")
+                    + " — commit or stash first"
+                )
+        if git["current_branch"] is None:
+            # Even on a clean tree: a null branch poisons base_branch downstream
+            # (git switch -c <branch> <base>, gh pr create --base).
+            reasons.append(
+                "detached/unknown branch — check out a branch first (branching and the PR base need one)"
             )
     for name in skills["missing"]:
         reasons.append(f"required skill missing: {name}")
@@ -306,6 +341,24 @@ def _run_self_test() -> int:
     assert not g4["is_repo"] and g4["current_branch"] is None and g4["base_branch"] is None, g4
     assert g4["mode"] == "local" and g4["github_remote"] is False, g4
 
+    # status probe FAILURE -> tree state unknown (null), never "clean" (fail closed).
+    t = dict(_GIT_OK); t["git status --porcelain"] = (127, "", "timed out after 20 seconds")
+    g5 = classify_git(_fake_runner(t))
+    assert g5["tree_clean"] is None and g5["dirty_files_count"] is None, g5
+    assert "timed out" in g5["status_error"], g5
+    # status failure with empty stderr still surfaces the exit code.
+    t = dict(_GIT_OK); t["git status --porcelain"] = (128, "", "")
+    assert classify_git(_fake_runner(t))["status_error"] == "exit 128"
+    # status success leaves status_error null.
+    assert g["status_error"] is None and g3["status_error"] is None
+
+    # Clean DETACHED head: branch null, tree still clean (hard-stop rule covers it).
+    t = dict(_GIT_OK)
+    t["git branch --show-current"] = (0, "", "")
+    t["git symbolic-ref refs/remotes/origin/HEAD"] = (1, "", "no ref")
+    g6 = classify_git(_fake_runner(t))
+    assert g6["current_branch"] is None and g6["base_branch"] is None and g6["tree_clean"], g6
+
     # --- hard-stop rules ---
     skills_ok = {"checked": [], "missing": []}
     hs, r = classify_hard_stop(g4, skills_ok, None)
@@ -325,6 +378,14 @@ def _run_self_test() -> int:
     # Missing skill -> stop, even with clean git.
     hs, r = classify_hard_stop(g, {"checked": ["bmad-dev-story"], "missing": ["bmad-dev-story"]}, None)
     assert hs and any("bmad-dev-story" in x for x in r), r
+    # status failure -> stop with the fail-closed reason, even on the expected branch.
+    hs, r = classify_hard_stop(g5, skills_ok, None)
+    assert hs and any("could not evaluate working tree" in x and "timed out" in x for x in r), r
+    hs, _ = classify_hard_stop(g5, skills_ok, "story/1-2-auth")
+    assert hs
+    # CLEAN detached head -> stop (null base_branch would break branching/PR later).
+    hs, r = classify_hard_stop(g6, skills_ok, None)
+    assert hs and any("detached/unknown branch" in x for x in r), r
 
     # --- filesystem rules in a sandbox ---
     with tempfile.TemporaryDirectory() as td:
@@ -378,9 +439,14 @@ def _run_self_test() -> int:
         (root / "pyproject.toml").write_text("[tool.poetry]\nname='x'\n")  # no pytest table
         (root / "setup.cfg").write_text("[tool:pytest]\naddopts=-q\n")
         (sub / "jest.config.js").write_text("x")  # NOT at root -> ignored
+        (root / "jest.config.js.bak").write_text("x")  # stale copy -> rejected
+        (root / "playwright.config.ts.orig").write_text("x")  # stale copy -> rejected
+        (root / "jest.config.e2e.js").write_text("x")  # multi-dot config -> counts
         fr = detect_framework(root, ci_present=False)
         assert fr["ci_present"] is False
-        assert sorted(fr["configs"]) == ["playwright.config.ts", "pytest.ini", "setup.cfg", "vitest.config.mjs"], fr
+        assert sorted(fr["configs"]) == [
+            "jest.config.e2e.js", "playwright.config.ts", "pytest.ini", "setup.cfg", "vitest.config.mjs",
+        ], fr
         (root / "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
         assert "pyproject.toml" in detect_framework(root, False)["configs"]
 

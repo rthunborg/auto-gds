@@ -40,7 +40,9 @@ Subcommands (each emits a single JSON object on stdout):
                       present, else create at EOF; create the file lazily). If nothing survives,
                       write NOTHING — not even the heading.
 
-Exit codes: 0 ok; 1 contract violation (init-exists, started_at rewrite, pause-without-anchor);
+Exit codes: 0 ok; 1 contract violation (init-exists, started_at rewrite, pause-without-anchor,
+a patch value the emit/parse round-trip or the timing math could not honor — un-re-readable map
+keys, non-int INT fields, off-schema ``phase8_steps`` keys/markers, set+``_append`` overlap);
 2 usage/parse error. Dependency-free (stdlib only); state parsing is a small block-structured
 reader in the ``state_plan.py`` spirit — flat scalars, flat lists, one-level maps.
 
@@ -104,6 +106,9 @@ FLOW_LIST_FIELDS = {"tea_selected", "completed_phases", "commits"}   # short tok
 BLOCK_LIST_FIELDS = {"open_questions", "deferred_work", "blockers", "constraints"}  # free text
 LIST_FIELDS = FLOW_LIST_FIELDS | BLOCK_LIST_FIELDS
 MAP_FIELDS = {"story_trace", "overrides", "phase8_steps"}
+_MAP_KEY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")   # what load_state's map reader can parse back
+_PHASE8_MARKERS = (None, "done")                      # closed vocabulary (pipeline.md Phase 8) …
+_PHASE8_TRACE_GATE_EXTRA = ("waived", "failed")       # … which trace_gate alone extends
 
 
 def default_state() -> dict:
@@ -179,7 +184,7 @@ def _emit_entry(lines: list, key: str, val) -> None:
         if not val:
             lines.append(f"{key}: []")
         elif key in FLOW_LIST_FIELDS:
-            lines.append(f"{key}: [" + ", ".join(_emit_scalar(x) for x in val) + "]")
+            lines.append(f"{key}: [" + ", ".join(_emit_inline(x) for x in val) + "]")
         else:
             lines.append(f"{key}:")
             for x in val:
@@ -327,12 +332,23 @@ def load_state(path: Path) -> dict:
     return data
 
 
+def _int_coercible(v) -> bool:
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, int):
+        return True
+    return isinstance(v, str) and bool(re.fullmatch(r"-?\d+", v.strip()))
+
+
 def _coerce(key: str, val):
     """Light type repair for hand-edited/legacy values."""
     if val is None:
         return None
     if key in INT_FIELDS and isinstance(val, str) and re.fullmatch(r"-?\d+", val.strip()):
         return int(val)
+    if key == "completed_phases" and isinstance(val, list):   # legacy quoted ints: ["0", "1"]
+        return [int(x) if isinstance(x, str) and re.fullmatch(r"-?\d+", x.strip()) else x
+                for x in val]
     if key in BOOL_FIELDS and isinstance(val, str):
         if val.strip().lower() == "true":
             return True
@@ -377,8 +393,36 @@ def write_state(state_file: Path, state: dict) -> None:
 # --------------------------------------------------------------------------- #
 # Patch semantics (shared by init / set / phase-done)
 # --------------------------------------------------------------------------- #
+def _validate_patch(patch: dict) -> None:
+    """Reject values the emit/parse round-trip or the timing math could not honor."""
+    for k, v in patch.items():
+        if k in MAP_FIELDS and isinstance(v, dict):
+            for sub in v:
+                if not _MAP_KEY_RE.fullmatch(str(sub)):
+                    raise ContractError(
+                        f"{k} key {sub!r} would not survive a rewrite — map keys must match "
+                        "[A-Za-z_][A-Za-z0-9_]*")
+        if k == "phase8_steps" and isinstance(v, dict):
+            for sub, marker in v.items():
+                if sub not in PHASE8_KEYS:
+                    raise ContractError(
+                        f"unknown phase8_steps key {sub!r} — expected one of: "
+                        + ", ".join(PHASE8_KEYS))
+                allowed = _PHASE8_MARKERS + (_PHASE8_TRACE_GATE_EXTRA if sub == "trace_gate" else ())
+                if marker not in allowed:
+                    raise ContractError(
+                        f"phase8_steps.{sub} marker {marker!r} is off-vocabulary — expected "
+                        + " | ".join("null" if m is None else m for m in allowed))
+        if k in INT_FIELDS and v is not None and not _int_coercible(v):
+            raise ContractError(f"{k} must be an integer (or null), got {v!r}")
+
+
 def apply_patch(state: dict, patch: dict, allow_started_at: bool = False) -> dict:
-    """Apply a JSON patch in place. Returns {'changed': [...], 'appended': {field: n}}."""
+    """Apply a JSON patch in place. Returns {'changed': [...], 'appended': {field: n}}.
+
+    All validation runs BEFORE any mutation, so a rejected patch never half-applies
+    (callers write the file only after this returns — it stays untouched on rejection).
+    """
     if not isinstance(patch, dict):
         raise UsageError("--json payload must be a JSON object")
     patch = dict(patch)
@@ -392,6 +436,13 @@ def apply_patch(state: dict, patch: dict, allow_started_at: bool = False) -> dic
                 raise UsageError(f"_append target is not a list field: {field}")
             if not isinstance(vals, list):
                 raise UsageError(f"_append values for {field} must be a list")
+            if field in patch:
+                raise ContractError(
+                    f"key {field} appears in both the patch and _append — "
+                    "the direct set would clobber the appended values")
+    _validate_patch(patch)
+    if ap:
+        for field, vals in ap.items():
             state[field] = list(state.get(field) or []) + vals
             appended[field] = len(vals)
     changed = []
@@ -406,7 +457,7 @@ def apply_patch(state: dict, patch: dict, allow_started_at: bool = False) -> dic
             merged.update(v)
             state[k] = merged
         else:
-            state[k] = v
+            state[k] = _coerce(k, v)                     # store int-coercible strings as ints
         changed.append(k)
     if patch.get("status") == "done" and "completed_at" not in patch and not state.get("completed_at"):
         state["completed_at"] = _now_iso()
@@ -441,7 +492,8 @@ def cmd_set(state_file: Path, patch: dict) -> dict:
 
 def cmd_phase_done(state_file: Path, phase: int, patch: dict | None) -> dict:
     state = _read_existing(state_file)
-    phases = [p for p in (state.get("completed_phases") or []) if isinstance(p, int)]
+    phases = [p for p in (state.get("completed_phases") or [])
+              if isinstance(p, int) and not isinstance(p, bool)]
     already = phase in phases
     if not already:
         phases.append(phase)
@@ -463,13 +515,21 @@ def cmd_timing_start(state_file: Path) -> dict:
             "timing_anchor": state["timing_anchor"], "dropped_anchor": dropped}
 
 
+def _stored_int(state: dict, key: str):
+    """A stored INT_FIELD value as int|None; ContractError if corrupt beyond _coerce's repair."""
+    val = _coerce(key, state.get(key))
+    if val is None or (isinstance(val, int) and not isinstance(val, bool)):
+        return val
+    raise ContractError(f"{key} in the state file is not an integer: {val!r} — repair the file")
+
+
 def cmd_timing_pause(state_file: Path) -> dict:
     state = _read_existing(state_file)
-    anchor = state.get("timing_anchor")
+    anchor = _stored_int(state, "timing_anchor")
     if anchor is None:
         raise ContractError("timing-pause without an anchor — call timing-start first")
-    delta = max(0, _now_epoch() - int(anchor))
-    state["active_seconds"] = int(state.get("active_seconds") or 0) + delta
+    delta = max(0, _now_epoch() - anchor)
+    state["active_seconds"] = (_stored_int(state, "active_seconds") or 0) + delta
     state["timing_anchor"] = None
     write_state(state_file, state)
     return {"ok": True, "action": "timing-pause", "state_file": str(state_file),
@@ -931,6 +991,73 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             assert rc == 0 and out["appended"] == {"blockers": 1}, (rc, out)
             rc, out = run_cli(["phase-done", "--state-file", str(sf3), "--phase", "5"])
             assert rc == 0 and out["completed_phases"] == [5], (rc, out)
+
+            # --- patch validation + emit round-trips (findings F1–F6) ---------- #
+            def cli_json(payload, *argv0):
+                pf = tmp / "f.json"
+                pf.write_text(json.dumps(payload), encoding="utf-8")
+                return run_cli([*argv0, "--json", str(pf)])
+
+            sfv = tmp / "state" / "3-1-validate.yaml"
+            cmd_init(sfv, {"story_key": "3-1-validate", "epic_num": 3, "story_num": 1})
+            pristine = sfv.read_text(encoding="utf-8")
+            # F1: a map key the reader regex can't parse back is rejected, file untouched
+            rc, out = cli_json({"overrides": {"max-review-iterations": 5}},
+                               "set", "--state-file", str(sfv))
+            assert rc == 1 and "max-review-iterations" in out["error"], (rc, out)
+            assert sfv.read_text(encoding="utf-8") == pristine, "F1 rejection must not write"
+            rc, out = cli_json({"overrides": {"good_key": 1, "bad key": 2}},
+                               "set", "--state-file", str(sfv))
+            assert rc == 1 and "bad key" in out["error"], (rc, out)   # mixed keys: still rejected
+            assert sfv.read_text(encoding="utf-8") == pristine, "mixed-key rejection must not write"
+            try:                                          # init's patch validates the same way
+                cmd_init(tmp / "state" / "never.yaml", {"story_trace": {"AC 1": "covered"}})
+                raise AssertionError("init with an un-re-readable map key must raise ContractError")
+            except ContractError:
+                pass
+            assert not (tmp / "state" / "never.yaml").exists()
+            # F2: legacy quoted ints in completed_phases are coerced, not dropped
+            leg = tmp / "state" / "9-8-quoted.yaml"
+            leg.write_text('story_key: 9-8-quoted\nstarted_at: "2026-01-01T00:00:00Z"\n'
+                           'completed_phases: ["0", "1", junk]\n', encoding="utf-8")
+            r = cmd_phase_done(leg, 2, None)
+            assert r["completed_phases"] == [0, 1, 2], r  # quoted ints kept; real junk dropped
+            # F3: non-int-coercible INT_FIELD patch rejected at set time …
+            rc, out = cli_json({"timing_anchor": "soon"}, "set", "--state-file", str(sfv))
+            assert rc == 1 and "timing_anchor" in out["error"], (rc, out)
+            rc, out = cli_json({"active_seconds": "120"}, "set", "--state-file", str(sfv))
+            assert rc == 0, (rc, out)                     # int-coercible string: stored as int
+            assert full_state(load_state(sfv))["active_seconds"] == 120
+            # … and a hand-corrupted stored anchor pauses with a clean ContractError JSON
+            sfv.write_text(sfv.read_text(encoding="utf-8").replace(
+                "timing_anchor: null", "timing_anchor: half past nine"), encoding="utf-8")
+            rc, out = run_cli(["timing-pause", "--state-file", str(sfv)])
+            assert rc == 1 and out["ok"] is False and "timing_anchor" in out["error"], (rc, out)
+            cmd_timing_start(sfv)                         # recovery: re-anchor still works
+            # F4: phase8_steps typo'd key / off-vocabulary marker rejected
+            rc, out = cli_json({"phase8_steps": {"trace_gates": "done"}},
+                               "set", "--state-file", str(sfv))
+            assert rc == 1 and "trace_gates" in out["error"], (rc, out)
+            rc, out = cli_json({"phase8_steps": {"nfr": "waived"}},
+                               "set", "--state-file", str(sfv))
+            assert rc == 1 and "waived" in out["error"], (rc, out)    # waived is trace_gate-only
+            rc, out = cli_json({"phase8_steps": {"trace_gate": "waived", "retro": "done",
+                                                 "nfr": None}},
+                               "set", "--state-file", str(sfv))
+            assert rc == 0, (rc, out)                     # the documented vocabulary passes
+            # F5: direct set + _append of the same field in one patch is rejected
+            before = sfv.read_text(encoding="utf-8")
+            rc, out = cli_json({"commits": ["zzz"], "_append": {"commits": ["a1"]}},
+                               "set", "--state-file", str(sfv))
+            assert rc == 1 and "commits" in out["error"], (rc, out)
+            assert sfv.read_text(encoding="utf-8") == before, "F5 rejection must not write"
+            # F6: a dict element in a flow list degrades to a JSON string and round-trips
+            cmd_set(sfv, {"commits": ["a1b2c3d", {"sha": "e4f5", "n": 2}]})
+            cline = next(ln for ln in sfv.read_text(encoding="utf-8").splitlines()
+                         if ln.startswith("commits:"))
+            assert "{'" not in cline, cline               # no Python repr in the file
+            els = full_state(load_state(sfv))["commits"]
+            assert els[0] == "a1b2c3d" and json.loads(els[1]) == {"sha": "e4f5", "n": 2}, els
 
         print("SELF-TEST PASSED (all assertions)")
         return 0

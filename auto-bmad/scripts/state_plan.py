@@ -207,6 +207,32 @@ def _scalar_or_none(value: str):
     return None if value.lower() in ("", "null", "~") else value
 
 
+def _split_flow(body: str) -> list:
+    """Split flow-list elements on top-level commas, respecting quotes — the
+    same rule as state_update.py's ``_split_flow`` (the writer's own parser;
+    the self-test round-trips this reader against the writer's output)."""
+    parts, cur, inq, esc = [], "", None, False
+    for ch in body:
+        if inq:
+            cur += ch
+            if esc:
+                esc = False
+            elif ch == "\\" and inq == '"':
+                esc = True
+            elif ch == inq:
+                inq = None
+        elif ch in "\"'":
+            inq = ch
+            cur += ch
+        elif ch == ",":
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    return [p.strip() for p in parts if p.strip()]
+
+
 def read_finalize_fields(path: str):
     """Read the draft-predicate inputs from a flat state YAML: the ``blockers``
     list (inline ``[...]`` or block ``- item`` form) plus the
@@ -234,9 +260,10 @@ def read_finalize_fields(path: str):
         if bm:
             val = _strip_comment(bm.group(1))
             if val.startswith("["):
-                inner = val.strip("[]").strip()
-                if inner:
-                    blockers.extend(p for p in (_unquote(x.strip()) for x in inner.split(",")) if p)
+                # Quote-aware split: a comma INSIDE a quoted blocker is payload
+                # ("rotate key, then redeploy" is ONE blocker), never a separator.
+                inner = val[1:val.rfind("]")] if "]" in val else val[1:]
+                blockers.extend(p for p in (_unquote(x) for x in _split_flow(inner)) if p)
             elif not val:
                 in_blockers = True  # block-list form: items follow
             else:
@@ -446,6 +473,15 @@ def _run_self_test():
     check("finalize inline blockers: count 2", res["blocker_count"] == 2)
     check("finalize inline blockers: draft", res["draft"] is True)
 
+    # Clause 1 — a comma INSIDE a quoted inline blocker is payload, not a
+    # separator: one blocker, text intact (the quote-blind split counted 2
+    # mangled items here).
+    write_fin("2-2e-comma", blockers='["rotate key, then redeploy", plain]')
+    res, _ = build_finalize_result(fin_dir, "2-2e-comma")
+    check("finalize inline quoted comma: count 2", res["blocker_count"] == 2)
+    check("finalize inline quoted comma: item intact",
+          res["blockers"] == ["rotate key, then redeploy", "plain"])
+
     # Clause 1 — a quoted '#' is payload, not a comment (the state writer
     # double-quotes any value containing '#'; comment stripping must respect it).
     with open(os.path.join(fin_dir, "2-2c-hash.yaml"), "w", encoding="utf-8") as fh:
@@ -462,6 +498,35 @@ def _run_self_test():
     res, _ = build_finalize_result(fin_dir, "2-2d-hash")
     check("finalize quoted-# inline: item intact",
           res["blockers"] == ["fix issue #123 upstream"])
+
+    # Lockstep round-trip with the WRITER: whatever state_update.py emits, this
+    # reader must parse back verbatim — every emit-rule change there must fail
+    # loud here, not silently misread the Phase 9 draft predicate.
+    import importlib.util as _ilu
+    _su_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state_update.py")
+    _spec = _ilu.spec_from_file_location("state_update", _su_path)
+    assert _spec is not None and _spec.loader is not None, _su_path
+    _su = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_su)
+    _rt = _su.default_state()
+    _rt.update(
+        story_key="2-2f-roundtrip", status="review", convergence_unverified=True,
+        gate_decision="WAIVED", ci_status="timeout",
+        blockers=['rotate key, then redeploy', 'fix issue #123 upstream', "plain"],
+    )
+    with open(os.path.join(fin_dir, "2-2f-roundtrip.yaml"), "w", encoding="utf-8") as fh:
+        fh.write(_su.dump_state(_rt))
+    res, code = build_finalize_result(fin_dir, "2-2f-roundtrip")
+    check("writer round-trip: exit 0", code == 0)
+    check("writer round-trip: blockers verbatim",
+          res["blockers"] == ['rotate key, then redeploy', 'fix issue #123 upstream', 'plain'])
+    check("writer round-trip: scalars verbatim",
+          res["gate_decision"] == "WAIVED" and res["ci_status"] == "timeout"
+          and res["clauses"]["convergence_unverified"] is True)
+    check("writer round-trip: all four clauses fire",
+          all(res["clauses"].values()) and res["draft"] is True)
+    _rs = read_state_file(os.path.join(fin_dir, "2-2f-roundtrip.yaml"))
+    check("writer round-trip: resume reader agrees", _rs.get("status") == "review")
 
     # Clause 2 — convergence_unverified.
     write_fin("2-3-unverified", convergence_unverified="true")

@@ -11,10 +11,12 @@ every row.
 Three modes, each emitting ONE JSON object on stdout:
 
 * ``prep-diff`` (live, git): create a throwaway temp dir OUTSIDE the work tree
-  (``tempfile.mkdtemp``), write the branch diff ``git diff <base>...HEAD`` —
-  run inside ``--project-root``, with the review exclude pathspecs baked in
-  (``_bmad``, ``_bmad-output``, ``**/__pycache__``, ``**/*.pyc``,
-  ``**/.DS_Store``) — to ``<tmp>/diff.patch``, and reserve the three
+  (``tempfile.mkdtemp``), write the branch diff ``git diff --no-ext-diff
+  --no-color <base>...HEAD`` — run inside ``--project-root``, output pinned to
+  a plain unified diff (immune to user ``diff.external``/``color.diff``
+  config), with the review exclude pathspecs baked in (``_bmad``,
+  ``_bmad-output`` and, in root-matching glob magic, ``**/__pycache__/**``,
+  ``**/*.pyc``, ``**/.DS_Store``) — to ``<tmp>/diff.patch``, and reserve the three
   lens-output paths (``blind_out`` / ``edge_out`` / ``auditor_out`` — reserved
   PATHS only, the files are NOT created; the lens delegates write them). The
   orchestrator routes the returned paths to the fan-out delegates and never
@@ -104,12 +106,19 @@ import tempfile
 
 # The exclude pathspecs baked into the review diff. Passed as single argv
 # tokens straight to git (never through a shell), so there is no glob hazard.
+# The wildcard ones use ``:(exclude,glob)`` magic: under glob (wildmatch
+# pathname) semantics a leading ``**/`` matches in ALL directories INCLUDING
+# the repo root, whereas default fnmatch never matches root-level files
+# (verified live: a committed root ``.DS_Store``/``*.pyc`` leaked without it).
+# ``__pycache__`` needs the trailing ``/**`` because glob ``*`` stops at
+# slashes — ``**/__pycache__`` alone matches the directory NAME, never the
+# files inside it.
 EXCLUDE_PATHSPECS = (
     ":(exclude)_bmad",
     ":(exclude)_bmad-output",
-    ":(exclude)**/__pycache__",
-    ":(exclude)**/*.pyc",
-    ":(exclude)**/.DS_Store",
+    ":(exclude,glob)**/__pycache__/**",
+    ":(exclude,glob)**/*.pyc",
+    ":(exclude,glob)**/.DS_Store",
 )
 DIFF_FILENAME = "diff.patch"
 # Reserved lens-output filenames inside review_tmp (paths only, never created
@@ -128,8 +137,11 @@ TOTAL_LENSES = 3
 # --------------------------------------------------------------------------- #
 def build_diff_argv(base: str) -> list:
     """Pure argv builder for the review diff. Three-dot = exactly what this
-    branch changed since it diverged from base."""
-    return ["git", "diff", f"{base}...HEAD", "--", *EXCLUDE_PATHSPECS]
+    branch changed since it diverged from base. ``--no-ext-diff --no-color``
+    pin the output to a plain unified diff: a user ``diff.external`` (e.g.
+    difftastic) would otherwise silently replace it with external-tool output
+    (exit 0!), and ``color.diff=always`` would embed ANSI escapes."""
+    return ["git", "diff", "--no-ext-diff", "--no-color", f"{base}...HEAD", "--", *EXCLUDE_PATHSPECS]
 
 
 def build_head_argv() -> list:
@@ -387,14 +399,15 @@ def _run_self_test():
 
     # ---------------- prep-diff: pure argv builders ----------------
     argv = build_diff_argv("main")
-    check("argv: git diff three-dot", argv[:3] == ["git", "diff", "main...HEAD"])
-    check("argv: pathspec separator", argv[3] == "--")
-    check("argv: all five excludes, in order", tuple(argv[4:]) == EXCLUDE_PATHSPECS)
+    check("argv: git diff three-dot, plain-format pins",
+          argv[:5] == ["git", "diff", "--no-ext-diff", "--no-color", "main...HEAD"])
+    check("argv: pathspec separator", argv[5] == "--")
+    check("argv: all five excludes, in order", tuple(argv[6:]) == EXCLUDE_PATHSPECS)
     check("argv: _bmad excluded", ":(exclude)_bmad" in argv)
     check("argv: _bmad-output excluded", ":(exclude)_bmad-output" in argv)
-    check("argv: pycache excluded", ":(exclude)**/__pycache__" in argv)
-    check("argv: pyc excluded", ":(exclude)**/*.pyc" in argv)
-    check("argv: DS_Store excluded", ":(exclude)**/.DS_Store" in argv)
+    check("argv: pycache excluded (glob, root-matching)", ":(exclude,glob)**/__pycache__/**" in argv)
+    check("argv: pyc excluded (glob, root-matching)", ":(exclude,glob)**/*.pyc" in argv)
+    check("argv: DS_Store excluded (glob, root-matching)", ":(exclude,glob)**/.DS_Store" in argv)
     check("argv: never two-dot", "main..HEAD" not in " ".join(argv).replace("main...HEAD", ""))
     check("argv: head rev-parse", build_head_argv() == ["git", "rev-parse", "HEAD"])
 
@@ -479,8 +492,18 @@ def _run_self_test():
         put("src/b.txt", "needle-line\n")
         put("_bmad/inside.txt", "excluded-bmad-needle\n")
         put("pkg/__pycache__/mod.pyc", "excluded-pyc-needle\n")
-        git("add", "-A")
+        put("pkg/__pycache__/mod.cache", "excluded-pycache-other-needle\n")
+        # Root-level junk: under default fnmatch a leading **/ never matched
+        # the repo root — these two leaked into the diff before glob magic.
+        put(".DS_Store", "excluded-root-dsstore-needle\n")
+        put("root.pyc", "excluded-root-pyc-needle\n")
+        git("add", "-A", "-f")
         git("commit", "-q", "-m", "feature work")
+        # Hostile user diff config: an external diff tool (difftastic-style)
+        # and forced color would corrupt the patch unless prep-diff pins the
+        # output format with --no-ext-diff --no-color.
+        git("config", "diff.external", "echo EXTERNAL-DIFF")
+        git("config", "color.diff", "always")
 
         live = prep_diff(repo, "main")
         check("live: succeeds", live.get("status") != "error")
@@ -490,8 +513,16 @@ def _run_self_test():
             with open(live["diff_file"], "r", encoding="utf-8") as fh:
                 patch = fh.read()
             check("live: real change in diff", "needle-line" in patch and "src/b.txt" in patch)
+            check("live: plain unified diff despite diff.external", patch.startswith("diff --git"))
+            check("live: no external-tool output", "EXTERNAL-DIFF" not in patch)
+            check("live: no ANSI escapes despite color.diff=always", "\x1b" not in patch)
             check("live: _bmad excluded", "excluded-bmad-needle" not in patch and "_bmad" not in patch)
             check("live: pycache/pyc excluded", "excluded-pyc-needle" not in patch and ".pyc" not in patch)
+            check("live: non-pyc files inside __pycache__ excluded",
+                  "excluded-pycache-other-needle" not in patch and "__pycache__" not in patch)
+            check("live: ROOT-level .DS_Store excluded",
+                  "excluded-root-dsstore-needle" not in patch and ".DS_Store" not in patch)
+            check("live: ROOT-level .pyc excluded", "excluded-root-pyc-needle" not in patch)
             head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
                                   capture_output=True, text=True, check=True).stdout.strip()
             check("live: head_sha matches rev-parse", live["head_sha"] == head)
@@ -507,7 +538,7 @@ def _run_self_test():
 
         broken = prep_diff(repo, "no-such-branch")
         check("live: bad base => error", broken.get("status") == "error")
-        shutil.rmtree(repo)
+        # repo is reused by the prep-diff CLI round-trips below, then removed.
 
     # ---------------- gate: one case per decision-table row ----------------
     # row 1 — all lenses failed: hard stop, sticky flag passes through unchanged.
@@ -743,6 +774,25 @@ def _run_self_test():
     rc, out = run_main(["post-fix", "--findings-json", "-", "--retry-used"],
                        stdin_text=json.dumps({"open_patch": 1, "open_decision": 0}))
     check("cli: post-fix --retry-used => needs-human", json.loads(out)["action"] == "needs-human" and rc == 0)
+    # prep-diff round-trips: success (live repo) exits 0 with the full
+    # contract; a failed prep (error dict) maps to exit 2.
+    if shutil.which("git"):
+        rc, out = run_main(["prep-diff", "--project-root", repo, "--base", "main"])
+        parsed = json.loads(out)
+        check("cli: prep-diff exits 0", rc == 0)
+        check("cli: prep-diff exact key set", set(parsed) == _PREP_KEYS)
+        check("cli: prep-diff diff not empty", parsed["diff_empty"] is False)
+        shutil.rmtree(parsed["review_tmp"])
+        rc, out = run_main(["prep-diff", "--project-root", repo, "--base", "no-such-branch"])
+        check("cli: prep-diff bad base exits 2", rc == 2)
+        check("cli: prep-diff bad base reports error", json.loads(out).get("status") == "error")
+        shutil.rmtree(repo)
+    rc, out = run_main(["prep-diff", "--project-root", "/no/such/dir-xyz", "--base", "main"])
+    check("cli: prep-diff bad project root exits 2", rc == 2)
+    check("cli: prep-diff bad project root reports error", json.loads(out).get("status") == "error")
+    rc, _ = run_main(["prep-diff", "--base", "main"])
+    check("cli: prep-diff missing --project-root is usage error", rc == 2)
+
     rc, _ = run_main([])
     check("cli: no mode is usage error", rc == 2)
 

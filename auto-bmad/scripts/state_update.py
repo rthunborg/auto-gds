@@ -21,7 +21,9 @@ Subcommands (each emits a single JSON object on stdout):
                       sets ``status: "done"`` auto-stamps ``completed_at``; any attempt to CHANGE
                       ``started_at`` is refused (exit 1, error in JSON).
 * ``phase-done``    — add ``--phase N`` to ``completed_phases`` (idempotent, kept sorted) and apply
-                      an optional simultaneous ``--json`` patch (the folded write).
+                      an optional simultaneous ``--json`` patch (the folded write). The patch must
+                      NOT contain ``completed_phases`` (exit 1) — the subcommand owns that field,
+                      and a patch value would clobber the phase this very call records.
 * ``timing-start``  — set ``timing_anchor`` to now-epoch. An anchor already set is a crash tail:
                       re-anchor and report ``dropped_anchor: true`` (the dangling interval is
                       conservatively discarded, never guessed into ``active_seconds``).
@@ -32,9 +34,14 @@ Subcommands (each emits a single JSON object on stdout):
                       rendering the state-and-resume.md "Section template" literally (same headings,
                       same order, ``(none)`` for empties). Story/Branch/Timing lines (elapsed,
                       ≈AI-run = active_seconds, ≈wait = elapsed−active, resumed N×) derive from the
-                      state file; the prose snippets come from ``--json``. Creates the file with a
-                      one-line H1 if absent; NEVER overwrites existing sections — a full rewrite
-                      requires ``--overwrite-confirmed``.
+                      state file; the prose snippets come from ``--json``, whose keys must be from
+                      ``REPORT_PAYLOAD_KEYS`` — an unknown key is REJECTED (exit 2), because every
+                      missing key renders ``(none)`` and a misspelled one would silently drop its
+                      content from the committed report. Creates the file with a one-line H1 if
+                      absent; NEVER overwrites existing sections — a full rewrite requires
+                      ``--overwrite-confirmed``. ``--allow-missing-state`` covers the pre-init
+                      hard-stop (Phase 0 — "always produce a report" before ``init`` ever ran):
+                      renders against a default state keyed off the state file's name.
 * ``retro-append``  — ``--json {"lines": [...]}``: drop empty/``none``/whitespace lines; append the
                       survivors as ``- `` bullets under ``## Story {KEY}`` (reuse the heading if
                       present, else create at EOF; create the file lazily). If nothing survives,
@@ -52,7 +59,8 @@ Usage:
     state_update.py phase-done     --state-file PATH --phase N [--json -|FILE]
     state_update.py timing-start   --state-file PATH
     state_update.py timing-pause   --state-file PATH
-    state_update.py report-section --report-file PATH --state-file PATH --json -|FILE [--overwrite-confirmed]
+    state_update.py report-section --report-file PATH --state-file PATH --json -|FILE
+                                   [--overwrite-confirmed] [--allow-missing-state]
     state_update.py retro-append   --retro-file PATH --story-key KEY --json -|FILE
     state_update.py --self-test
 """
@@ -63,6 +71,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -380,10 +389,26 @@ def _read_existing(state_file: Path) -> dict:
 
 
 def _atomic_write(path: Path, text: str) -> None:
+    # Same shape as deferred_ledger.py / story_plan.py: a UNIQUE mkstemp temp
+    # (a fixed sibling name lets two concurrent runs clobber each other
+    # mid-write), the target's mode carried across the replace, and the temp
+    # unlinked on any failure.
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        try:
+            # mkstemp creates 0600; carry an existing target's mode so the
+            # replace doesn't silently drop group/other bits from a user file.
+            os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+        except OSError:
+            pass  # fresh target (first write of a state/report file): keep mkstemp's default
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
 
 
 def write_state(state_file: Path, state: dict) -> None:
@@ -504,6 +529,12 @@ def cmd_set(state_file: Path, patch: dict) -> dict:
 
 def cmd_phase_done(state_file: Path, phase: int, patch: dict | None) -> dict:
     state = _read_existing(state_file)
+    if patch and "completed_phases" in patch:
+        # The patch is applied after the append below, so a completed_phases
+        # value would silently clobber the phase this very call records.
+        raise ContractError(
+            "phase-done owns completed_phases — drop it from the patch "
+            "(the phase argument is the only way this command records one)")
     phases = [p for p in (state.get("completed_phases") or [])
               if isinstance(p, int) and not isinstance(p, bool)]
     already = phase in phases
@@ -606,7 +637,24 @@ def _short_sha(sha) -> str:
     return s[:7] if re.fullmatch(r"[0-9a-fA-F]{7,}", s) else s
 
 
+# The full report-section payload vocabulary (state-and-resume.md names these
+# next to the Section template). Unknown keys are REJECTED, not ignored: every
+# template line renders "(none)" for a missing key, so a misspelled key would
+# silently drop its content from the committed, PR-visible report.
+REPORT_PAYLOAD_KEYS = frozenset((
+    "disposition_tag", "pipeline_status", "continues", "phases_run", "skipped",
+    "overrides", "tea", "code_review", "open_questions", "deferred_work",
+    "deferred_archived_note", "planning_drift", "needs_human", "next", "head_sha",
+))
+
+
 def render_section(state: dict, payload: dict, timestamp: str, resumed: int) -> str:
+    unknown = sorted(set(payload) - REPORT_PAYLOAD_KEYS)
+    if unknown:
+        raise UsageError(
+            "unknown report-section payload key(s): " + ", ".join(unknown)
+            + " — every missing key renders '(none)', so a misnamed one would "
+            "silently drop its content; valid keys: " + ", ".join(sorted(REPORT_PAYLOAD_KEYS)))
     tag = str(payload.get("disposition_tag") or "").strip().strip("()")
     if not tag:
         raise UsageError("report-section payload needs a non-empty disposition_tag")
@@ -649,8 +697,17 @@ def render_section(state: dict, payload: dict, timestamp: str, resumed: int) -> 
 
 
 def cmd_report_section(report_file: Path, state_file: Path, payload: dict,
-                       overwrite_confirmed: bool) -> dict:
-    state = _read_existing(state_file)
+                       overwrite_confirmed: bool,
+                       allow_missing_state: bool = False) -> dict:
+    if allow_missing_state and not state_file.is_file():
+        # Pre-init hard-stop (Phase 0): the state file is only created by
+        # Phase 1's `init`, but "always produce a report" still holds. Render
+        # against a default state keyed off the state file's name; Story/
+        # Branch/Timing lines show their not-started defaults.
+        state = default_state()
+        state["story_key"] = state_file.stem
+    else:
+        state = _read_existing(state_file)
     timestamp = _now_iso()
     existing = report_file.read_text(encoding="utf-8") if report_file.is_file() else ""
     prior_sections = 0 if overwrite_confirmed else sum(
@@ -848,6 +905,15 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             assert r["already_done"] and r["completed_phases"] == [3, 7], r
             st2 = full_state(load_state(sf2))
             assert st2["code_review_loop_done"] is True and st2["hitl_halt"] == "continued", st2
+            # a folded patch carrying completed_phases would clobber the phase
+            # this very call records — rejected before any write
+            before2 = sf2.read_text(encoding="utf-8")
+            try:
+                cmd_phase_done(sf2, 8, {"completed_phases": [0, 1]})
+                raise AssertionError("completed_phases in a phase-done patch must raise")
+            except ContractError as exc:
+                assert "completed_phases" in str(exc), exc
+            assert sf2.read_text(encoding="utf-8") == before2, "rejection must not write"
 
             # --- timing: bracket, crash tail, pause-without-anchor ----------- #
             clock["epoch"] = 1000
@@ -948,6 +1014,36 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
                 raise AssertionError("missing disposition_tag must raise UsageError")
             except UsageError:
                 pass
+            # an unknown payload key must be REJECTED, not silently rendered '(none)'
+            # (a misspelled list key would drop its content from the committed report)
+            before_rt = rf.read_text(encoding="utf-8")
+            try:
+                cmd_report_section(rf, sf, {"disposition_tag": "final",
+                                            "blockers": ["misnamed needs_human"]}, False)
+                raise AssertionError("unknown payload key must raise UsageError")
+            except UsageError as exc:
+                assert "blockers" in str(exc) and "needs_human" in str(exc), exc
+            assert rf.read_text(encoding="utf-8") == before_rt, "rejection must not write"
+            # pre-init hard-stop: --allow-missing-state renders against a default
+            # state (story key from the state file name); without it, exit 2 path
+            rf0 = tmp / "reports" / "0-9-prestop.md"
+            sf0 = tmp / "state" / "0-9-prestop.yaml"
+            try:
+                cmd_report_section(rf0, sf0, {"disposition_tag": "halted"}, False)
+                raise AssertionError("missing state without the flag must raise UsageError")
+            except UsageError:
+                pass
+            r = cmd_report_section(rf0, sf0, {"disposition_tag": "halted — hard-stop",
+                                              "pipeline_status": "⛔ dirty tree.",
+                                              "needs_human": ["commit or stash, then re-run"]},
+                                   False, allow_missing_state=True)
+            assert r["section_written"], r
+            rt0 = rf0.read_text(encoding="utf-8")
+            assert rt0.startswith("# auto-bmad report log — 0-9-prestop\n"), rt0
+            assert "(halted — hard-stop)" in rt0 and "⛔ dirty tree." in rt0, rt0
+            assert "**Timing:** (none — started_at not recorded)." in rt0, rt0
+            assert "1. commit or stash, then re-run" in rt0, rt0
+            assert not sf0.exists(), "report fallback must never create the state file"
 
             # --- retro-append ------------------------------------------------- #
             rn = tmp / "retro-notes" / "epic-1.md"
@@ -1132,7 +1228,10 @@ def main(argv=None) -> int:
     add("timing-pause")
     add("report-section", js=True,
         report_file={"required": True},
-        overwrite_confirmed={"action": "store_true"})
+        overwrite_confirmed={"action": "store_true"},
+        allow_missing_state={"action": "store_true",
+                             "help": "pre-init hard-stop (Phase 0): render with a "
+                                     "default state instead of erroring"})
     add("retro-append", state=False, js=True,
         retro_file={"required": True}, story_key={"required": True})
 
@@ -1156,7 +1255,8 @@ def main(argv=None) -> int:
             result = cmd_timing_pause(Path(args.state_file))
         elif args.cmd == "report-section":
             result = cmd_report_section(Path(args.report_file), Path(args.state_file),
-                                        payload, args.overwrite_confirmed)
+                                        payload, args.overwrite_confirmed,
+                                        args.allow_missing_state)
         else:  # retro-append
             result = cmd_retro_append(Path(args.retro_file), args.story_key, payload)
     except ContractError as exc:

@@ -16,10 +16,16 @@ A second mode, ``--mark-done KEY``, performs the Phase 9 BMAD-status flip
 ``--story-file``, also flips the story file's status line (``Status: x`` /
 ``**Status:** x`` / ``status: x``, key case-insensitive, first match wins,
 only the value replaced). Idempotent: a target already at ``done`` is not
-rewritten (``already_done`` true when nothing needed writing). All validation
-happens before any write, so an error leaves both files untouched.
-Exit 0 on success/no-op; 1 when the key or the Status line can't be found;
-2 on usage errors.
+rewritten (``already_done`` true when nothing needed writing). Lookup
+validation happens before any write; the write phase then renders both new
+contents, stages each as a temp file in its target's directory, and commits
+with back-to-back atomic ``os.replace`` calls — so a staging failure (e.g. an
+unwritable directory) reports a JSON ``error`` (exit 1) with NEITHER file
+changed, and no write can ever truncate a target. The only divergence window
+left is the instant between the two replaces; the ``sprint_updated`` /
+``story_file_updated`` flags always report exactly what was committed.
+Exit 0 on success/no-op; 1 when the key or the Status line can't be found or
+a write fails; 2 on usage errors.
 
 Usage:
     story_plan.py --sprint-status PATH [--story 1-3|1-3-slug] [--impl-dir DIR]
@@ -33,6 +39,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 EPIC_RE = re.compile(r"^epic-(\d+)$")
 RETRO_RE = re.compile(r"^epic-(\d+)-retrospective$")
@@ -259,10 +266,30 @@ def _rewrite_line(lines, index, new_body):
     lines[index] = new_body + old[len(body):]
 
 
+def _stage_write(path, content):
+    """Write ``content`` to a temp file in ``path``'s directory and return the
+    temp path. The caller commits with ``os.replace`` (atomic: same filesystem,
+    never a truncate-then-write) or unlinks the temp on abort."""
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(path) + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return tmp
+
+
 def mark_done(sprint_status_path, key, story_file=None):
     """Flip KEY's sprint-status entry (and the story file's status line) to
-    ``done``. Returns (result, exit_code). Validates every target before
-    writing anything, so a failure (exit 1) never leaves a partial write."""
+    ``done``. Returns (result, exit_code). Lookup failures (exit 1) happen
+    before any write; writes stage both temp files first and commit with
+    back-to-back atomic ``os.replace`` calls, so a write failure (exit 1,
+    JSON ``error``) leaves every uncommitted target byte-identical — only
+    the instant between the two replaces can observe a half-flip, and the
+    ``*_updated`` flags report exactly what was committed."""
     result = {
         "key": key,
         "previous_status": None,
@@ -309,17 +336,26 @@ def mark_done(sprint_status_path, key, story_file=None):
         story_needs_write = story_m.group(2).strip().lower() != "done"
 
     # All targets validated — write only what actually changes (idempotent).
-    if sprint_needs_write:
-        _rewrite_line(sprint_lines, sprint_idx, sprint_m.group(1) + "done" + (sprint_m.group(3) or ""))
-        with open(sprint_status_path, "w", encoding="utf-8") as fh:
-            fh.write("".join(sprint_lines))
-        result["sprint_updated"] = True
-
-    if story_needs_write:
-        _rewrite_line(story_lines, story_idx, story_m.group(1) + "done")
-        with open(story_file, "w", encoding="utf-8") as fh:
-            fh.write("".join(story_lines))
-        result["story_file_updated"] = True
+    # Stage BOTH new contents as temp files first (any I/O error here aborts
+    # with neither file changed), then commit with back-to-back atomic
+    # os.replace calls so a crash can never truncate either target.
+    staged = []  # (temp_path, final_path, result flag) in commit order
+    try:
+        if sprint_needs_write:
+            _rewrite_line(sprint_lines, sprint_idx, sprint_m.group(1) + "done" + (sprint_m.group(3) or ""))
+            staged.append((_stage_write(sprint_status_path, "".join(sprint_lines)), sprint_status_path, "sprint_updated"))
+        if story_needs_write:
+            _rewrite_line(story_lines, story_idx, story_m.group(1) + "done")
+            staged.append((_stage_write(story_file, "".join(story_lines)), story_file, "story_file_updated"))
+        for tmp, final_path, flag in staged:
+            os.replace(tmp, final_path)
+            result[flag] = True
+    except OSError as exc:
+        for tmp, _final, flag in staged:
+            if not result[flag] and os.path.exists(tmp):
+                os.unlink(tmp)
+        result["error"] = f"write failed: {exc} (the sprint_updated/story_file_updated flags report what was committed)"
+        return result, 1
 
     result["already_done"] = not (result["sprint_updated"] or result["story_file_updated"])
     return result, 0
@@ -347,7 +383,7 @@ development_status:
 
 
 def _run_self_test():
-    import tempfile
+    import stat
 
     failures = []
 
@@ -493,6 +529,37 @@ development_status:
     check("mark-done both done: exit 0", code == 0)
     check("mark-done both done: already_done", res["already_done"] is True)
     check("mark-done both done: story untouched", slurp(st) == "STATUS: Done\n")
+
+    # Write failure (story file in a read-only DIRECTORY — directory perms,
+    # not file perms, gate the atomic-replace path): JSON error + exit 1, and
+    # BOTH files stay byte-identical even though the sprint flip was staged
+    # first (stage-both-then-swap), with no temp litter left in either dir.
+    # Skipped as root, which ignores directory write bits.
+    if getattr(os, "geteuid", lambda: 0)() != 0:
+        wr_dir = tempfile.mkdtemp(prefix="story_plan_wr_")
+        ro_dir = tempfile.mkdtemp(prefix="story_plan_ro_")
+        sp = os.path.join(wr_dir, "sprint-status.yaml")
+        with open(sp, "w", encoding="utf-8") as f:
+            f.write(mark_fixture)
+        st = os.path.join(ro_dir, "1-3-plant-data-model.md")
+        with open(st, "w", encoding="utf-8") as f:
+            f.write("Status: review\n")
+        os.chmod(ro_dir, stat.S_IRUSR | stat.S_IXUSR)  # owner read+exec, no write
+        try:
+            res, code = mark_done(sp, "1-3-plant-data-model", st)
+        finally:
+            os.chmod(ro_dir, stat.S_IRWXU)  # restore owner-only rwx for cleanup
+        check("mark-done ro-dir: exit 1", code == 1)
+        check("mark-done ro-dir: error set", bool(res["error"]))
+        check("mark-done ro-dir: nothing flagged committed", res["sprint_updated"] is False and res["story_file_updated"] is False)
+        check("mark-done ro-dir: sprint untouched", slurp(sp) == mark_fixture)
+        check("mark-done ro-dir: story untouched", slurp(st) == "Status: review\n")
+        check("mark-done ro-dir: no temp litter (sprint dir)", os.listdir(wr_dir) == ["sprint-status.yaml"])
+        check("mark-done ro-dir: no temp litter (story dir)", os.listdir(ro_dir) == ["1-3-plant-data-model.md"])
+        for p in (sp, st):
+            os.unlink(p)
+        os.rmdir(wr_dir)
+        os.rmdir(ro_dir)
 
     for p in tmp_paths:
         os.unlink(p)

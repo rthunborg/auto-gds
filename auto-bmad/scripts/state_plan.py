@@ -18,7 +18,8 @@ Three modes, all emitting a single JSON object on stdout:
 * **finalize** (``--story-key KEY --finalize``): evaluate the Phase 9 draft
   predicate (``git-and-pr.md`` → "PR") from the story's state file. The four
   clauses: ``blockers`` non-empty; ``convergence_unverified`` true;
-  ``gate_decision`` is ``WAIVED``; ``ci_status`` in {failed, timeout}.
+  ``gate_decision`` is ``WAIVED``; ``ci_status`` in {failed, timeout}
+  (case-insensitive, like the sibling clauses).
   ``ci_status`` comes from ``--ci-status`` when given (the live post-CI-wait
   value), else from the state file, else ``unknown`` — ``passed``/``none``/
   ``unknown`` do NOT fire clause 4 (``unknown`` means the wait never ran).
@@ -174,8 +175,9 @@ _FINALIZE_SCALAR_RE = {
 _BLOCKERS_RE = re.compile(r"^blockers:\s*(.*?)\s*(?:#.*)?$")
 _LIST_ITEM_RE = re.compile(r"^\s*-\s+(.*?)\s*(?:#.*)?$")
 
-# ci_status values that fire clause 4. passed/none/unknown do NOT — `unknown`
-# means the CI wait never ran (offer_merge off / skip merge-prompt override).
+# ci_status values that fire clause 4 (matched case-insensitively, like the
+# sibling clauses). passed/none/unknown do NOT — `unknown` means the CI wait
+# never ran (offer_merge off / skip merge-prompt override).
 _CI_FIRES = ("failed", "timeout")
 
 
@@ -277,7 +279,7 @@ def build_finalize_result(state_dir: str, story_key: str, ci_status=None, no_pr_
         "blocker": len(blockers) > 0,
         "convergence_unverified": (fields["convergence_unverified"] or "").lower() == "true",
         "gate_waived": (gate or "").upper() == "WAIVED",
-        "ci_failed_or_timeout": ci in _CI_FIRES,
+        "ci_failed_or_timeout": ci.lower() in _CI_FIRES,
     }
     any_clause = any(clauses.values())
 
@@ -440,6 +442,13 @@ def _run_self_test():
     write_fin("2-4b-pass", gate_decision="PASS")
     res, _ = build_finalize_result(fin_dir, "2-4b-pass")
     check("finalize gate PASS: clean", res["clean_completion"] is True)
+
+    # Clause 4 — a hand-edited uppercase state value still fires (normalized
+    # like the sibling clauses).
+    write_fin("2-5a-upper", ci_status="FAILED")
+    res, _ = build_finalize_result(fin_dir, "2-5a-upper")
+    check("finalize ci FAILED uppercase: fires", res["clauses"]["ci_failed_or_timeout"] is True)
+    check("finalize ci FAILED uppercase: draft, not clean", res["draft"] is True and res["clean_completion"] is False)
 
     # Clause 4 — ci_status from the state file (timeout).
     write_fin("2-5-timeout", ci_status="timeout")

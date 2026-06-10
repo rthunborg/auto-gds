@@ -231,7 +231,13 @@ For iteration `i` (1-based):
    (same flags as step 1's gate) now that step 2's resolutions are recorded in `<story_file>` —
    this post-decision, PRE-fix JSON drives the counts below and the loop gate, so a user-deferred
    Critical/High no longer counts as open. (If step 2 didn't run — no open Decision items — step
-   1's reconciliation JSON is identical; reuse it.) Read the verdict (Approve / Changes Requested /
+   1's reconciliation JSON is identical; reuse it.) Fold the capture into state right away —
+   `state_update.py set` with `review_gate: {iteration: {i}, lenses_failed: {count from step 1b},
+   open_patch, open_decision, open_nondeferred, open_crit_high, untagged:
+   <open_severity.untagged>, fix_done: false}` — so a mid-iteration crash can replay this gate
+   from state instead of from a story-file re-read (`state-and-resume.md` → resume); flip
+   `review_gate.fix_done` to `true` once post-fix verification below passes (or immediately when
+   the pass has no fixable work). Read the verdict (Approve / Changes Requested /
    Blocked) from the triage report; the Critical/High/Med/Low counts come from **the file** (this
    capture's `open_severity` / `open_crit_high`), never the chat counts. When there is fixable work — `[Review][Patch]` items, or
    `[Review][Decision]` items the user just resolved to fix — delegate the fix via the

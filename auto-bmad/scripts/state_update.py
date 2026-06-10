@@ -88,7 +88,7 @@ SCHEMA_ORDER = (
     "git_mode", "base_branch",
     "tea_risk", "tea_selected", "tea_rationale", "epic_story_count", "stories_after_in_epic",
     "completed_phases",
-    "code_review_iterations", "code_review_loop_done", "hitl_halt",
+    "code_review_iterations", "review_gate", "code_review_loop_done", "hitl_halt",
     "external_review_iterations", "convergence_unverified", "story_trace",
     "commits", "phase8_steps",
     "gate_decision", "gate_iterations", "deferred_work_archived",
@@ -105,7 +105,7 @@ BOOL_FIELDS = {"is_first_in_epic", "is_last_in_epic", "needs_project_context_boo
 FLOW_LIST_FIELDS = {"tea_selected", "completed_phases", "commits"}   # short tokens: emit [a, b]
 BLOCK_LIST_FIELDS = {"open_questions", "deferred_work", "blockers", "constraints"}  # free text
 LIST_FIELDS = FLOW_LIST_FIELDS | BLOCK_LIST_FIELDS
-MAP_FIELDS = {"story_trace", "overrides", "phase8_steps"}
+MAP_FIELDS = {"story_trace", "overrides", "phase8_steps", "review_gate"}
 _MAP_KEY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")   # what load_state's map reader can parse back
 _PHASE8_MARKERS = (None, "done")                      # closed vocabulary (pipeline.md Phase 8) …
 _PHASE8_TRACE_GATE_EXTRA = ("waived", "failed")       # … which trace_gate alone extends
@@ -125,6 +125,7 @@ def default_state() -> dict:
     d["ci_status"] = "unknown"
     d["story_trace"] = None                     # null until the trace advisory runs
     d["overrides"] = {}
+    d["review_gate"] = {}                       # Phase 7 mid-iteration resume capsule
     d["phase8_steps"] = {k: None for k in PHASE8_KEYS}
     return d
 
@@ -394,14 +395,25 @@ def write_state(state_file: Path, state: dict) -> None:
 # Patch semantics (shared by init / set / phase-done)
 # --------------------------------------------------------------------------- #
 def _validate_patch(patch: dict) -> None:
-    """Reject values the emit/parse round-trip or the timing math could not honor."""
+    """Reject keys/values the emit/parse round-trip or the timing math could not honor."""
     for k, v in patch.items():
-        if k in MAP_FIELDS and isinstance(v, dict):
+        if not _MAP_KEY_RE.fullmatch(str(k)):
+            # The top-level reader uses the same identifier regex, so a
+            # non-identifier field would be emitted but dropped on re-read.
+            raise ContractError(
+                f"field name {k!r} would not survive a rewrite — keys must match "
+                "[A-Za-z_][A-Za-z0-9_]*")
+        if isinstance(v, dict):
+            # ANY map (schema field or preserved unknown) must re-read: a key the
+            # map reader can't parse back is silently dropped, and a map whose
+            # keys ALL fail collapses to null on the next write.
             for sub in v:
                 if not _MAP_KEY_RE.fullmatch(str(sub)):
                     raise ContractError(
                         f"{k} key {sub!r} would not survive a rewrite — map keys must match "
                         "[A-Za-z_][A-Za-z0-9_]*")
+        elif k in MAP_FIELDS and v is not None:
+            raise ContractError(f"{k} must be a map (or null), got {v!r}")
         if k == "phase8_steps" and isinstance(v, dict):
             for sub, marker in v.items():
                 if sub not in PHASE8_KEYS:
@@ -1016,6 +1028,18 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             except ContractError:
                 pass
             assert not (tmp / "state" / "never.yaml").exists()
+            # …an UNKNOWN preserved field gets the same key checks (top-level + map keys):
+            rc, out = cli_json({"custom_metrics": {"build-time": 42}},
+                               "set", "--state-file", str(sfv))
+            assert rc == 1 and "build-time" in out["error"], (rc, out)
+            rc, out = cli_json({"build-time": 42}, "set", "--state-file", str(sfv))
+            assert rc == 1 and "build-time" in out["error"], (rc, out)
+            assert sfv.read_text(encoding="utf-8") == pristine, "unknown-field rejection must not write"
+            # …and a MAP field set to a non-map shape is rejected (a flat scalar would
+            # wipe the phase8 resume markers):
+            rc, out = cli_json({"phase8_steps": "done"}, "set", "--state-file", str(sfv))
+            assert rc == 1 and "phase8_steps" in out["error"], (rc, out)
+            assert sfv.read_text(encoding="utf-8") == pristine, "non-map rejection must not write"
             # F2: legacy quoted ints in completed_phases are coerced, not dropped
             leg = tmp / "state" / "9-8-quoted.yaml"
             leg.write_text('story_key: 9-8-quoted\nstarted_at: "2026-01-01T00:00:00Z"\n'

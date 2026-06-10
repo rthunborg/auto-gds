@@ -92,7 +92,9 @@ It prints JSON. `routed:false` ⇒ use the normal tier. Otherwise it gives `tool
 optional — `null` ⇒ inherit the user's opencode defaults**, never a hard-stop), the `argv`
 (prompt-less), `prompt_via`, `cwd`, the OS-temp `capture_log`, and `result_source`. It also runs
 the **preflight `validation`**: binary on PATH; that tool's BMAD skills present — looked up in the
-tool's own skills dirs, **not** `target_tools` (the CLI path consumes no rendered agent files;
+tool's own skills dirs (claude: `.claude/skills`; codex: `.agents/skills`, `.codex/skills`,
+`~/.codex/skills`; opencode: `.opencode/skills`, `~/.config/opencode/skills` — project paths
+relative to the project root), **not** `target_tools` (the CLI path consumes no rendered agent files;
 don't "fix" that); and `auth` for the **non-host** tool only (lenient for opencode — see notes
 below). **`ok:false` ⇒ hard-stop** with its `errors`; never silently degrade to an agent. Echo the
 routed phases + resolved tool/model/effort in the Phase 0 preflight and final report, next to

@@ -146,8 +146,9 @@ status: in-progress         # in-progress | done
 updated_at: "2026-05-28T14:04:41Z"  # ISO-8601 UTC; set by the orchestrator after every phase write
 started_at: "2026-05-28T13:55:02Z"  # ISO-8601 UTC; stamped ONCE at the Phase 1 write, never rewritten (survives resume)
 completed_at: null          # ISO-8601 UTC; set when status flips to done (Phase 9 finalize); null while in-progress
-active_seconds: 0           # wall-clock spent EXECUTING phases (delegate runtime + orchestrator commit/state
-                            #   work), summed across sessions. Script-owned via timing-start/-pause — never hand-add.
+active_seconds: 0           # wall-clock spent EXECUTING phases (delegate runtime + orchestrator work up to
+                            #   the pause; the state write + commit land after it), summed across sessions.
+                            #   Script-owned via timing-start/-pause — never hand-add.
 timing_anchor: null         # epoch seconds while a phase (or a bracketed user prompt) is executing; null when
                             #   idle. Non-null on resume = crash tail (timing notes below).
 is_first_in_epic: false
@@ -194,7 +195,8 @@ constraints: []              # caller-supplied constraints carried in via invoca
 ```
 
 The **timing** fields are script-owned (all clock arithmetic lives in `scripts/state_update.py`):
-bracket work — `timing-start` before delegating a phase, `timing-pause` after its commit — and
+bracket work — `timing-start` before delegating a phase, `timing-pause` when it returns (just
+before the phase's state write + commit) — and
 invert the bracket around any `AskUserQuestion` (pause before the prompt, start after) so user
 waits land on idle, not active. A non-null `timing_anchor` on resume is a crash tail: the next
 `timing-start` re-anchors and conservatively discards the dangling interval (reported as

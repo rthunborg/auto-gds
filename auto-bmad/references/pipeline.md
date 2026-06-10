@@ -202,8 +202,9 @@ For iteration `i` (1-based):
    `[Review][Defer]` finding reached the durable ledger (`deferred_work_logged >=` the story's
    defer count). `reconciled: true` (exit 0) → proceed, and use **the file's** counts AND
    severities (`open_patch` / `open_decision` / `open_nondeferred` / `open_crit_high` /
-   `open_severity`), not the chat report, to drive steps 2–3 — treat any `open_severity.untagged`
-   finding as Critical/High (conservative). Once the gate passes, delete `<review_tmp>` (`rm -rf`)
+   `open_severity`), not the chat report, to drive step 2 (step 3 re-captures once the decisions
+   are recorded) — treat any `open_severity.untagged` finding as Critical/High (conservative).
+   Once the gate passes, delete `<review_tmp>` (`rm -rf`)
    — the lens outputs are spent; on a `needs-human` exit keep it and surface its path for debugging.
    `reconciled: false` (exit 1 — section absent, fewer bullets than claimed, or defer findings not
    logged to the ledger) → the findings did NOT persist: **re-run the `code-review-triage` entry once
@@ -218,15 +219,21 @@ For iteration `i` (1-based):
    most 4 findings per call (the tool's limit) — loop with more calls if there are >4. Present each
    finding's title, detail, and the reviewer's suggested options; the user picks the fix direction
    (or **defer** / **dismiss**). Record each resolution in state (`open_questions`/`deferred_work`)
-   + the report. The chosen directions flow into the fix in step 3 (defer → leave it
-   `[Review][Defer]` and log to `deferred_work`; dismiss → check it off as won't-fix). For each
-   item the user **defers**, also append it (with their one-line reason) to the durable cross-story
-   ledger `<impl>/deferred-work.md` under this story's `## Deferred from: code review of {key}
-   (<date>)` heading — the same file the `code-review-triage` delegate logs its own `[Review][Defer]`
-   findings to (a direct orchestrator write).
-3. **Fix, then classify the pass.** Read the verdict (Approve / Changes Requested / Blocked) from
-   the triage report; the Critical/High/Med/Low counts come from **the file** (step 1's
-   `open_severity` / `open_crit_high`), never the chat counts. When there is fixable work — `[Review][Patch]` items, or
+   + the report. Fix-direction choices flow into the fix in step 3; **defer and dismiss the
+   orchestrator records in `<story_file>` itself — a direct write** (the fix delegate never touches
+   unresolved Decision items): for each user **defer**, re-tag the bullet `[Review][Decision]` →
+   `[Review][Defer]` and log it to `deferred_work`; for each **dismiss**, check the bullet off as
+   won't-fix. For each item the user **defers**, also append it (with their one-line reason) to
+   the durable cross-story ledger `<impl>/deferred-work.md` under this story's `## Deferred from:
+   code review of {key} (<date>)` heading — the same file the `code-review-triage` delegate logs
+   its own `[Review][Defer]` findings to (a direct orchestrator write).
+3. **Fix, then classify the pass.** First capture the gate input: re-run `review_findings.py`
+   (same flags as step 1's gate) now that step 2's resolutions are recorded in `<story_file>` —
+   this post-decision, PRE-fix JSON drives the counts below and the loop gate, so a user-deferred
+   Critical/High no longer counts as open. (If step 2 didn't run — no open Decision items — step
+   1's reconciliation JSON is identical; reuse it.) Read the verdict (Approve / Changes Requested /
+   Blocked) from the triage report; the Critical/High/Med/Low counts come from **the file** (this
+   capture's `open_severity` / `open_crit_high`), never the chat counts. When there is fixable work — `[Review][Patch]` items, or
    `[Review][Decision]` items the user just resolved to fix — delegate the fix via the
    **`code-review fix`** entry (profile `code_review_fix`), focused on those items, implementing each
    resolved decision in its chosen direction and checking it off, then commit
@@ -242,13 +249,13 @@ For iteration `i` (1-based):
 
    Now classify the pass by its **non-deferred findings** — every finding it raised that was NOT
    routed to `[Review][Defer]` (the `[Review][Patch]` items plus the `[Review][Decision]` items the
-   user chose to fix; use **the file's** reconciled counts and severities from step 1, not the chat
-   report). The pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were
+   user chose to fix; use **the file's** counts and severities from the gate-time capture above,
+   not the chat report). The pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were
    Critical or High** — file-derived: `open_crit_high == 0` AND `open_severity.untagged == 0` at
    gate time (a *deferred* Critical/High is a logged human decision and does not block convergence).
 
    **Drive the loop — tool call, not prose.** Pipe the gate-time `review_findings.py` JSON — the
-   one captured at step 1's reconciliation gate (post-triage, PRE-fix), not the post-fix re-run — to
+   post-decision, PRE-fix capture from the top of this step, never the post-fix re-run — to
    `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
    --max-iterations {cap} --alternate-models {cfg} --lenses-failed {failed-layer count from step 1b}
    --skip-hitl-on-clean-convergence {cfg}` (add `--convergence-unverified true` when state already

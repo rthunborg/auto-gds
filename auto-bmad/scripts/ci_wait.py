@@ -264,8 +264,10 @@ def wait_for_checks(
             # Cap reached with checks unsettled: zero checks for the ENTIRE run is a
             # true "none" (the cap clamps the grace) — but a board that ever showed
             # real checks is NOT none (a transient empty payload near the cap must
-            # not fake a check-less repo); there, a failure already on the board is
-            # a verdict ("failed" — ANY-failed dominates), otherwise it's a timeout.
+            # not fake a check-less repo); there, a failure in the LAST good poll is
+            # a verdict ("failed" — ANY-failed dominates), otherwise it's a timeout
+            # (which fires the same draft clause, so an earlier-seen failure that a
+            # final empty poll wiped from `last` still drafts).
             if last is not None and last["status"] == "none" and not saw_checks:
                 status = "none"
             elif last and last["failed_checks"]:

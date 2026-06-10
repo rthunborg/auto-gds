@@ -275,6 +275,9 @@ def _stage_write(path, content):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(content)
+        # mkstemp creates 0600; carry the target's own mode so the replace
+        # doesn't silently drop group/other bits from a user file.
+        os.chmod(tmp, os.stat(path).st_mode & 0o7777)
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -529,6 +532,18 @@ development_status:
     check("mark-done both done: exit 0", code == 0)
     check("mark-done both done: already_done", res["already_done"] is True)
     check("mark-done both done: story untouched", slurp(st) == "STATUS: Done\n")
+
+    # The atomic replace preserves the target's mode (mkstemp's temp is 0600;
+    # without the chmod the flip would silently drop group/other bits).
+    sp = fresh(mark_fixture, ".yaml")
+    st = fresh("Status: review\n", ".md")
+    wide = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH
+    os.chmod(sp, wide)
+    os.chmod(st, wide)
+    res, code = mark_done(sp, "1-3-plant-data-model", st)
+    check("mark-done modes: exit 0", code == 0)
+    check("mark-done modes: sprint mode preserved", os.stat(sp).st_mode & 0o7777 == wide)
+    check("mark-done modes: story mode preserved", os.stat(st).st_mode & 0o7777 == wide)
 
     # Write failure (story file in a read-only DIRECTORY — directory perms,
     # not file perms, gate the atomic-replace path): JSON error + exit 1, and

@@ -340,6 +340,12 @@ def _atomic_write(path: str, content: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(content)
+        try:
+            # mkstemp creates 0600; carry an existing target's mode so the
+            # replace doesn't silently drop group/other bits from a user file.
+            os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+        except OSError:
+            pass  # fresh target (e.g. a new archive file): keep mkstemp's default
         os.replace(tmp, path)
     except BaseException:
         if os.path.exists(tmp):
@@ -573,6 +579,16 @@ def _run_self_test():
         check("create: entry gone from ledger", "Tidy the legacy" not in read(la))
         check("create: sha-after matches disk",
               res["ledger_sha256_after"] == hashlib.sha256(read(la).encode("utf-8")).hexdigest())
+
+        # ---- archive preserves the ledger's file mode (mkstemp is 0600) --- #
+        import stat as _stat
+        lm = fresh("ledger-mode.md")
+        wide = _stat.S_IRUSR | _stat.S_IWUSR | _stat.S_IRGRP | _stat.S_IWGRP | _stat.S_IROTH
+        os.chmod(lm, wide)
+        pm = build_plan(lm)
+        res, code = do_archive(lm, os.path.join(td, "resolved-mode.md"), [0], pm["ledger_sha256"])
+        check("mode: exit 0", code == 0)
+        check("mode: ledger mode preserved", os.stat(lm).st_mode & 0o7777 == wide)
 
         # ---- archive: multi-heading move, reuse + creation, emptied heading #
         lb = fresh("ledger-b.md")

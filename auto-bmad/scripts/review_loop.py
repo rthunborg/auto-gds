@@ -8,7 +8,7 @@ a tool and OBEYS the answer instead of re-deriving the rules from prose every
 iteration. The table below is the normative contract; the ``--self-test`` pins
 every row.
 
-Three modes, each emitting ONE JSON object on stdout:
+Four modes, each emitting ONE JSON object on stdout:
 
 * ``prep-diff`` (live, git): create a throwaway temp dir OUTSIDE the work tree
   (``tempfile.mkdtemp``), write the branch diff ``git diff --no-ext-diff
@@ -73,6 +73,13 @@ Three modes, each emitting ONE JSON object on stdout:
     usage/bad JSON). Defensive: an iteration OVERSHOOTING ``--max-iterations``
     still counts as capped (the loop exits; it can never spin past the cap).
 
+* ``converged`` (pure): the convergence rule ALONE, for the Phase 7
+  external-change re-review at the HITL halt: the external changes are
+  ``meaningful`` (re-open the halt) iff the re-review's findings are NOT
+  converged — the same rule, same verbatim ``review_findings.py`` input as the
+  gate, so the threshold lives only here, never in orchestrator prose. Output:
+  ``{converged, meaningful, open_nondeferred, open_crit_high, untagged, reason}``.
+
 * ``post-fix`` (pure): verify a fix delegate's work from a POST-FIX re-run of
   ``review_findings.py``. Expectation: ``open_patch == 0 AND open_decision ==
   0`` (the fix resolves every patch plus every human-resolved decision;
@@ -89,6 +96,7 @@ Usage:
         --alternate-models true|false --lenses-failed 0..3 \\
         --skip-hitl-on-clean-convergence true|false [--convergence-unverified true|false]
     review_loop.py post-fix --findings-json -|FILE [--retry-used]
+    review_loop.py converged --findings-json -|FILE
     review_loop.py --self-test
 
 Exit codes: 0 = success (gate/post-fix: the decision is the result, whatever
@@ -218,6 +226,12 @@ def _findings_int(findings, *path):
         raise ValueError(f"findings key {'.'.join(path)!r} is not an integer: {node!r}") from exc
 
 
+def _is_converged(nondef: int, crit_high: int, untagged: int) -> bool:
+    """THE convergence rule — the only place it is encoded (the gate and the
+    ``converged`` mode both call this; the docs say to call, never re-derive)."""
+    return nondef <= CONVERGENCE_MAX_FINDINGS and crit_high == 0 and untagged == 0
+
+
 def _nonconvergence_why(nondef: int, crit_high: int, untagged: int) -> str:
     parts = []
     if nondef > CONVERGENCE_MAX_FINDINGS:
@@ -244,7 +258,7 @@ def decide_gate(
     untagged = _findings_int(findings, "open_severity", "untagged")
 
     clean = nondef == 0
-    converged = nondef <= CONVERGENCE_MAX_FINDINGS and crit_high == 0 and untagged == 0
+    converged = _is_converged(nondef, crit_high, untagged)
     lenses_ran = TOTAL_LENSES - lenses_failed
     cap = iteration >= max_iterations  # >= is defensive: an overshoot still caps
     unverified = bool(convergence_unverified)  # sticky: never cleared below
@@ -308,6 +322,30 @@ def decide_gate(
         "clean": clean,
         "converged": converged,
         "reason": reason,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# converged
+# --------------------------------------------------------------------------- #
+def decide_converged(findings: dict) -> dict:
+    """The convergence rule ALONE, for the Phase 7 external-change re-review:
+    the changes are 'meaningful' (re-open the halt) iff the re-review's
+    findings are NOT converged. Same verbatim review_findings.py input as the
+    gate; pure. Keeps CONVERGENCE_MAX_FINDINGS out of orchestrator prose."""
+    nondef = _findings_int(findings, "open_nondeferred")
+    crit_high = _findings_int(findings, "open_crit_high")
+    untagged = _findings_int(findings, "open_severity", "untagged")
+    converged = _is_converged(nondef, crit_high, untagged)
+    return {
+        "converged": converged,
+        "meaningful": not converged,
+        "open_nondeferred": nondef,
+        "open_crit_high": crit_high,
+        "untagged": untagged,
+        "reason": (f"converged ({nondef} non-deferred ≤ {CONVERGENCE_MAX_FINDINGS}, "
+                   "0 Critical/High, 0 untagged)" if converged
+                   else _nonconvergence_why(nondef, crit_high, untagged)),
     }
 
 
@@ -711,6 +749,27 @@ def _run_self_test():
     except ValueError:
         pass
 
+    # ---------------- converged (external-change re-review) ----------------
+    cv = decide_converged(_f(CONVERGENCE_MAX_FINDINGS))
+    check("converged: at the cap converges, not meaningful",
+          cv["converged"] is True and cv["meaningful"] is False)
+    cv = decide_converged(_f(CONVERGENCE_MAX_FINDINGS + 1))
+    check("converged: over the cap is meaningful",
+          cv["converged"] is False and cv["meaningful"] is True)
+    cv = decide_converged(_f(1, crit_high=1))
+    check("converged: any Crit/High is meaningful", cv["meaningful"] is True)
+    cv = decide_converged(_f(1, untagged=1))
+    check("converged: untagged treated as Crit/High", cv["meaningful"] is True
+          and "untagged" in cv["reason"])
+    check("converged: same rule as the gate",
+          decide_converged(_f(2))["converged"]
+          == decide_gate(_f(2), 2, 3, False, 0, False)["converged"])
+    try:
+        decide_converged({"open_nondeferred": 1})
+        check("converged: missing key must raise", False)
+    except ValueError:
+        pass
+
     # ---------------- main(): CLI round-trips (stdout JSON + exit codes) ----------------
     def run_main(argv, stdin_text=None):
         out, err = io.StringIO(), io.StringIO()
@@ -771,6 +830,9 @@ def _run_self_test():
                        stdin_text=json.dumps({"open_patch": 1, "open_decision": 0}))
     check("cli: post-fix exits 0", rc == 0)
     check("cli: post-fix retry-fix", json.loads(out)["action"] == "retry-fix")
+    rc, out = run_main(["converged", "--findings-json", "-"],
+                       stdin_text=json.dumps(_f(4)))
+    check("cli: converged exits 0, meaningful", rc == 0 and json.loads(out)["meaningful"] is True)
     rc, out = run_main(["post-fix", "--findings-json", "-", "--retry-used"],
                        stdin_text=json.dumps({"open_patch": 1, "open_decision": 0}))
     check("cli: post-fix --retry-used => needs-human", json.loads(out)["action"] == "needs-human" and rc == 0)
@@ -836,12 +898,17 @@ def main(argv=None):
     p_fix.add_argument("--retry-used", action="store_true",
                        help="the one fix retry already ran — an unmet expectation is now needs-human")
 
+    p_conv = sub.add_parser("converged", help="the convergence rule alone — external-change "
+                                              "re-review ('meaningful' = NOT converged)")
+    p_conv.add_argument("--findings-json", required=True,
+                        help="review_findings.py JSON of the re-review: a file path, or '-' for stdin")
+
     args = parser.parse_args(argv)
 
     if args.self_test:
         return _run_self_test()
     if not args.mode:
-        parser.error("a mode is required: prep-diff | gate | post-fix (or use --self-test)")
+        parser.error("a mode is required: prep-diff | gate | post-fix | converged (or use --self-test)")
 
     if args.mode == "prep-diff":
         result = prep_diff(args.project_root, args.base)
@@ -868,10 +935,11 @@ def main(argv=None):
         print(json.dumps(result, indent=2))
         return 0
 
-    # post-fix
+    # post-fix / converged (same findings-JSON plumbing)
     try:
         findings = _load_findings(args.findings_json)
-        result = decide_post_fix(findings, args.retry_used)
+        result = (decide_converged(findings) if args.mode == "converged"
+                  else decide_post_fix(findings, args.retry_used))
     except (OSError, ValueError) as exc:
         print(json.dumps({"status": "error", "message": str(exc)}))
         return 2

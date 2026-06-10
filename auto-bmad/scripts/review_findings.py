@@ -37,16 +37,26 @@ actually reached the ledger.
 
 Dependency-free. Output is a single JSON object on stdout.
 
+Fenced code blocks (``` or ~~~) are tracked with the SAME grammar as
+``deferred_ledger.py`` (the self-test pins the two patterns equal): a fenced
+``- [ ] [Review][Patch]`` example is literal content, never a phantom finding,
+and a fenced ``## …`` never ends the section or fakes a ledger heading.
+
 Usage:
-    review_findings.py --story-file PATH [--expect-min N]
+    review_findings.py --story-file PATH [--expect-min N] [--baseline M]
                        [--deferred-work-file PATH [--story-key KEY]]
     review_findings.py --self-test
 
 With ``--expect-min N`` the process also exits non-zero (and sets
-``reconciled: false``) when the section is absent or holds fewer than N total
-items — pass the reviewer's reported finding count as N to gate the phase.
-``--expect-min 0`` reconciles even when the section is absent: a perfectly
-clean pass may legitimately write no section, so absence matches the claim.
+``reconciled: false``) when the section is absent or has gained fewer than N
+bullets since ``--baseline M`` (default 0) — pass the reviewer's reported
+finding count as N, and the section's total from a run of this script taken
+BEFORE the pass as M. The section accumulates bullets across review
+iterations, so gating on the raw total would let iteration 1's bullets
+vacuously satisfy iteration 2's persistence claim; the baseline scopes the
+gate to what THIS pass actually wrote. ``--expect-min 0`` reconciles even when
+the section is absent: a perfectly clean pass may legitimately write no
+section, so absence matches the claim.
 
 With ``--deferred-work-file PATH`` the process additionally fails reconciliation
 when the ledger holds fewer ``## Deferred from:`` bullets than the story has
@@ -82,18 +92,45 @@ BULLET_RE = re.compile(
     r"(?:\*\*|__)?\s*"               # optional bold/emphasis marker
     r"\[Review\]\[(?P<type>Patch|Decision|Defer)\]"
     # Optional severity tag, only directly after the type — `[Patch][High]` (the
-    # auto-bmad triage contract) or `[Patch] [Med]` / `**…** [Med]` (upstream
-    # bold-prose rendering). Anchored here so a later location bracket
-    # (`[src/app.py:42]`) can never be misread as a severity.
-    r"(?:(?:\*\*|__)?\s*\[(?P<sev>(?i:critical|high|med|medium|low))\])?",
+    # auto-bmad triage contract) or `[Patch] [Med]` / `**…** [Med]` / a
+    # bold-wrapped `[Patch] **[High]**` (upstream bold-prose renderings; the
+    # emphasis marker may sit on either side of the space). Anchored here so a
+    # later location bracket (`[src/app.py:42]`) can never be misread as a
+    # severity — the alternation only admits the five severity words.
+    r"(?:\s*(?:\*\*|__)?\s*\[(?P<sev>(?i:critical|high|med|medium|low))\])?",
 )
 # Normalize severity spellings to the canonical four buckets.
 SEVERITY_CANON = {"critical": "critical", "high": "high", "med": "medium",
                   "medium": "medium", "low": "low"}
 # A ledger section heading: `## Deferred from: code review of story-3.3 (2026-03-18)`.
 DEFER_HEADING_RE = re.compile(r"^#{1,4}\s+deferred\s+from:", re.IGNORECASE)
-# Any list bullet (the ledger entries are plain bullets, not triage checkboxes).
-LEDGER_BULLET_RE = re.compile(r"^\s*[-*]\s+\S")
+# A ledger ENTRY bullet: top-level (column 0) only — the same entry grammar as
+# deferred_ledger.py, so the Phase 7 reconciliation count and the Phase 8 plan
+# count agree on one file. Indented bullets are entry continuations, not entries.
+LEDGER_BULLET_RE = re.compile(r"^[-*+]\s+\S")
+
+# Fenced code blocks — the SAME grammar as deferred_ledger.py (the self-test
+# asserts the two patterns are identical, the lockstep pattern from
+# config_plan.py): a fence opens on a line whose content — at any indent,
+# optionally right after a single bullet marker — starts with 3+ backticks or
+# tildes, and closes on a later line with the same char, at least as many, any
+# indent, nothing else. While inside a fence NO line is a heading or a bullet:
+# a fenced `- [ ] [Review][Patch]` example is literal content, never a phantom
+# finding; a fenced `## …` never truncates the section or fakes a ledger heading.
+# (Backtick branch: no later backtick on the line, so inline code spans —
+# ```x``` — never read as fence openers.)
+FENCE_OPEN_RE = re.compile(r"^\s*(?:[-*+]\s+)?(`{3,}(?!.*`)|~{3,})")
+
+
+def _fence_open(line):
+    """Return ``(char, length)`` if ``line`` opens a fence, else ``None``."""
+    m = FENCE_OPEN_RE.match(line)
+    return (m.group(1)[0], len(m.group(1))) if m else None
+
+
+def _fence_closes(line, char, length):
+    """True if ``line`` closes a fence opened with ``length`` × ``char``."""
+    return bool(re.match(r"^\s*%s{%d,}\s*$" % (re.escape(char), length), line))
 
 
 def _empty_counts():
@@ -115,7 +152,13 @@ def parse_deferred_work(text: str, story_key=None):
     present = False
     count = 0
     counting = False
+    fence = None
     for raw in text.splitlines():
+        if fence is not None:
+            # Inside a fenced code block: never a heading, never an entry.
+            if _fence_closes(raw, *fence):
+                fence = None
+            continue
         if DEFER_HEADING_RE.match(raw):
             present = True
             counting = story_key is None or story_key.lower() in raw.lower()
@@ -124,8 +167,17 @@ def parse_deferred_work(text: str, story_key=None):
             # Any other heading closes the current deferral block.
             counting = False
             continue
-        if counting and LEDGER_BULLET_RE.match(raw):
-            count += 1
+        if LEDGER_BULLET_RE.match(raw):
+            # A top-level entry bullet — which may itself open a fence
+            # (`- ```py`), exactly as in deferred_ledger.py's entry grammar.
+            if counting:
+                count += 1
+            fence = _fence_open(raw)
+            continue
+        opened = _fence_open(raw)
+        if opened is not None:
+            fence = opened
+        # Indented lines (incl. nested bullets) are entry continuations.
     return present, count
 
 
@@ -142,7 +194,19 @@ def parse_section(text: str):
     open_severity = _empty_severity()
     in_section = False
     section_present = False
+    fence = None
     for raw in lines:
+        if fence is not None:
+            # Inside a fenced code block: a fenced `### Review Findings` /
+            # `## …` is literal content (never opens or closes the section)
+            # and a fenced `- [ ] [Review][…]` example is never a finding.
+            if _fence_closes(raw, *fence):
+                fence = None
+            continue
+        opened = _fence_open(raw)
+        if opened is not None:
+            fence = opened
+            continue
         if not in_section:
             if HEADING_RE.match(raw):
                 in_section = True
@@ -164,11 +228,14 @@ def parse_section(text: str):
     return section_present, by_type, open_severity
 
 
-def build_result(story_file: str, expect_min, deferred_work_file=None, story_key=None):
+def build_result(story_file: str, expect_min, deferred_work_file=None, story_key=None,
+                 baseline=0):
     result = {
         "story_file": story_file,
         "section_present": False,
         "total": 0,
+        "baseline": baseline,
+        "new_since_baseline": 0,
         "by_type": _empty_counts(),
         "open_patch": 0,
         "open_decision": 0,
@@ -200,6 +267,7 @@ def build_result(story_file: str, expect_min, deferred_work_file=None, story_key
         {
             "section_present": section_present,
             "total": total,
+            "new_since_baseline": max(total - baseline, 0),
             "by_type": by_type,
             "open_patch": by_type["patch"]["open"],
             "open_decision": by_type["decision"]["open"],
@@ -215,8 +283,13 @@ def build_result(story_file: str, expect_min, deferred_work_file=None, story_key
     if expect_min is not None:
         # A perfectly clean pass (expect_min 0) may legitimately write no
         # `### Review Findings` section at all — absence then matches the claim.
-        # Any positive claim still requires the section to exist.
-        section_ok = total >= expect_min if section_present else expect_min == 0
+        # Any positive claim still requires the section to exist. The claim is
+        # gated on the bullets NEW since ``baseline`` (the section's total
+        # before this pass) — the section accumulates across iterations, so the
+        # raw total would let a prior pass's bullets vacuously satisfy a later
+        # pass's persistence claim.
+        new_total = total - baseline
+        section_ok = new_total >= expect_min if section_present else expect_min == 0
 
     # Ledger reconciliation: every story defer finding must reach deferred-work.md.
     ledger_ok = True
@@ -345,9 +418,87 @@ def _run_self_test():
     check("severity: location bracket not misread", build_result(ploc, None)["open_severity"]["untagged"] == 1)
     os.unlink(ploc)
 
+    # A bold-wrapped severity AFTER the space (`[Patch] **[High]**`) must not
+    # read as untagged (untagged is treated as Crit/High and forces iterations).
+    pbold = write("### Review Findings\n\n- [ ] [Review][Patch] **[High]** title\n")
+    rbold = build_result(pbold, None)
+    check("severity: bold after space counted", rbold["open_severity"]["high"] == 1
+          and rbold["open_severity"]["untagged"] == 0)
+    os.unlink(pbold)
+
     # expect-min satisfied / shortfall.
     check("expect-min 4 ok", build_result(p1, 4)["reconciled"] is True)
     check("expect-min 5 shortfall", build_result(p1, 5)["reconciled"] is False)
+
+    # --baseline scopes expect-min to THIS pass's new bullets: with 4 bullets
+    # all from a prior iteration (baseline 4), a pass claiming 2 persisted
+    # nothing new => NOT reconciled; the raw total must not vacuously satisfy it.
+    r_base = build_result(p1, 2, baseline=4)
+    check("baseline: stale bullets don't satisfy the claim",
+          r_base["reconciled"] is False and r_base["new_since_baseline"] == 0)
+    check("baseline: delta satisfies the claim",
+          build_result(p1, 2, baseline=2)["reconciled"] is True)
+    check("baseline: 0 keeps iteration-1 behavior",
+          build_result(p1, 4, baseline=0)["reconciled"] is True)
+
+    # Fenced examples are literal content: the fenced finding bullet is never a
+    # phantom finding, the fenced `## heading` doesn't end the section (the real
+    # finding after the fence still counts), and a fenced `### Review Findings`
+    # in another section never opens it.
+    pfence = write(
+        "# Story 1-5\n\n"
+        "## Dev Notes\n\n"
+        "```md\n"
+        "### Review Findings\n"
+        "- [ ] [Review][Patch] fenced example, not a finding\n"
+        "```\n\n"
+        "### Review Findings\n\n"
+        "- [ ] [Review][Patch][High] real finding one\n"
+        "- ```md\n"
+        "  - [ ] [Review][Patch] fenced inside a bullet fence\n"
+        "  ## fenced heading must not end the section\n"
+        "  ```\n"
+        "- [ ] [Review][Decision] real finding two, after the fence\n"
+    )
+    rf = build_result(pfence, None)
+    check("fence: phantom findings excluded, real ones kept",
+          rf["total"] == 2 and rf["open_patch"] == 1 and rf["open_decision"] == 1)
+    check("fence: fenced heading doesn't truncate the section",
+          rf["open_nondeferred"] == 2)
+    os.unlink(pfence)
+
+    # Ledger side: fenced bullets under a `## Deferred from:` heading are
+    # content, not entries — they must not inflate deferred_work_logged (the
+    # defer-reached-the-ledger gate would pass vacuously); nested bullets are
+    # continuations, not extra entries (deferred_ledger.py's entry grammar).
+    led_fenced = write(
+        "# Deferred Work\n\n"
+        "## Deferred from: code review of story-1-2 (2026-03-18)\n\n"
+        "- Real deferral entry\n"
+        "  - nested continuation bullet, not an entry\n"
+        "  ```md\n"
+        "  - fenced bullet, not an entry\n"
+        "  ```\n"
+    )
+    r_ledf = build_result(p1, None, led_fenced, "story-1-2")
+    check("ledger fence: one real entry counted", r_ledf["deferred_work_logged"] == 1)
+    check("ledger fence: reconciled on the real entry", r_ledf["reconciled"] is True)
+    os.unlink(led_fenced)
+
+    # Lockstep with deferred_ledger.py: ONE fence grammar owns this file format.
+    import importlib.util as _ilu
+    _dl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deferred_ledger.py")
+    _spec = _ilu.spec_from_file_location("deferred_ledger", _dl_path)
+    assert _spec is not None and _spec.loader is not None, _dl_path
+    _dl = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_dl)
+    check("lockstep: fence-open pattern equals deferred_ledger.py's",
+          _dl.FENCE_OPEN_RE.pattern == FENCE_OPEN_RE.pattern)
+    _close_probe = [("```", "`", 3), ("   ````", "`", 3), ("~~~", "~", 3),
+                    ("``` trailing", "`", 3), ("````", "`", 4), ("\t```", "`", 3)]
+    check("lockstep: fence-close rule equals deferred_ledger.py's",
+          all(_fence_closes(s, c, n) == _dl._fence_closes(s, c, n)
+              for s, c, n in _close_probe))
 
     # Bold-prose / no-checkbox rendering (real BMAD output) must count the same.
     pb = write(_WITH_BOLD_FINDINGS)
@@ -423,7 +574,15 @@ def main(argv=None):
         "--expect-min",
         type=int,
         default=None,
-        help="reviewer's reported finding count; exit 1 if the file holds fewer",
+        help="reviewer's reported finding count THIS pass; exit 1 if the file "
+             "gained fewer bullets than this since --baseline",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=int,
+        default=0,
+        help="the section's total bullet count BEFORE this pass (capture it by "
+             "running this script pre-review); --expect-min gates on the delta",
     )
     parser.add_argument(
         "--deferred-work-file",
@@ -443,9 +602,12 @@ def main(argv=None):
 
     if not args.story_file:
         parser.error("--story-file is required (or use --self-test)")
+    if args.baseline < 0:
+        parser.error("--baseline must be >= 0")
 
     result = build_result(
-        args.story_file, args.expect_min, args.deferred_work_file, args.story_key
+        args.story_file, args.expect_min, args.deferred_work_file, args.story_key,
+        args.baseline,
     )
     print(json.dumps(result, indent=2))
     return 0 if result["reconciled"] else 1

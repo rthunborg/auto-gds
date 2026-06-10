@@ -118,7 +118,7 @@ shell. The rules below are the normative definition the script implements:
      see `overrides.md`);
   3. `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
      trace skill — chose to ship despite the coverage gaps);
-  4. **CI is red or unknown** when the CI wait below resolves (a required check failed, or the wait
+  4. **CI is red or timed out** when the CI wait below resolves (a required check failed, or the wait
      cap was hit with checks still running) — see "CI wait" below. This condition can only be
      evaluated *after* the push, so if it fires the PR is **converted to draft after the fact**
      with `gh pr ready --undo <pr-number>` (the initial `gh pr create` is issued without

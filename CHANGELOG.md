@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Verified compatibility with BMAD 6.8.1-next.6.** The only upstream change since 6.8.1-next.5
+  clarifies how `bmad-code-review` delivers the diff to its Blind Hunter lens; no contract auto-bmad
+  parses or replicates moved. (README compat markers advanced)
+
 ## [0.17.1] - 2026-06-10
 
 ### Changed

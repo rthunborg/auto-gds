@@ -19,19 +19,18 @@ to an `ab-*` profile). The list — other docs link here by name instead of rest
   default on, only on a clean completion);
 - the Phase 7 **HITL-halt handling** — detecting external-review changes (a git-only check, never a
   code read), committing them (`fix(story-{e}-{s}): external review changes`), and re-opening the halt
-  after the re-review. The **re-review of those changes is delegated**, not orchestrator-owned — it's a
-  normal **code-review fan-out** (the three lenses + triage, hoisted to the orchestrator) on the
-  alternate reviewer; the orchestrator no longer inspects code on **Continue** (see `pipeline.md`
-  Phase 7 step 4).
+  after the re-review. The **re-review of those changes is delegated**, not orchestrator-owned — the
+  normal code-review fan-out on the alternate reviewer (see `pipeline.md` Phase 7 step 4).
 
-Each lives here because the orchestrator holds the full pipeline context — commit/PR messages,
-state, the clean-vs-caveated decision; a round-trip to a delegate would only be slower. The
-**only** exception is the `inline` delegation tier (host with no subagent mechanism — see
+These stay orchestrator-owned because it already holds the full pipeline context. The **only**
+exception is the `inline` delegation tier (host with no subagent mechanism — see
 `delegation-runtime.md`), where the orchestrator runs *every* step itself.
 
 ## Mode detection (Phase 0)
-- It's a git repo? `git rev-parse --is-inside-work-tree`. If not → hard-stop (suggest
-  `git init`, since the local-branch flow needs a repo).
+Evaluated by `scripts/preflight.py` — the orchestrator reads its JSON (`git.is_repo`,
+`git.base_branch`, `git.mode`, `git.tree_clean`/`dirty_files_count`), never re-derives these in
+shell. The rules below are the normative definition the script implements:
+- It's a git repo? `git rev-parse --is-inside-work-tree`. If not → hard-stop (suggest `git init`).
 - Base branch: the remote HEAD if present (`git symbolic-ref refs/remotes/origin/HEAD`),
   else the current branch at start (commonly `main`/`master`). Store as `git.base_branch`.
 - Git mode:
@@ -45,7 +44,10 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 ## Branching (Phase 1)
 - Branch name: `{git.branch_prefix}{e}-{s}-{slug}` (default prefix `story/`), e.g.
   `story/1-2-user-auth`. Slug = the story-key title part (already kebab-case).
-- `git switch -c <branch>` from the base branch (or `git switch <branch>` if it already exists).
+- Create it explicitly off base — `git switch -c <branch> <base_branch>`, never a bare
+  `git switch -c <branch>` (preflight allows a clean tree on an unrelated branch, and a bare `-c`
+  would branch off it, leaking foreign commits into the PR). On resume, `git switch <branch>` if
+  it already exists.
 - Never `commit`/`push` to the base branch.
 
 ## Commits (between phases)
@@ -58,12 +60,13 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
   - `docs` — story creation, epic-end docs (gate/context/retro), Phase 9 pipeline report
   - `feat` — story implementation
   - `fix` — addressing code-review findings
-- **One commit per phase — the state update folds in.** A phase mutates the project artifacts
-  *and* the auto-bmad state file (`<output_folder>/auto-bmad/state/{key}.yaml`); stage **both
-  together** and make a **single** commit. **Never** emit a standalone bookkeeping commit whose
+- **The state update folds into the phase's commit — never standalone.** A phase mutates the
+  project artifacts *and* the auto-bmad state file (`<output_folder>/auto-bmad/state/{key}.yaml`);
+  stage **both together** and make a **single** commit. (A phase with a documented multi-commit
+  flow — Phase 7's per-iteration commits, Phase 8's separate remediation commit — folds the state
+  write into each such commit; the rule is *no state-only commits*, not one-commit-per-phase-number.) **Never** emit a standalone bookkeeping commit whose
   only change is the state file — no `chore(story-{e}-{s}): record Phase N in pipeline state`, no
-  `chore(...): update state/timestamps`. (Phase 7's trace commit in `pipeline.md` is the worked
-  example: "the trace matrix artifact … **plus the state update**" — one commit.)
+  `chore(...): update state/timestamps`. (Worked example: `pipeline.md` Phase 7's trace commit.)
 - **Recording each commit's own sha** can't happen inside that same commit (the sha doesn't exist
   yet), so do **not** chase it with a second commit: append the just-made phase commit's short sha
   to `commits[]` on the **next** phase's folded-in state write (Phase 9's finalize write closes out
@@ -76,9 +79,8 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 - **Body — required on every commit.** One blank line after the subject, then 1–4 wrapped lines
   saying *what this phase changed and why*, drawn from the context the orchestrator **already holds**
   for the phase (the delegate's report, finding/severity counts, resolved decisions, deviations,
-  deferred work) — never invent. **The body must add information the subject doesn't carry; if it
-  would only restate the subject, the commit is too thin — put the real facts the phase produced.**
-  By type:
+  deferred work) — never invent. **The body must add information the subject doesn't carry**, never
+  just restate it. By type:
   - `feat` (dev-story): what was built + notable decisions/deviations + any deferred work.
   - `fix` (code review): the findings addressed this iteration, by severity, and the reviewer/iter;
     note anything deferred or dismissed.
@@ -93,8 +95,7 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 - **Footer — optional, only when relevant.** One blank line after the body, Conventional Commits
   `token: value` form. auto-bmad emits one only when it holds the data — chiefly
   `BREAKING CHANGE: <what broke + how to migrate>` when a delegate reports an incompatible change
-  (equivalently mark the type, e.g. `feat(story-1-2)!: …`). Don't invent footers the phase didn't
-  produce.
+  (equivalently mark the type, e.g. `feat(story-1-2)!: …`).
 - **Emit the parts as separate `-m` args** so the blank-line separators are guaranteed:
   `git commit -m "<subject>" -m "<body>" [-m "<footer>"]` — each `-m` becomes its own
   blank-line-separated paragraph, i.e. exactly the subject / body / footer shape. (Stage the phase
@@ -103,23 +104,32 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 ## PR (Phase 9, mode `remote` only)
 - Push: `git push -u origin <branch>`.
 - Open PR: `gh pr create --base <base_branch> --head <branch> --title "<title>" --body "<body>"`.
-  Add `--draft` if **any** of these hold (the **draft predicate**):
+  Add `--draft` if **any** of these hold (the **draft predicate** — evaluated deterministically by
+  `scripts/state_plan.py --finalize` from the story's state file. Run it **twice**: pre-create
+  WITHOUT `--ci-status` (clauses 1–3 decide the initial `--draft`), and again after the CI wait
+  WITH the live `--ci-status` (the full verdict that also drives the status flip); the four
+  clauses below remain the normative definition the script implements):
   1. a blocker was recorded;
   2. `convergence_unverified` is `true` (Phase 7: the review loop hit `max_iterations` while the
      last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High;
      **or** a post-halt re-review of external changes surfaced meaningful findings the user chose to
-     **Ignore & continue**, or its Fix & re-review rounds hit the cap — see `pipeline.md` Phase 7 step 4);
+     **Ignore & continue**, or its Fix & re-review rounds hit the cap — see `pipeline.md` Phase 7 step 4;
+     **or** Phase 7 was skipped outright by the `skip code-review` override — zero review passes,
+     see `overrides.md`);
   3. `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
      trace skill — chose to ship despite the coverage gaps);
-  4. **CI is red or unknown** when the CI wait below resolves (a required check failed, or the wait
+  4. **CI is red or timed out** when the CI wait below resolves (a required check failed, or the wait
      cap was hit with checks still running) — see "CI wait" below. This condition can only be
      evaluated *after* the push, so if it fires the PR is **converted to draft after the fact**
      with `gh pr ready --undo <pr-number>` (the initial `gh pr create` is issued without
      `--draft` for clauses 1–3 only).
   **The negation of this same draft predicate is the "clean completion" test** that decides
   whether Phase 9 also flips the BMAD-level story status (story file `Status:` + `sprint-status.yaml`)
-  to `done` — non-draft ⇒ flip, draft ⇒ leave at `review` (see `pipeline.md` Phase 9). Keep the two
-  coupled if you edit it.
+  to `done` — predicate false ⇒ flip, any clause true ⇒ leave at `review` (see `pipeline.md`
+  Phase 9). `state_plan.py --finalize` emits both verdicts coupled in one JSON — `draft` and
+  `clean_completion`/`flip_bmad_status` — and it is the *predicate* that decides, not the PR's
+  actual draft flag: the `no_pr_draft` override (`--no-pr-draft`) forces only `draft` false and
+  never touches `clean_completion`. Keep the two coupled if you edit it.
 - Title: a conventional summary of the story, e.g. `feat(story-1-2): user authentication`.
 - Body must include:
   - one-paragraph summary of what the story delivered;
@@ -131,52 +141,63 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
 - Capture the returned PR URL into state (`pr_url`) for the **chat** report (chat-only artifact).
 - **CI link & wait:** if the repo has CI workflows (test existence with `find .github/workflows
   -name '*.yml' -o -name '*.yaml'` or `test -d`, never a bare `ls .github/workflows/*` glob —
-  unmatched it aborts under zsh/fish), the push/PR will have triggered a run. Capture its URL — query the run for the pushed head SHA:
-  `gh run list --branch <branch> --limit 1 --json url,workflowName,status,headSha`
-  (match `headSha` to the pushed commit), falling back to `gh pr checks <pr-number>` or the
-  branch's Actions tab (`<repo_url>/actions?query=branch:<branch>`) if no run has registered yet.
-  Store it in state (`ci_run_url`).
+  unmatched it aborts under zsh/fish), the push/PR will have triggered a run. The URL capture and
+  the wait are one `ci_wait.py` call (see "How to wait" below) — store the returned `ci_run_url` in
+  state; when it is `null`, fall back to the branch's Actions tab
+  (`<repo_url>/actions?query=branch:<branch>`).
 
   Then evaluate `ci_status` and, when warranted, **wait for in-progress checks to finish**:
   - **When to wait:** only if the merge prompt is effectively enabled this run —
     `git.offer_merge: true` AND no `skip merge-prompt` override. When the prompt is off, do not
-    wait — just link the run and leave `ci_status: unknown`.
-  - **How to wait:** poll `gh pr checks <pr-number> --json bucket,state,name` every ~20s until no
-    check is `pending`/`in_progress`, capped at `git.ci_wait_minutes` (default 30). `gh pr checks
-    --watch` is acceptable as long as the call honors the cap. Don't echo per-poll noise — print
-    one "waiting on CI (cap N min)" line, then the resolution.
-  - **Outcomes** (record in state as `ci_status`):
+    wait — just link the run and leave `ci_status: unknown`. Also skip the wait when clauses 1–3
+    already made the run caveated (the PR is already a draft, so the merge prompt can't fire) —
+    link the run, leave `ci_status: unknown`.
+  - **How to wait:** one deterministic call —
+    `python3 {skill-root}/scripts/ci_wait.py --pr <pr-number> --cap-minutes <git.ci_wait_minutes>
+    --resolve-run-url --branch <branch> --head-sha <sha>` — then read `ci_status` and `ci_run_url`
+    from its single JSON object. The script owns the poll cadence, cap, registration grace
+    (zero checks just after the push is lag — held as pending, not `none`), and output discipline.
+    Exit 2 means it couldn't evaluate CI (gh missing/errored) — leave `ci_status: unknown`,
+    never `failed`.
+  - **Outcomes** (record in state as `ci_status` — this list is normative; `ci_wait.py` pins these
+    exact values):
     - `passed` — every required check is `success` (or `neutral`/`skipped`).
     - `failed` — any required check is `failure`/`cancelled`/`timed_out`/`action_required`.
     - `timeout` — cap reached with checks still running.
     - `none` — no CI workflows or no checks reported.
-  - `failed` or `timeout` ⇒ draft-predicate clause 4 fires ⇒ convert PR to draft via
-    `gh pr ready --undo <pr-number>` and leave story at `review`.
-  - `passed` or `none` ⇒ clause 4 does not fire; the existing clauses 1–3 still decide draft vs
-    non-draft.
+  - `failed` or `timeout` ⇒ draft-predicate clause 4 fires (draft conversion per clause 4; story
+    stays at `review`). `passed` or `none` ⇒ clause 4 does not fire — clauses 1–3 still decide.
+  - **Inherent lag:** the verdict above is evaluated on the pre-finalize HEAD — the Phase 9
+    finalize commit pushed *after* it supersedes that SHA and may re-trigger CI. That commit is
+    bookkeeping-only (state/report/status files, no code), so the verdict remains meaningful for
+    the story's code; on a protected branch the pending-checks merge fallback below covers the gap.
 
 ## Merging the PR (Phase 9, only when clean) — orchestrator
 auto-bmad never merges automatically. When the run is a **clean completion** (full draft
 predicate is false — clauses 1–4 above) AND `git.offer_merge` is `true` AND the run has no
 `skip merge-prompt` override, the orchestrator **asks** the user whether to merge before
-reporting. The merge is the user's call; the orchestrator just runs the chosen `gh` command on
-their behalf, then switches the working tree back to the base branch so the next run starts
-clean.
+reporting, then runs the chosen `gh` command on their behalf.
 
 - **Prompt** (`AskUserQuestion`, 4 options, in this order — first is the default): **Merge commit
-  (recommended)** / Rebase and merge / Squash and merge / Don't merge. Merge commit is the default
-  because it preserves every per-phase auto-bmad commit — the richest signal for an AI later
-  running `git log`/`blame`/`bisect` on the story. If a merge style is chosen, **ask a second
-  question** — Delete branch? Yes / No.
+  (recommended)** / Rebase and merge / Squash and merge / Don't merge. (Merge commit is the default
+  because it preserves every per-phase commit — the richest signal for later
+  `git log`/`blame`/`bisect`.) If a merge style is chosen, **ask a second question** —
+  Delete branch? Yes / No.
 - **Execute** (only if the user picked a merge style):
   - `gh pr merge <pr-number> --merge` *(or `--rebase` / `--squash`)* `[--delete-branch]`.
   - On success: `git switch <base_branch>` then `git pull --ff-only` so the local tree matches
     `origin/<base_branch>` post-merge.
+  - **Pending-checks fallback:** if the merge fails because required checks are
+    pending/expected on the head SHA (the finalize push superseded the CI-validated commit — the
+    "inherent lag" above), retry **once** with `--auto` added: the user already chose to merge, and
+    auto-merge completes it when the checks pass — tell them that's what happened ("merge queued;
+    completes when checks pass"). If the `--auto` retry also fails (e.g. auto-merge disabled in the
+    repo), fall through to the failure handling below.
   - On failure (branch protection, required reviews, conflict, CI required check missing, etc.):
     don't retry, don't error out — capture the `gh` stderr verbatim into the report under "Needs
     attention" ("PR merge failed: …; merge manually at `<pr_url>`") and leave the PR open. The
-    pipeline still ends `done` (the BMAD-status flip already happened); merging is a separate,
-    user-elected action and a failed attempt doesn't invalidate the completion.
+    pipeline still ends `done` (the BMAD-status flip already happened); a failed user-elected merge
+    doesn't invalidate the completion.
 - **Record** in state: `pr_merged: true|false`, `merge_method: squash|merge|rebase|null`,
   `branch_deleted: true|false`. Surface the outcome in the **chat** report (it's a chat-only
   finalization artifact — one line: "Merged via merge commit; branch deleted." / "PR left open at

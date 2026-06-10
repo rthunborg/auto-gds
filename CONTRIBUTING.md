@@ -13,23 +13,37 @@ auto-bmad/                             # the BMAD standalone module (one skill)
   assets/                              # module identity, setup, and delegate templates
     agents/profiles.yaml               # source of truth: per-profile persona (description /
                                        # role_blurb / status_example) + per-tool model + effort
-    agents/{claude,codex}/agent.{md,toml}.tmpl  # one shared body template per tool;
+    agents/{claude,codex,opencode}/agent.*.tmpl  # one shared body template per tool;
                                        # render-agents.py fills it in for each profile
+    config-defaults.yaml               # constant-default setup-block keys the Phase 0 drift
+                                       # heal appends to an existing config.yaml
   scripts/                             # dependency-free helpers, each with --self-test
-    story_plan.py                      # sprint-status reader (picks the next/explicit story)
-    state_plan.py                      # auto-bmad state-file reader (resume detection)
+    story_plan.py                      # sprint-status reader; --mark-done flips a story to done
+    state_plan.py                      # auto-bmad state-file reader (resume detection);
+                                       # --finalize evaluates the Phase 9 draft predicate
+    state_update.py                    # deterministic state/report/retro writer
     render-agents.py                   # generates tool-native delegate agents from profiles
     config_plan.py                     # detects/heals profiles<->config drift (Phase 0 self-heal)
+    preflight.py                       # one-call Phase 0 preflight (git, skills, CI, hard-stops)
     review_findings.py                 # reconciles code-review findings + the deferral ledger
+    review_loop.py                     # Phase 7 loop driver (prep-diff / gate / post-fix)
+    ci_wait.py                         # Phase 9 CI wait; classifies the ci_status verdict
+    deferred_ledger.py                 # Phase 8 deferred-work archive (plan / sha-guarded move)
     cli_delegate.py                    # resolves opt-in per-phase external-CLI delegation
-                                       # (claude -p / codex exec) + preflight validation
+                                       # (claude -p / codex exec / opencode run) + preflight validation
+    merge-config.py, merge-help-csv.py # BMAD-template config/CSV merge (installer environment)
 CHANGELOG.md                           # hand-maintained; source for release notes
 scripts/bump-version.py                # release helper (repo tooling; does NOT ship in the skill)
+skills/reports/                        # tracked module-validation snapshots (repo tooling)
+.claude/skills/auto-bmad-compat-check/ # tracked maintainer skill: checks new BMAD releases for
+                                       # impact on auto-bmad (repo tooling; does NOT ship)
 ```
 
-The published repo contains **only** the module + marketplace + docs. A full BMAD install plus
-generated delegate agents (`_bmad/`, `_bmad-output/`, `.agents/`, `.claude/`, `.codex/`) may exist
-locally as a test sandbox; it is gitignored — never commit it.
+The published repo contains the module + marketplace + docs, plus the repo tooling above
+(`scripts/bump-version.py`, `skills/reports/`, and the one tracked maintainer skill under
+`.claude/skills/` — a deliberate `.gitignore` exception). A full BMAD install plus generated
+delegate agents (`_bmad/`, `_bmad-output/`, `.agents/`, `.claude/`, `.codex/`, `.opencode/`) may
+exist locally as a test sandbox; it is gitignored — never commit it.
 
 ## Local development & testing
 
@@ -37,11 +51,18 @@ locally as a test sandbox; it is gitignored — never commit it.
    ```bash
    python3 auto-bmad/scripts/story_plan.py --self-test
    python3 auto-bmad/scripts/state_plan.py --self-test
+   python3 auto-bmad/scripts/state_update.py --self-test
+   python3 auto-bmad/scripts/preflight.py --self-test
    python3 auto-bmad/scripts/render-agents.py --self-test
    python3 auto-bmad/scripts/config_plan.py --self-test
    python3 auto-bmad/scripts/review_findings.py --self-test
+   python3 auto-bmad/scripts/review_loop.py --self-test
    python3 auto-bmad/scripts/cli_delegate.py --self-test
+   python3 auto-bmad/scripts/ci_wait.py --self-test
+   python3 auto-bmad/scripts/deferred_ledger.py --self-test
    python3 scripts/bump-version.py --self-test
+   # maintainer-only compat-check skill (repo tooling, not shipped in the module):
+   python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test
    # story_plan.py also runs standalone:
    python3 auto-bmad/scripts/story_plan.py --sprint-status path/to/sprint-status.yaml
    # add --story 1-3 to target a specific story; output is JSON

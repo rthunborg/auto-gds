@@ -1,10 +1,9 @@
 # Invocation overrides
 
 The user can steer a single run by adding instructions to the invocation — natural language
-(primary) or flags. Examples:
-`/auto-bmad stop before code-review`, `/auto-bmad --story 1-3 skip git commits`,
-`/auto-bmad start at phase 5`, `/auto-bmad skip TEA, max 5 review iterations`,
-`/auto-bmad dry run`.
+(primary) or flags. Examples: `/auto-bmad stop before code-review`,
+`/auto-bmad --story 1-3 skip git commits`, `/auto-bmad start at phase 5`,
+`/auto-bmad skip TEA, max 5 review iterations`, `/auto-bmad dry run`.
 
 Parse the invocation text into the **normalized override set** below, **echo the interpretation
 back to the user before running**, and record it in state (`overrides:`) and the report.
@@ -52,18 +51,18 @@ override; it is the existing target selector.
 - **skip pr** / **git_mode local:** Phase 9 pushes/opens nothing; the branch is left in place and
   noted in the report.
 - **skip tea:** treat `tea.enabled` as false for this run — skips Phases 4, 6, Phase 2's
-  *test-design sub-step*, and the epic-end TEA gates in Phase 8 (project-context + retrospective
-  still run; Phase 2's project-context-bootstrap sub-step is independent of TEA and still runs
-  when needed).
+  *test-design sub-step*, and the epic-end TEA gates in Phase 8. Project-context + retrospective
+  still run; Phase 2's project-context-bootstrap sub-step is TEA-independent (runs when needed).
 - **skip project-context-bootstrap:** suppress only Phase 2's project-context bootstrap sub-step,
   even when `needs_project_context_bootstrap` is true. Use sparingly — every create-story in the
   epic will then run without persistent_facts injection (see Phase 0 → "Project-context probe").
-- **skip code-review:** skip Phase 7 entirely. ⚠️ Quality gate removed — flag prominently.
+- **skip code-review:** skip Phase 7 entirely AND set `convergence_unverified: true` — zero review
+  passes is the strongest form of unverified, so the PR opens as a **draft** and the story stays at
+  `review` (draft-predicate clause 2; combine with `no_pr_draft` to ship non-draft anyway — the
+  story still stays at `review`). ⚠️ Quality gate removed — flag prominently.
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
 - **skip trace-advisory:** suppress only the Phase 7 tail per-story trace advisory for this run,
-  even when its conditions hold (high risk, long epic — see `tea-policy.md` §3). It is already
-  non-blocking, so this just removes the extra story-scope trace pass; the epic-end trace gate is
-  unaffected. (No effect unless the story would have triggered the advisory.)
+  even when its conditions hold (see `tea-policy.md` §3); the epic-end trace gate is unaffected.
 - **skip branch:** stay on the current branch (do not create `story/...`). Only sensible with a
   clean intent like a dry run or when the user is already on the right branch; warn otherwise.
 - **skip merge-prompt:** Phase 9 still pushes and opens the PR, but does **not** wait for CI and
@@ -82,7 +81,7 @@ check and **hard-stop with a precise message** if a prerequisite is missing:
   `review`).
 - start at **9 (finalize)** → there must be commits on the story branch to push.
 Prefer the normal resume path (`state-and-resume.md`) over `start_phase` when a state file
-exists — resume already knows what's done. Use `start_phase` for deliberate manual control.
+exists; use `start_phase` for deliberate manual control.
 
 ## Echo format (always show before executing)
 

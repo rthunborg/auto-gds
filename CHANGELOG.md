@@ -13,6 +13,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **State files are written by a deterministic script, not hand-rolled YAML.** New
+  `state_update.py`: full-schema writes, timestamp stamping, a `started_at` guard, and all timing
+  arithmetic; older state files migrate on their next write.
+
+- **A crash mid-Phase-8 resumes at the first unfinished sub-step.** Per-sub-step `phase8_steps`
+  markers; completed epic-end delegations never re-run.
+
+- **Report sections and retro notes are rendered deterministically.** `report-section` emits the
+  literal template (append-only); `retro-append` writes nothing when there is nothing to say.
+
+- **Phase 0 preflight is one deterministic script call.** `preflight.py` replaces ~8 hand-rolled
+  shell probes with a single JSON answer and built-in hard-stop rules.
+
+- **Phase 7's review-loop decisions are scripted, not prose.** New `review_loop.py`: diff prep,
+  the continue/exit/halt gate, and a self-test pinning the full decision table.
+
+- **Every code-review fix pass is verified before the next gate.** A post-fix re-check retries a
+  half-done fix once, then escalates to `needs-human`.
+
+- **`story_plan.py --mark-done` flips a story's BMAD status to `done`.** Idempotent and
+  byte-preserving; replaces the Phase 9 hand-edit.
+
+- **`state_plan.py --finalize` decides draft vs clean completion.** Evaluates the four
+  draft-predicate clauses; `--no-pr-draft` changes only `draft`.
+
+### Changed
+
+- **Phase 9's CI wait runs as a deterministic script.** `ci_wait.py` polls `gh pr checks`, pins
+  the `ci_status` verdict, and resolves the run URL by head SHA.
+
+- **Phase 8 deferred-work archiving is script-driven, not a hand-edit.** `deferred_ledger.py`
+  moves entries atomically (sha-guarded); only the keep-vs-move judgment stays with the LLM.
+
+- **The per-story report field spec has a single home.** The `state-and-resume.md` Section
+  template; SKILL.md Step 3 just points there.
+
+- **The runtime reference docs are ~13% shorter with zero contracts lost.**
+
+- **Code-review severity is read from the story file, not the reviewer's chat.** Triage tags
+  every finding (`[Review][Patch][High] …`); an untagged finding counts as Critical/High.
+  Takes effect on module update — no reprovision needed.
+
+- **`skip code-review` now ships a draft PR and leaves the story at `review`.** Zero review
+  passes sets `convergence_unverified`; `no_pr_draft` still forces a non-draft PR.
+
+- **A run already caveated as a draft skips the Phase 9 CI wait.** `ci_status` stays `unknown`;
+  the run is still linked.
+
+- **A `review`/`in-progress` story with no auto-bmad state now asks before re-running the
+  pipeline.** Enter at the matching phase, redo in full, or stop.
+
+- **opencode runs the three review lenses sequentially.** Parallel fan-out is unverified there.
+
+- **A story stuck at `review` after a caveated run gets move-on guidance.** Names the caveat and
+  the `/auto-bmad <story-id>` escape.
+
+- **Code-review temp dirs are cleaned up after each iteration.** Kept, with the path surfaced,
+  on a `needs-human` exit.
+
+- **The external-change re-review asks the script whether changes are meaningful.** New
+  `review_loop.py converged` mode owns the threshold; pipeline.md's gate table is now a courtesy
+  copy of the normative script.
+
+- **A hard-stop before Phase 1 can still write its report.** `report-section
+  --allow-missing-state`; Phase 0 decisions now ride in Phase 1's `init --json`.
+
+### Fixed
+
+- **An indented code fence can no longer swallow live ledger entries.** Fences are tracked at any
+  indent with one shared open/close rule, removing the state-inversion bug class from `archive`.
+
+- **Fenced examples no longer count as review findings or ledger entries.** `review_findings.py`
+  shares `deferred_ledger.py`'s fence grammar (lockstep-pinned by self-test).
+
+- **An earlier pass's bullets can no longer satisfy a later pass's persistence gate.** The
+  reconciliation now gates on growth above `--baseline`, not the cumulative total.
+
+- **A transient empty CI board after real checks no longer classifies `none`.** The grace window
+  obeys the same never-`none`-after-real-checks rule as the cap verdict.
+
+- **A `phase-done` patch can no longer silently drop the phase it records.** `completed_phases`
+  in the folded patch is rejected before any write.
+
+- **A misspelled report payload key fails loud instead of rendering `(none)`.** Unknown keys are
+  rejected; the key↔heading map is documented next to the Section template.
+
+- **A quoted comma in a blocker no longer splits it into two blockers.** A new round-trip
+  self-test pins `state_plan.py`'s readers to `state_update.py`'s writer output.
+
+- **Atomic file replaces no longer reset permissions or collide on a fixed temp name.**
+
+- **A bold-wrapped severity tag after a space no longer reads as untagged.**
+  `[Review][Patch] **[High]**` parses as High.
+
+- **`gh pr merge` no longer predictably fails on protected branches after the finalize push.**
+  On pending required checks it retries once with `--auto`.
+
+- **A perfectly clean review pass no longer false-fails the reconciliation gate.**
+  `--expect-min 0` accepts a story with no `### Review Findings` section.
+
+- **A crash between Phase 2's sub-steps no longer skips the epic test design on resume.**
+
+- **The story branch is created explicitly off the base branch.** An unrelated starting branch
+  can no longer leak its commits into the story PR.
+
 ## [0.16.0] - 2026-06-09
 
 ### Added

@@ -1,10 +1,9 @@
 # Delegation prompts
 
 **This file is the single source of truth for what each BMAD step runs** — its exact `/bmad-*`
-command, prompt body, and the placeholders below. One entry per step, named by its heading (e.g.
-`create-story`); `pipeline.md` references each by heading name and never repeats the command, so a
-command changes here and nowhere else. Git/PR steps are not delegated and have no entry here — the
-orchestrator runs them; see `git-and-pr.md`.
+command, prompt body, and the placeholders below. One entry per step, named by its heading;
+`pipeline.md` references each by heading name and never repeats the command. Git/PR steps are not
+delegated and have no entry here — the orchestrator runs them; see `git-and-pr.md`.
 
 The orchestrator fills the placeholders and sends the result as the Agent prompt to the profile
 that `phase_profiles` assigns to the step's phase (see `pipeline.md` for the phase→profile-key
@@ -32,10 +31,11 @@ already carry the full form, so the short version is enough.
 - `<project_root>` — absolute cwd.
 - `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
 - `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
-- `<review_tmp>` — a throwaway dir the orchestrator makes **outside the work tree** (`mktemp -d`) for
-  the code-review fan-out, holding `<diff_file>` (the branch diff it writes) and the three lens
-  outputs `<blind_out>` / `<edge_out>` / `<auditor_out>`. Never under `<impl>` or the repo — it must
-  not be committable.
+- `<review_tmp>` — the throwaway dir `review_loop.py prep-diff` creates **outside the work tree** for
+  the code-review fan-out, holding `<diff_file>` (the branch diff) and the three lens outputs
+  `<blind_out>` / `<edge_out>` / `<auditor_out>`. Never under `<impl>` or the repo — it must not be
+  committable. Deleted (`rm -rf`) once the iteration's reconciliation gate passes; on a
+  `needs-human` exit it is kept and its path surfaced for debugging.
 
 ---
 
@@ -56,8 +56,8 @@ The orchestrator fills `{retro_notes_hint}` from on-disk state:
   notes), not as a generic "see retro-notes" reference.`
 - Else, if this is the **first story of epic {e}** AND a prior epic `{e-1}` closed with a
   retrospective document — locate it with `find <impl> -name 'epic-{e-1}-retro-*.md'` (BMAD writes
-  the retro there; never iterate a raw glob — see CLAUDE.md → shell-glob rule; use the newest match
-  if several, omit if none): `BEFORE drafting the story context, ALSO read the prior epic's
+  the retro there; never iterate a raw glob — unmatched globs abort under zsh/fish; use the newest
+  match if several, omit if none): `BEFORE drafting the story context, ALSO read the prior epic's
   retrospective document and focus on its FORWARD-looking sections (e.g. "Next Epic Preparation",
   "Preparation Checklist Before Epic {e}", "Conventions Ratified for All Epic {e}+ Stories", Action
   Items). These are the epic-transition prep + conventions the just-closed epic flagged for THIS
@@ -73,10 +73,8 @@ Phase notes in the retro file use a `[Phase X — short-name]` prefix (e.g.
 `[Phase 5 — dev-story]`, `[Phase 7 — code review]`). Preserve the prefix when appending — it
 lets later stories filter by phase if they need to.
 
-The orchestrator also fills `{deferred_work_hint}` from on-disk state. The ledger
-`<impl>/deferred-work.md` is BMAD's own code-review/quick-dev defer sink (append-only,
-project-wide, keyed by `## Deferred from: <source> (<date>)` headings) — no BMAD or TEA skill
-reads it back, so create-story only sees it if we inject it here.
+The orchestrator also fills `{deferred_work_hint}` from on-disk state. No BMAD or TEA skill reads
+the ledger `<impl>/deferred-work.md` back, so create-story only sees it if we inject it here.
 - If `<impl>/deferred-work.md` exists and is non-empty: `ALSO read <impl>/deferred-work.md before
   drafting the story context. It is a project-wide ledger of work earlier stories consciously
   deferred — most entries are out of scope for this story. Identify ONLY the deferrals whose
@@ -98,15 +96,13 @@ body (and a `BREAKING CHANGE:` footer).
 ```
 
 ### code-review  (fan-out — four delegates, not one skill call)
-Code-review is **not** delegated as a single `/bmad-code-review` call. That skill internally fans out
-to three review subagents, which a delegate cannot do (a sub-agent can't spawn sub-agents — see
-`CLAUDE.md` → "Known platform facts"). So the **orchestrator hoists the fan-out** (it is the only level
-where fan-out is legal — `CLAUDE.md` → orchestrator-owned actions; `pipeline.md` Phase 7 step 1): it
-builds the diff, runs the four entries below — three review lenses, then one triage — and gates
-persistence. The orchestrator passes the diff and each lens's findings **by path, never by content** —
-it never reads either, so "no code inspection at any tier" holds. All four entries in iteration `i` run
-at that iteration's reviewer profile (`code_review_review` on odd `i`, `code_review_review_secondary` on
-even — see `pipeline.md`).
+Code-review is **not** delegated as a single `/bmad-code-review` call — that skill internally fans
+out to three review subagents, which a delegate cannot do (a sub-agent can't spawn sub-agents). So
+the **orchestrator hoists the fan-out** (`pipeline.md` Phase 7 step 1): it builds the diff, runs the
+four entries below — three review lenses, then one triage — and gates persistence. It passes the
+diff and each lens's findings **by path, never by content** — it never reads either, so "no code
+inspection at any tier" holds. All four entries in iteration `i` run at that iteration's reviewer
+profile (`code_review_review` on odd `i`, `code_review_review_secondary` on even — see `pipeline.md`).
 
 **Keep that invariant real for the three lenses:** when you append the shared autonomy directive to a
 lens prompt, bind its structured result so finding content stays out of chat — the lens's `Outcome` is
@@ -114,17 +110,11 @@ just its output-file path + finding count, and its `Deferred work` / `Retro note
 `code-review-triage` reads the findings. (Triage's own report carries counts + verdict — metadata, not
 code — which the orchestrator needs for the loop.)
 
-**Diff construction (orchestrator, git — by path, no ingestion).** Make `<review_tmp>` with `mktemp -d`
-(outside the work tree), then write the branch diff to `<diff_file>`:
-```
-git diff <base>...HEAD -- ':(exclude)_bmad' ':(exclude)_bmad-output' \
-  ':(exclude)**/__pycache__' ':(exclude)**/*.pyc' ':(exclude)**/.DS_Store' > <diff_file>
-```
-`<base>` = `git.base_branch` (Phase 0). **Three-dot** = exactly what this branch changed since it
-diverged from base. The single-quoted `:(exclude)` pathspecs are read by git, not the shell — safe under
-zsh/fish (`CLAUDE.md` → "Shell globs"). "Obvious non-code files" beyond these excludes is **not** a path
-rule (it was reviewer judgment) — it is handled in `code-review-triage` (dismiss findings whose only
-locus is a lockfile / generated / vendored file). If `<diff_file>` is empty, there is nothing to review.
+**Diff construction (orchestrator — tool call, by path, no ingestion).** `review_loop.py prep-diff
+--project-root <project_root> --base {git.base_branch}` builds `<review_tmp>`, `<diff_file>` and the
+three lens-output paths (three-dot diff; the `:(exclude)` pathspecs live in the script — `pipeline.md`
+Phase 7 step 1a). Non-code files beyond those excludes are **not** a path rule — `code-review-triage`
+dismisses them (see its prompt). If `diff_empty`, there is nothing to review.
 
 #### code-review-blind  (Blind Hunter — diff only, unanchored)
 ```
@@ -153,8 +143,7 @@ frontmatter lists). Write your findings to <auditor_out>. Report ONLY the path y
 finding count — NOT the findings text.
 ```
 (The first paragraph is the Acceptance Auditor prompt **verbatim** from the `bmad-code-review` skill's
-`step-02-review.md`; keep it in lockstep with upstream — a divergence is the documented cost of
-"replicate exactly," see `CLAUDE.md` → orchestrator-owned actions, code-review fan-out.)
+`step-02-review.md`; keep it in lockstep with upstream.)
 
 #### code-review-triage  (triage + persist — the only code-review delegate that writes findings)
 ```
@@ -182,9 +171,12 @@ TRIAGE:
 PERSIST (this is the deliverable the orchestrator gates on):
 - In <story_file>, add/append a `### Review Findings` section with one bullet per surviving finding,
   Decision first, then Patch, then Defer:
-    - [ ] [Review][Decision] <title> — <detail>
-    - [ ] [Review][Patch] <title> [<file>:<line>]
-    - [x] [Review][Defer] <title> [<file>:<line>] — deferred, pre-existing
+    - [ ] [Review][Decision][<Critical|High|Med|Low>] <title> — <detail>
+    - [ ] [Review][Patch][<Critical|High|Med|Low>] <title> [<file>:<line>]
+    - [x] [Review][Defer][<Critical|High|Med|Low>] <title> [<file>:<line>] — deferred, pre-existing
+  Tag EVERY bullet with its severity, directly after the type tag as shown. The orchestrator reads
+  severity from THIS FILE (an untagged finding is treated as Critical/High), never from your chat
+  counts — an untagged bullet can force an extra review iteration.
 - Copy every `[Review][Defer]` finding to <impl>/deferred-work.md (create it if absent) under a
   `## Deferred from: code review of {key} (<date>)` heading — one bullet each.
 
@@ -246,8 +238,7 @@ matrix (each AC -> its covering test(s)) and report the verdict (PASS/CONCERNS/F
 specific ACs left uncovered. This is an ADVISORY pass: its job is to surface coverage gaps early
 so they are visible at review time — do NOT block, remediate, or open a gate; just report.
 ```
-(Same skill as the epic gate, narrowed to one story and stripped of gate semantics. The blocking
-quality gate stays at epic end — see `tea-policy.md` → "Long-epic trace advisory".)
+(The blocking quality gate stays at epic end — see `tea-policy.md` → "Long-epic trace advisory".)
 
 ### testarch-nfr (epic gate)
 ```

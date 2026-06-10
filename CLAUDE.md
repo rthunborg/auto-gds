@@ -96,8 +96,14 @@ schema, first-run).
   capability registry, and the self-registration/provisioning flow.
 - `auto-bmad/scripts/` — dependency-free helpers, each with a `--self-test` and a self-documenting
   docstring (read the script for exact behavior):
-  - `story_plan.py` — sprint-status reader.
-  - `state_plan.py` — auto-bmad `state/{key}.yaml` reader (resume detection).
+  - `story_plan.py` — sprint-status reader; `--mark-done` performs the Phase 9 BMAD-status flip
+    (sprint entry + story-file `Status:` → `done`, byte-preserving, idempotent).
+  - `state_plan.py` — auto-bmad `state/{key}.yaml` reader (resume detection); `--finalize`
+    evaluates the Phase 9 draft predicate / clean-completion verdict (`flip_bmad_status`).
+  - `state_update.py` — deterministic per-story state/report/retro writer: full-schema state
+    writes (init / JSON patch / phase-done), the timing-start/-pause clock brackets, literal
+    report-section rendering, and skip-empty retro appends. Lockstep-self-tested against the
+    `state-and-resume.md` schema block.
   - `render-agents.py` — agent generator from `profiles.yaml`.
   - `config_plan.py` — detects and additively heals drift between the shipped defaults
     (`profiles.yaml` for `profiles`/`phase_profiles`; `config-defaults.yaml` for the constant-default
@@ -105,7 +111,16 @@ schema, first-run).
     overwrites the profiles blocks back to shipped values (a whole-block scope also **prunes**
     profiles the asset no longer ships — the rename/drop remedy, surfaced as `removed_profiles`)
     but never the setup blocks.
+  - `preflight.py` — one-call Phase 0 preflight: git state/mode, project-context, CI, required
+    skills, framework detection — single JSON with hard-stop reasons.
   - `review_findings.py` — Phase 7 reconciliation reader for a story's `### Review Findings`.
+  - `review_loop.py` — Phase 7 loop driver: `prep-diff` builds the review diff in a temp dir,
+    `gate` encodes the loop's decision table, `post-fix` verifies each fix pass.
+  - `ci_wait.py` — Phase 9 CI wait: polls `gh pr checks`, classifies the pinned `ci_status`
+    verdict (passed/failed/timeout/none), and resolves `ci_run_url` by head SHA.
+  - `deferred_ledger.py` — Phase 8 deferred-work archive mechanics: `plan` reads ledger entries +
+    resolution hints, `archive` moves chosen entries atomically (sha-guarded); keep-vs-move
+    judgment stays with the LLM.
   - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
     builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-
     validates binary/skills/auth. Pure `resolve()` + live `validate()`.
@@ -120,10 +135,15 @@ schema, first-run).
 # Deterministic cores:
 python3 auto-bmad/scripts/story_plan.py --self-test
 python3 auto-bmad/scripts/state_plan.py --self-test
+python3 auto-bmad/scripts/state_update.py --self-test
+python3 auto-bmad/scripts/preflight.py --self-test
 python3 auto-bmad/scripts/render-agents.py --self-test
 python3 auto-bmad/scripts/config_plan.py --self-test
 python3 auto-bmad/scripts/review_findings.py --self-test
+python3 auto-bmad/scripts/review_loop.py --self-test
 python3 auto-bmad/scripts/cli_delegate.py --self-test
+python3 auto-bmad/scripts/ci_wait.py --self-test
+python3 auto-bmad/scripts/deferred_ledger.py --self-test
 # Maintainer-only skill (tracked under .claude/ via gitignore exception; NOT shipped to users):
 python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test
 # Marketplace manifest is valid JSON:

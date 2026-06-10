@@ -8,22 +8,39 @@ unmatched glob). This script enumerates ``{state-dir}/*.yaml`` and reports which
 auto-bmad pipelines are still in flight (``status != done``), so the orchestrator
 calls a tool instead of writing shell.
 
-Two modes, both emitting a single JSON object on stdout:
+Three modes, all emitting a single JSON object on stdout:
 
 * **scan** (default): list every state file with its status, the in-flight ones
   (most-recently-updated first), and the resume ``target`` (the first in-flight
   story — finish in-flight work before starting anything new).
 * **story** (``--story-key KEY``): check one exact ``{KEY}.yaml`` by path — never
   a glob — and report whether it exists and should be resumed (``status != done``).
+* **finalize** (``--story-key KEY --finalize``): evaluate the Phase 9 draft
+  predicate (``git-and-pr.md`` → "PR") from the story's state file. The four
+  clauses: ``blockers`` non-empty; ``convergence_unverified`` true;
+  ``gate_decision`` is ``WAIVED``; ``ci_status`` in {failed, timeout}
+  (case-insensitive, like the sibling clauses).
+  ``ci_status`` comes from ``--ci-status`` when given (the live post-CI-wait
+  value), else from the state file, else ``unknown`` — ``passed``/``none``/
+  ``unknown`` do NOT fire clause 4 (``unknown`` means the wait never ran).
+  Verdict: ``draft`` = any clause fired (then forced false by ``--no-pr-draft``,
+  which changes ONLY ``draft``); ``clean_completion`` = no clause fired (never
+  affected by ``--no-pr-draft``); ``flip_bmad_status`` = ``clean_completion``;
+  ``reasons`` names each firing clause. Exit 0 = verdict delivered (draft or
+  not), 1 = state file missing, 2 = usage errors.
 
 Dependency-free: state files are flat ``key: value`` YAML, so the few top-level
-scalars we need (``status``, ``updated_at``) are read line by line. In-flight
-ordering uses ``updated_at`` (ISO-8601, sorts chronologically) with filesystem
-mtime as a tiebreaker.
+scalars we need (``status``, ``updated_at``) are read line by line — the
+finalize mode additionally reads the ``blockers`` list (inline ``[]`` or block
+items) and the ``convergence_unverified`` / ``gate_decision`` / ``ci_status``
+scalars. In-flight ordering uses ``updated_at`` (ISO-8601, sorts
+chronologically) with filesystem mtime as a tiebreaker.
 
 Usage:
     state_plan.py --state-dir DIR
     state_plan.py --state-dir DIR --story-key 1-3-user-auth
+    state_plan.py --state-dir DIR --story-key 1-3-user-auth --finalize \\
+        [--ci-status passed|failed|timeout|none|unknown] [--no-pr-draft]
     state_plan.py --self-test
 """
 from __future__ import annotations
@@ -147,6 +164,203 @@ def build_result(state_dir: str, story_key=None):
 
 
 # --------------------------------------------------------------------------- #
+# --finalize: the Phase 9 draft-predicate / clean-completion evaluator
+# (git-and-pr.md -> "PR"; the four clauses are the normative definition).
+# --------------------------------------------------------------------------- #
+_FINALIZE_SCALAR_RE = {
+    "convergence_unverified": re.compile(r"^convergence_unverified:\s*(.*?)\s*(?:#.*)?$"),
+    "gate_decision": re.compile(r"^gate_decision:\s*(.*?)\s*(?:#.*)?$"),
+    "ci_status": re.compile(r"^ci_status:\s*(.*?)\s*(?:#.*)?$"),
+}
+_BLOCKERS_RE = re.compile(r"^blockers:\s*(.*)$")
+_LIST_ITEM_RE = re.compile(r"^\s*-\s+(.*)$")
+
+
+def _strip_comment(value: str) -> str:
+    """Drop a trailing ``# comment`` — but never a ``#`` inside a quoted string
+    (the state writer double-quotes any value containing ``#``, so a bare ``#``
+    is always a comment while a quoted one is payload)."""
+    quote = None
+    esc = False
+    for i, c in enumerate(value):
+        if esc:
+            esc = False
+        elif quote == '"' and c == "\\":
+            esc = True
+        elif quote:
+            if c == quote:
+                quote = None
+        elif c in "\"'":
+            quote = c
+        elif c == "#":
+            return value[:i].strip()
+    return value.strip()
+
+# ci_status values that fire clause 4 (matched case-insensitively, like the
+# sibling clauses). passed/none/unknown do NOT — `unknown` means the CI wait
+# never ran (offer_merge off / skip merge-prompt override).
+_CI_FIRES = ("failed", "timeout")
+
+
+def _scalar_or_none(value: str):
+    value = _unquote(value)
+    return None if value.lower() in ("", "null", "~") else value
+
+
+def _split_flow(body: str) -> list:
+    """Split flow-list elements on top-level commas, respecting quotes — the
+    same rule as state_update.py's ``_split_flow`` (the writer's own parser;
+    the self-test round-trips this reader against the writer's output)."""
+    parts, cur, inq, esc = [], "", None, False
+    for ch in body:
+        if inq:
+            cur += ch
+            if esc:
+                esc = False
+            elif ch == "\\" and inq == '"':
+                esc = True
+            elif ch == inq:
+                inq = None
+        elif ch in "\"'":
+            inq = ch
+            cur += ch
+        elif ch == ",":
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def read_finalize_fields(path: str):
+    """Read the draft-predicate inputs from a flat state YAML: the ``blockers``
+    list (inline ``[...]`` or block ``- item`` form) plus the
+    ``convergence_unverified`` / ``gate_decision`` / ``ci_status`` scalars."""
+    fields = {"convergence_unverified": None, "gate_decision": None, "ci_status": None}
+    blockers: "list[str]" = []
+    in_blockers = False
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        if in_blockers:
+            m = _LIST_ITEM_RE.match(line)
+            if m:
+                item = _unquote(_strip_comment(m.group(1)))
+                if item:
+                    blockers.append(item)
+                continue
+            if not line.strip() or line.strip().startswith("#"):
+                continue
+            in_blockers = False  # block ended; fall through to this line
+        bm = _BLOCKERS_RE.match(line)
+        if bm:
+            val = _strip_comment(bm.group(1))
+            if val.startswith("["):
+                # Quote-aware split: a comma INSIDE a quoted blocker is payload
+                # ("rotate key, then redeploy" is ONE blocker), never a separator.
+                inner = val[1:val.rfind("]")] if "]" in val else val[1:]
+                blockers.extend(p for p in (_unquote(x) for x in _split_flow(inner)) if p)
+            elif not val:
+                in_blockers = True  # block-list form: items follow
+            else:
+                scalar = _scalar_or_none(val)
+                if scalar is not None:
+                    blockers.append(scalar)  # unexpected scalar; count it
+            continue
+        for name, pat in _FINALIZE_SCALAR_RE.items():
+            if fields[name] is None:
+                m = pat.match(line)
+                if m:
+                    fields[name] = _scalar_or_none(m.group(1))
+    fields["blockers"] = blockers
+    return fields
+
+
+def build_finalize_result(state_dir: str, story_key: str, ci_status=None, no_pr_draft=False):
+    """Evaluate the draft predicate for one story. Returns (result, exit_code):
+    0 = verdict delivered (draft or not), 1 = state file missing."""
+    path = os.path.join(state_dir, story_key + ".yaml")
+    result = {
+        "mode": "finalize",
+        "state_dir": state_dir,
+        "story_key": story_key,
+        "file": path,
+        "blockers": [],
+        "blocker_count": 0,
+        "gate_decision": None,
+        "ci_status": None,
+        "ci_status_source": None,
+        "no_pr_draft": bool(no_pr_draft),
+        "clauses": {
+            "blocker": False,
+            "convergence_unverified": False,
+            "gate_waived": False,
+            "ci_failed_or_timeout": False,
+        },
+        "draft": False,
+        "clean_completion": False,
+        "flip_bmad_status": False,
+        "reasons": [],
+        "error": None,
+    }
+    if not os.path.isfile(path):
+        result["error"] = f"state file not found: {path}"
+        return result, 1
+
+    fields = read_finalize_fields(path)
+    blockers = fields["blockers"]
+    gate = fields["gate_decision"]
+
+    # Live --ci-status (post-CI-wait) wins; else the state file; else unknown.
+    if ci_status:
+        ci, ci_source = ci_status, "arg"
+    elif fields["ci_status"]:
+        ci, ci_source = fields["ci_status"], "state"
+    else:
+        ci, ci_source = "unknown", "default"
+
+    clauses = {
+        "blocker": len(blockers) > 0,
+        "convergence_unverified": (fields["convergence_unverified"] or "").lower() == "true",
+        "gate_waived": (gate or "").upper() == "WAIVED",
+        "ci_failed_or_timeout": ci.lower() in _CI_FIRES,
+    }
+    any_clause = any(clauses.values())
+
+    reasons = []
+    if clauses["blocker"]:
+        reasons.append(f"{len(blockers)} blocker(s) recorded")
+    if clauses["convergence_unverified"]:
+        reasons.append("convergence_unverified is true (review loop never verifiably converged, or review was skipped)")
+    if clauses["gate_waived"]:
+        reasons.append("gate_decision is WAIVED (epic trace gate shipped despite coverage gaps)")
+    if clauses["ci_failed_or_timeout"]:
+        reasons.append(f"ci_status is '{ci}' (CI failed or timed out)")
+
+    result.update(
+        {
+            "blockers": blockers,
+            "blocker_count": len(blockers),
+            "gate_decision": gate,
+            "ci_status": ci,
+            "ci_status_source": ci_source,
+            "clauses": clauses,
+            # --no-pr-draft forces ONLY draft to false (overrides.md): the PR
+            # ships non-draft, but the completion is still caveated.
+            "draft": any_clause and not no_pr_draft,
+            "clean_completion": not any_clause,
+            "flip_bmad_status": not any_clause,
+            "reasons": reasons,
+        }
+    )
+    return result, 0
+
+
+# --------------------------------------------------------------------------- #
 # Self-test
 # --------------------------------------------------------------------------- #
 def _run_self_test():
@@ -207,6 +421,179 @@ def _run_self_test():
     check("scan: absent dir no resume", empty["resume"] is False)
     check("scan: absent dir zero in-flight", empty["in_flight_count"] == 0)
 
+    # ---- finalize mode ---------------------------------------------------- #
+    fin_dir = os.path.join(tmp, "fin")
+    os.makedirs(fin_dir)
+
+    def write_fin(key, **over):
+        body = {
+            "convergence_unverified": "false",
+            "gate_decision": "null",
+            "ci_status": "passed",
+            "blockers": "[]",
+        }
+        body.update(over)
+        lines = [f"story_key: {key}", "status: done", 'updated_at: "2026-06-01T10:00:00Z"']
+        for k in ("convergence_unverified", "gate_decision", "ci_status"):
+            lines.append(f"{k}: {body[k]}")
+        if body["blockers"] is None:  # block-list form
+            lines.append("blockers:")
+            lines.append('  - "rotate the API key manually"')
+            lines.append("  - second item  # urgent")
+        else:
+            lines.append(f"blockers: {body['blockers']}")
+        lines.append("open_questions: []")
+        with open(os.path.join(fin_dir, key + ".yaml"), "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+
+    # No clauses: clean completion, flip, no draft, no reasons.
+    write_fin("2-1-clean")
+    res, code = build_finalize_result(fin_dir, "2-1-clean")
+    check("finalize clean: exit 0", code == 0)
+    check("finalize clean: no clause fires", not any(res["clauses"].values()))
+    check("finalize clean: not draft", res["draft"] is False)
+    check("finalize clean: clean_completion", res["clean_completion"] is True)
+    check("finalize clean: flip_bmad_status", res["flip_bmad_status"] is True)
+    check("finalize clean: no reasons", res["reasons"] == [])
+    check("finalize clean: ci from state", res["ci_status"] == "passed" and res["ci_status_source"] == "state")
+
+    # Clause 1 — blockers (block-list form, comment stripped, items counted).
+    write_fin("2-2-blocked", blockers=None)
+    res, code = build_finalize_result(fin_dir, "2-2-blocked")
+    check("finalize blocker: exit 0 (verdict delivered)", code == 0)
+    check("finalize blocker: clause fires alone", res["clauses"] == {"blocker": True, "convergence_unverified": False, "gate_waived": False, "ci_failed_or_timeout": False})
+    check("finalize blocker: count 2", res["blocker_count"] == 2 and res["blockers"][0] == "rotate the API key manually")
+    check("finalize blocker: draft", res["draft"] is True)
+    check("finalize blocker: not clean", res["clean_completion"] is False and res["flip_bmad_status"] is False)
+    check("finalize blocker: one reason", len(res["reasons"]) == 1 and "blocker" in res["reasons"][0])
+
+    # Clause 1 — inline flow list also counts.
+    write_fin("2-2b-inline", blockers='["needs db migration", manual deploy]')
+    res, _ = build_finalize_result(fin_dir, "2-2b-inline")
+    check("finalize inline blockers: count 2", res["blocker_count"] == 2)
+    check("finalize inline blockers: draft", res["draft"] is True)
+
+    # Clause 1 — a comma INSIDE a quoted inline blocker is payload, not a
+    # separator: one blocker, text intact (the quote-blind split counted 2
+    # mangled items here).
+    write_fin("2-2e-comma", blockers='["rotate key, then redeploy", plain]')
+    res, _ = build_finalize_result(fin_dir, "2-2e-comma")
+    check("finalize inline quoted comma: count 2", res["blocker_count"] == 2)
+    check("finalize inline quoted comma: item intact",
+          res["blockers"] == ["rotate key, then redeploy", "plain"])
+
+    # Clause 1 — a quoted '#' is payload, not a comment (the state writer
+    # double-quotes any value containing '#'; comment stripping must respect it).
+    with open(os.path.join(fin_dir, "2-2c-hash.yaml"), "w", encoding="utf-8") as fh:
+        fh.write('story_key: 2-2c-hash\nstatus: done\nconvergence_unverified: false\n'
+                 'gate_decision: null\nci_status: passed\nblockers:\n'
+                 '  - "fix issue #123 upstream"\n  - "rotate key #2"  # urgent\n')
+    res, _ = build_finalize_result(fin_dir, "2-2c-hash")
+    check("finalize quoted-#: items intact",
+          res["blockers"] == ["fix issue #123 upstream", "rotate key #2"])
+    with open(os.path.join(fin_dir, "2-2d-hash.yaml"), "w", encoding="utf-8") as fh:
+        fh.write('story_key: 2-2d-hash\nstatus: done\nconvergence_unverified: false\n'
+                 'gate_decision: null\nci_status: passed\n'
+                 'blockers: ["fix issue #123 upstream"]  # one left\n')
+    res, _ = build_finalize_result(fin_dir, "2-2d-hash")
+    check("finalize quoted-# inline: item intact",
+          res["blockers"] == ["fix issue #123 upstream"])
+
+    # Lockstep round-trip with the WRITER: whatever state_update.py emits, this
+    # reader must parse back verbatim — every emit-rule change there must fail
+    # loud here, not silently misread the Phase 9 draft predicate.
+    import importlib.util as _ilu
+    _su_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state_update.py")
+    _spec = _ilu.spec_from_file_location("state_update", _su_path)
+    assert _spec is not None and _spec.loader is not None, _su_path
+    _su = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_su)
+    _rt = _su.default_state()
+    _rt.update(
+        story_key="2-2f-roundtrip", status="review", convergence_unverified=True,
+        gate_decision="WAIVED", ci_status="timeout",
+        blockers=['rotate key, then redeploy', 'fix issue #123 upstream', "plain"],
+    )
+    with open(os.path.join(fin_dir, "2-2f-roundtrip.yaml"), "w", encoding="utf-8") as fh:
+        fh.write(_su.dump_state(_rt))
+    res, code = build_finalize_result(fin_dir, "2-2f-roundtrip")
+    check("writer round-trip: exit 0", code == 0)
+    check("writer round-trip: blockers verbatim",
+          res["blockers"] == ['rotate key, then redeploy', 'fix issue #123 upstream', 'plain'])
+    check("writer round-trip: scalars verbatim",
+          res["gate_decision"] == "WAIVED" and res["ci_status"] == "timeout"
+          and res["clauses"]["convergence_unverified"] is True)
+    check("writer round-trip: all four clauses fire",
+          all(res["clauses"].values()) and res["draft"] is True)
+    _rs = read_state_file(os.path.join(fin_dir, "2-2f-roundtrip.yaml"))
+    check("writer round-trip: resume reader agrees", _rs.get("status") == "review")
+
+    # Clause 2 — convergence_unverified.
+    write_fin("2-3-unverified", convergence_unverified="true")
+    res, _ = build_finalize_result(fin_dir, "2-3-unverified")
+    check("finalize unverified: clause fires alone", res["clauses"] == {"blocker": False, "convergence_unverified": True, "gate_waived": False, "ci_failed_or_timeout": False})
+    check("finalize unverified: draft, not clean", res["draft"] is True and res["clean_completion"] is False)
+
+    # Clause 3 — gate WAIVED.
+    write_fin("2-4-waived", gate_decision="WAIVED")
+    res, _ = build_finalize_result(fin_dir, "2-4-waived")
+    check("finalize waived: clause fires alone", res["clauses"] == {"blocker": False, "convergence_unverified": False, "gate_waived": True, "ci_failed_or_timeout": False})
+    check("finalize waived: gate_decision carried", res["gate_decision"] == "WAIVED")
+    check("finalize waived: draft, no flip", res["draft"] is True and res["flip_bmad_status"] is False)
+
+    # Clause 3 negative — PASS does not fire.
+    write_fin("2-4b-pass", gate_decision="PASS")
+    res, _ = build_finalize_result(fin_dir, "2-4b-pass")
+    check("finalize gate PASS: clean", res["clean_completion"] is True)
+
+    # Clause 4 — a hand-edited uppercase state value still fires (normalized
+    # like the sibling clauses).
+    write_fin("2-5a-upper", ci_status="FAILED")
+    res, _ = build_finalize_result(fin_dir, "2-5a-upper")
+    check("finalize ci FAILED uppercase: fires", res["clauses"]["ci_failed_or_timeout"] is True)
+    check("finalize ci FAILED uppercase: draft, not clean", res["draft"] is True and res["clean_completion"] is False)
+
+    # Clause 4 — ci_status from the state file (timeout).
+    write_fin("2-5-timeout", ci_status="timeout")
+    res, _ = build_finalize_result(fin_dir, "2-5-timeout")
+    check("finalize ci timeout: clause fires alone", res["clauses"] == {"blocker": False, "convergence_unverified": False, "gate_waived": False, "ci_failed_or_timeout": True})
+    check("finalize ci timeout: draft", res["draft"] is True)
+
+    # Clause 4 — live --ci-status wins over the state file (both directions).
+    res, _ = build_finalize_result(fin_dir, "2-1-clean", ci_status="failed")
+    check("finalize ci arg failed: fires over passed state", res["clauses"]["ci_failed_or_timeout"] is True and res["ci_status_source"] == "arg")
+    write_fin("2-6-stale-failed", ci_status="failed")
+    res, _ = build_finalize_result(fin_dir, "2-6-stale-failed", ci_status="passed")
+    check("finalize ci arg passed: clears stale failed state", res["clauses"]["ci_failed_or_timeout"] is False and res["clean_completion"] is True)
+
+    # Clause 4 negatives — unknown (wait never ran) and none do NOT fire.
+    write_fin("2-7-unknown", ci_status="unknown")
+    res, _ = build_finalize_result(fin_dir, "2-7-unknown")
+    check("finalize ci unknown: does not fire", res["clauses"]["ci_failed_or_timeout"] is False and res["clean_completion"] is True)
+    with open(os.path.join(fin_dir, "2-8-no-ci.yaml"), "w", encoding="utf-8") as fh:
+        fh.write("story_key: 2-8-no-ci\nstatus: done\nblockers: []\nconvergence_unverified: false\ngate_decision: null\n")
+    res, _ = build_finalize_result(fin_dir, "2-8-no-ci")
+    check("finalize ci absent: defaults unknown, no fire", res["ci_status"] == "unknown" and res["ci_status_source"] == "default" and res["clean_completion"] is True)
+    res, _ = build_finalize_result(fin_dir, "2-1-clean", ci_status="none")
+    check("finalize ci none: does not fire", res["clauses"]["ci_failed_or_timeout"] is False)
+
+    # --no-pr-draft: forces draft false ONLY; clean_completion/flip unaffected.
+    res, code = build_finalize_result(fin_dir, "2-2-blocked", no_pr_draft=True)
+    check("finalize no-pr-draft: exit 0", code == 0)
+    check("finalize no-pr-draft: draft forced false", res["draft"] is False)
+    check("finalize no-pr-draft: still not clean", res["clean_completion"] is False and res["flip_bmad_status"] is False)
+    check("finalize no-pr-draft: clause + reason still reported", res["clauses"]["blocker"] is True and len(res["reasons"]) == 1)
+    res, _ = build_finalize_result(fin_dir, "2-1-clean", no_pr_draft=True)
+    check("finalize no-pr-draft on clean: unchanged", res["draft"] is False and res["clean_completion"] is True)
+
+    # Missing state file => exit 1.
+    res, code = build_finalize_result(fin_dir, "9-9-nope")
+    check("finalize missing: exit 1", code == 1)
+    check("finalize missing: error set", bool(res["error"]))
+
+    for name in os.listdir(fin_dir):
+        os.unlink(os.path.join(fin_dir, name))
+    os.rmdir(fin_dir)
     for name in os.listdir(state_dir):
         os.unlink(os.path.join(state_dir, name))
     os.rmdir(state_dir)
@@ -223,6 +610,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="auto-bmad state-file reader")
     parser.add_argument("--state-dir", help="the {output_folder}/auto-bmad/state directory")
     parser.add_argument("--story-key", help="check one exact {key}.yaml instead of scanning all")
+    parser.add_argument("--finalize", action="store_true", help="evaluate the Phase 9 draft predicate / clean-completion verdict for --story-key")
+    parser.add_argument("--ci-status", choices=["passed", "failed", "timeout", "none", "unknown"], help="with --finalize: the live post-CI-wait value (overrides the state file)")
+    parser.add_argument("--no-pr-draft", action="store_true", help="with --finalize: the no_pr_draft override — forces draft=false, never touches clean_completion")
     parser.add_argument("--self-test", action="store_true", help="run built-in fixtures and exit")
     args = parser.parse_args(argv)
 
@@ -231,6 +621,15 @@ def main(argv=None):
 
     if not args.state_dir:
         parser.error("--state-dir is required (or use --self-test)")
+
+    if args.finalize:
+        if not args.story_key:
+            parser.error("--finalize requires --story-key")
+        result, code = build_finalize_result(args.state_dir, args.story_key, args.ci_status, args.no_pr_draft)
+        print(json.dumps(result, indent=2))
+        return code
+    if args.ci_status or args.no_pr_draft:
+        parser.error("--ci-status/--no-pr-draft are only valid with --finalize")
 
     result = build_result(args.state_dir, args.story_key)
     print(json.dumps(result, indent=2))

@@ -83,22 +83,20 @@ TOP_BULLET_RE = re.compile(r"^[-*+]\s+\S")
 # An indented, non-blank line — a continuation / nested bullet of the entry.
 INDENTED_RE = re.compile(r"^\s+\S")
 # Fenced code blocks (CommonMark-style, kept simple): a fence OPENS on a line
-# with up to 3 leading spaces then 3+ backticks or tildes (an info string may
-# follow); it CLOSES on a later line with the SAME fence char, at LEAST as
-# many of them, up to 3 leading spaces, and nothing else. While inside a fence
-# NO line is a heading or a top-level bullet — `## …` / `- …` lines in there
-# are literal content, never section/entry boundaries.
+# whose content — at ANY indent, optionally right after a single bullet marker
+# (`- ```py` is CommonMark-legal) — starts with 3+ backticks or tildes (an
+# info string may follow); it CLOSES on a later line with the SAME fence char,
+# at LEAST as many of them, any indent, and nothing else. One rule for every
+# position (intro, section text, entry bullets, nested bullets): tracking the
+# opener and the closer with the SAME indent tolerance is what prevents the
+# state-inversion class of bug, where an untracked opener's closing line is
+# read as an OPENER and the rest of the document is swallowed as fence
+# content. While inside a fence NO line is a heading or a bullet — `## …` /
+# `- …` lines in there are literal content, never section/entry boundaries.
 # (Backtick branch: CommonMark forbids backticks in a backtick fence's info
 # string, so requiring no later backtick keeps inline code spans — ```x``` —
 # from reading as fence openers. Tilde info strings may contain anything.)
-FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}(?!.*`)|~{3,})")
-# A fence may also open right after a top-level bullet marker (`- ```py` is
-# CommonMark-legal). Without tracking it, the fence's CLOSING line would read
-# as an OPENER and invert the fence state for the rest of the document.
-# (Fences opened on a NESTED bullet are deliberately not tracked: their closing
-# line sits at the nested content indent, outside FENCE_OPEN_RE's reach, so the
-# inversion cannot occur there.)
-BULLET_FENCE_RE = re.compile(r"^[-*+]\s+(`{3,}(?!.*`)|~{3,})")
+FENCE_OPEN_RE = re.compile(r"^\s*(?:[-*+]\s+)?(`{3,}(?!.*`)|~{3,})")
 
 
 def _fence_open(line):
@@ -107,15 +105,9 @@ def _fence_open(line):
     return (m.group(1)[0], len(m.group(1))) if m else None
 
 
-def _bullet_fence(line):
-    """Return ``(char, length)`` if a top-level bullet line opens a fence."""
-    m = BULLET_FENCE_RE.match(line)
-    return (m.group(1)[0], len(m.group(1))) if m else None
-
-
 def _fence_closes(line, char, length):
     """True if ``line`` closes a fence opened with ``length`` × ``char``."""
-    return bool(re.match(r"^ {0,3}%s{%d,}\s*$" % (re.escape(char), length), line))
+    return bool(re.match(r"^\s*%s{%d,}\s*$" % (re.escape(char), length), line))
 
 # Resolution markers (entry's OWN text only — the self-vouching rule). Word
 # boundaries keep e.g. "disclosed" from reading as "closed".
@@ -181,12 +173,6 @@ def parse_document(text: str):
                 fence = None
             i += 1
             continue
-        opened = _fence_open(line)
-        if opened is not None:
-            fence = opened
-            add_text([line])
-            i += 1
-            continue
         if DEFER_HEADING_RE.match(line):
             section = next_section
             next_section += 1
@@ -202,10 +188,13 @@ def parse_document(text: str):
             i += 1
             continue
         if section is not None and TOP_BULLET_RE.match(line):
+            # Checked BEFORE the fence-open test: a column-0 bullet that opens
+            # a fence (`- ```py`) starts a NEW entry whose first line opens the
+            # entry's fence — it is not intro/section fence text.
             entry_lines = [line]
             # The entry's own bullet may open a fence (`- ```py`): track it so
             # its closing line isn't mistaken for an opener.
-            entry_fence = _bullet_fence(line)  # (char, length) of an open fence in the entry
+            entry_fence = _fence_open(line)  # (char, length) of an open fence in the entry
             i += 1
             while i < n:
                 nxt = lines[i]
@@ -231,14 +220,16 @@ def parse_document(text: str):
                         i = j
                         continue
                     break
+                if ANY_HEADING_RE.match(nxt) or TOP_BULLET_RE.match(nxt):
+                    # Break BEFORE the fence test: a column-0 `- ```py` is a
+                    # sibling entry (whose own first line opens ITS fence).
+                    break
                 opened = _fence_open(nxt)
-                if opened is not None:  # before INDENTED: a fence may sit 1-3 spaces in
+                if opened is not None:  # any indent — nested bullet fences too
                     entry_fence = opened
                     entry_lines.append(nxt)
                     i += 1
                     continue
-                if ANY_HEADING_RE.match(nxt) or TOP_BULLET_RE.match(nxt):
-                    break
                 if INDENTED_RE.match(nxt):
                     entry_lines.append(nxt)
                     i += 1
@@ -260,9 +251,9 @@ def parse_document(text: str):
                 }
             )
             continue
-        opened = _bullet_fence(line)
+        opened = _fence_open(line)
         if opened is not None:
-            fence = opened  # a bullet OUTSIDE a section may open a fence too
+            fence = opened  # any non-entry line (bullet or indented) may open a fence
         add_text([line])
         i += 1
     return segments, entries, next_section
@@ -744,6 +735,51 @@ def _run_self_test():
         )
         check("intro bullet fence: section still parses", len(ents) == 1
               and "Real entry" in ents[0]["text"])
+        # The SAME inversion at 1-3 spaces of indent (regression): a bullet
+        # fence indented 1 space inside an entry, closed at 3 spaces. The old
+        # column-0-only bullet-fence rule left the opener untracked while the
+        # closer matched the opener regex — everything to EOF (live sibling,
+        # next section, its entry) was swallowed into entry 0.
+        _segs, ents, _ = parse_document(
+            _HF + "\n\n"
+            "- Entry with an indented bullet fence:\n"
+            " - ```py\n"
+            "   print('repro')\n"
+            "   ```\n"
+            "- Live sibling entry one\n\n"
+            "## Deferred from: quick-dev (2026-03-20)\n\n"
+            "- Live entry two\n"
+        )
+        check("indented bullet fence: all three entries survive", len(ents) == 3)
+        check("indented bullet fence: fence body stays in entry 0",
+              "print('repro')" in ents[0]["text"]
+              and "Live sibling entry one" in ents[1]["text"]
+              and "Live entry two" in ents[2]["text"])
+        # And in the intro: ' - ```md' at indent 1 must not invert state and
+        # hide the real heading that follows.
+        _segs, ents, _ = parse_document(
+            "# Deferred Work\n\n - ```md\n   intro fence\n   ```\n\n"
+            + _HF + "\n\n- Real entry\n"
+        )
+        check("indented intro bullet fence: section still parses",
+              len(ents) == 1 and "Real entry" in ents[0]["text"])
+        # A NESTED bullet fence (indent >= 2, closer at the nested content
+        # indent) is tracked too: its fenced fake bullet/heading stay inside
+        # the entry and the sibling survives.
+        _segs, ents, _ = parse_document(
+            _HF + "\n\n"
+            "- Entry with a nested fence:\n"
+            "  - ```\n"
+            "    - fake bullet in nested fence\n"
+            "    ## fake heading in nested fence\n"
+            "    ```\n"
+            "- Sibling entry\n"
+        )
+        check("nested bullet fence: sibling survives, fakes stay inside",
+              len(ents) == 2
+              and "fake bullet in nested fence" in ents[0]["text"]
+              and "fake heading in nested fence" in ents[0]["text"]
+              and "Sibling entry" in ents[1]["text"])
         # An inline code SPAN is not a fence (CommonMark: a backtick fence's
         # info string may not contain backticks) — neither on a bullet line
         # nor on a continuation line.

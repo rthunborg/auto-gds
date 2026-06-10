@@ -21,8 +21,10 @@ Modes (ONE JSON object on stdout; polling mode adds exactly ONE progress line on
     A poll with ZERO checks is held as pending until zero-checks has persisted for
     ``--none-grace-seconds`` (default 120) — the orchestrator calls this seconds
     after the push, before GitHub registers the check runs, so an early empty poll
-    must not classify ``none``. A poll with real checks resets the grace; the cap
-    clamps it (zero checks for the entire cap is a true ``none``, not a timeout).
+    must not classify ``none``. A board that ever showed real checks is never
+    ``none`` — mid-loop or at the cap — so a transient empty payload after real
+    checks keeps polling instead of skipping draft clause 4; the cap clamps the
+    grace (zero checks for the entire cap is a true ``none``, not a timeout).
     With ``--resolve-run-url``, after the wait it runs
     ``gh run list --branch B --limit 5 --json url,workflowName,status,headSha`` and
     picks the newest run (gh lists newest-first) whose ``headSha`` equals
@@ -248,10 +250,12 @@ def wait_for_checks(
             if last["status"] == "none":
                 # Registration grace: zero checks right after the push usually means
                 # GitHub hasn't registered the check runs yet — keep polling until
-                # zero-checks has persisted past the grace window.
+                # zero-checks has persisted past the grace window. A board that ever
+                # showed real checks is never "none" (same rule as the cap verdict):
+                # a transient-empty streak after real checks keeps polling to the cap.
                 if none_since is None:
                     none_since = now
-                if now - none_since >= float(none_grace_seconds):
+                if now - none_since >= float(none_grace_seconds) and not saw_checks:
                     status = "none"
                     break
             else:
@@ -450,14 +454,16 @@ def _run_self_test() -> int:
                                 err_stream=io.StringIO())
     assert code == 0 and res["ci_status"] == "timeout", res
     assert res["polls"] == 4 and res["elapsed_seconds"] == 60, res
-    # a real-checks poll RESETS the streak (grace 60: empty@0, pending@20 resets, empty
-    # again from t=40 => none fires at t=100 — 60s after the reset, not after t=0)
+    # (e) the mid-loop grace obeys the same rule as the cap: a board that ever showed
+    # real checks is never "none" (empty@0, pending@20, then empty from t=40 with
+    # grace 60 and cap 2 min => the streak expiring at t=100 must NOT break with
+    # "none" and skip draft clause 4 — the loop runs to the cap and times out)
     clk = _FakeClock()
     run = _FakeRunner([(0, "[]", ""), (8, pending_payload, ""), (0, "[]", "")])
-    res, code = wait_for_checks(7, 30, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
+    res, code = wait_for_checks(7, 2, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
                                 err_stream=io.StringIO(), none_grace_seconds=60)
-    assert code == 0 and res["ci_status"] == "none", res
-    assert res["polls"] == 6 and res["elapsed_seconds"] == 100, res
+    assert code == 0 and res["ci_status"] == "timeout", res
+    assert res["polls"] == 7 and res["elapsed_seconds"] == 120, res
     # grace 0 disables the hold: immediate none on the first empty poll
     run = _FakeRunner([(0, "[]", "")])
     res, code = wait_for_checks(7, 30, 20, run, monotonic=_FakeClock().monotonic,

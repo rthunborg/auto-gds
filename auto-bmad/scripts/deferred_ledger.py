@@ -88,14 +88,17 @@ INDENTED_RE = re.compile(r"^\s+\S")
 # many of them, up to 3 leading spaces, and nothing else. While inside a fence
 # NO line is a heading or a top-level bullet — `## …` / `- …` lines in there
 # are literal content, never section/entry boundaries.
-FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+# (Backtick branch: CommonMark forbids backticks in a backtick fence's info
+# string, so requiring no later backtick keeps inline code spans — ```x``` —
+# from reading as fence openers. Tilde info strings may contain anything.)
+FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}(?!.*`)|~{3,})")
 # A fence may also open right after a top-level bullet marker (`- ```py` is
 # CommonMark-legal). Without tracking it, the fence's CLOSING line would read
 # as an OPENER and invert the fence state for the rest of the document.
 # (Fences opened on a NESTED bullet are deliberately not tracked: their closing
 # line sits at the nested content indent, outside FENCE_OPEN_RE's reach, so the
 # inversion cannot occur there.)
-BULLET_FENCE_RE = re.compile(r"^[-*+]\s+(`{3,}|~{3,})")
+BULLET_FENCE_RE = re.compile(r"^[-*+]\s+(`{3,}(?!.*`)|~{3,})")
 
 
 def _fence_open(line):
@@ -741,6 +744,17 @@ def _run_self_test():
         )
         check("intro bullet fence: section still parses", len(ents) == 1
               and "Real entry" in ents[0]["text"])
+        # An inline code SPAN is not a fence (CommonMark: a backtick fence's
+        # info string may not contain backticks) — neither on a bullet line
+        # nor on a continuation line.
+        _segs, ents, _ = parse_document(
+            _HF + "\n\n"
+            "- ```fix``` the rendering bug\n"
+            "  note: see ```render()``` for context\n"
+            "- Sibling entry\n"
+        )
+        check("inline code span: not a fence, sibling survives",
+              len(ents) == 2 and "Sibling entry" in ents[1]["text"])
 
         # ---- F2: crash-recovery re-run dedupes the archive ----------------- #
         lf3 = fresh("ledger-f2.md")

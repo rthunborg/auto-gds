@@ -6,8 +6,8 @@ wait") with one tested helper: poll ``gh pr checks`` until every check settles (
 classify the outcome, and optionally resolve the CI run URL for the pushed head SHA.
 
 Usage:
-    ci_wait.py --pr N --cap-minutes M [--interval-seconds 20] [--repo-dir DIR]
-               [--resolve-run-url --branch B --head-sha SHA]
+    ci_wait.py --pr N --cap-minutes M [--interval-seconds 20] [--none-grace-seconds 120]
+               [--repo-dir DIR] [--resolve-run-url --branch B --head-sha SHA]
     ci_wait.py --classify-json FILE|-     # pure classification of one payload; no polling
     ci_wait.py --self-test
 
@@ -18,6 +18,11 @@ Modes (ONE JSON object on stdout; polling mode adds exactly ONE progress line on
     pending/in_progress, capped at ``--cap-minutes`` (the sleep before the cap is
     truncated so a final poll lands on the cap boundary). Prints exactly one
     "waiting on CI (cap M min)…" line to stderr at start — stdout stays pure JSON.
+    A poll with ZERO checks is held as pending until zero-checks has persisted for
+    ``--none-grace-seconds`` (default 120) — the orchestrator calls this seconds
+    after the push, before GitHub registers the check runs, so an early empty poll
+    must not classify ``none``. A poll with real checks resets the grace; the cap
+    clamps it (zero checks for the entire cap is a true ``none``, not a timeout).
     With ``--resolve-run-url``, after the wait it runs
     ``gh run list --branch B --limit 5 --json url,workflowName,status,headSha`` and
     picks the newest run (gh lists newest-first) whose ``headSha`` equals
@@ -26,7 +31,9 @@ Modes (ONE JSON object on stdout; polling mode adds exactly ONE progress line on
   * classify — ``--classify-json FILE|-``: pure classification of one
     ``gh pr checks --json bucket,state,name`` payload (a JSON array of checks);
     no polling, no gh calls. Checks still pending in the snapshot classify as
-    ``timeout`` (the snapshot IS the cap).
+    ``timeout`` (the snapshot IS the cap), and zero checks classify ``none``
+    directly — the registration grace applies only to the wait loop. A NON-empty
+    payload containing no check objects is an exit-2 error, not a verdict.
   * ``--self-test`` — offline tests via an injectable runner + clock; no real gh calls.
 
 Classification (shared by both modes), per check on ``bucket`` when it carries a known
@@ -34,7 +41,8 @@ token, else on the raw ``state`` — case-insensitive, so both gh's bucket vocab
 (pass/fail/pending/skipping/cancel) and raw GitHub states (SUCCESS/FAILURE/…) work:
   failed  — ANY check in {fail, failure, cancelled, cancel, timed_out, action_required}
   passed  — ALL checks in {pass, success, neutral, skipped, skipping}
-  none    — zero checks reported (or gh says "no checks reported")
+  none    — zero checks reported (or gh says "no checks reported"); in polling
+            mode only once zero-checks has outlasted the registration grace
   timeout — cap reached with checks still pending/in_progress and none failed
             (a failure already on the board at the cap classifies ``failed``;
             unknown tokens count as pending, so the cap bounds them)
@@ -138,7 +146,8 @@ def classify_payload_text(text: str) -> tuple[dict, int]:
     """--classify-json core: one payload -> (output dict, exit code). Pure, no gh.
 
     Still-pending checks classify as ``timeout`` (a snapshot has no more polling to
-    do — the snapshot is the cap). Accepts the raw array or ``{"checks": [...]}``.
+    do — the snapshot is the cap). Accepts the raw array or ``{"checks": [...]}``;
+    a non-empty array with zero check objects is an exit-2 error, never a verdict.
     """
     try:
         data = json.loads(text)
@@ -149,6 +158,11 @@ def classify_payload_text(text: str) -> tuple[dict, int]:
     if not isinstance(data, list):
         return {"error": "--classify-json payload must be a JSON array of checks "
                          "(the `gh pr checks --json bucket,state,name` output)"}, 2
+    if data and not any(isinstance(c, dict) for c in data):
+        # Non-empty but zero check objects: malformed input, not a "passed" verdict
+        # (and not "none" — that's reserved for a genuinely empty board).
+        return {"error": "--classify-json payload has no check objects "
+                         "(array items must be JSON objects)"}, 2
     res = classify(data)
     status = "timeout" if res["status"] == "pending" else res["status"]
     return {
@@ -202,13 +216,15 @@ def wait_for_checks(
     sleep: Callable[[float], None] = time.sleep,
     repo_dir: str | None = None,
     err_stream=sys.stderr,
+    none_grace_seconds: float = 120.0,
 ) -> tuple[dict, int]:
     """Poll until no check is pending/in_progress, capped -> (output dict, exit code).
 
     Exactly ONE progress line goes to ``err_stream``; the returned dict is the full
     pinned output schema (``ci_run_url`` is None here — main() overwrites it when
     ``--resolve-run-url`` is requested). Exit code 2 only for a first-call gh error
-    or a missing gh binary; every resolved classification is 0.
+    or a missing gh binary; every resolved classification is 0. Zero-checks polls
+    count as pending until they persist for ``none_grace_seconds`` (see docstring).
     """
     cap_disp = int(cap_minutes) if float(cap_minutes).is_integer() else cap_minutes
     err_stream.write(f"waiting on CI (cap {cap_disp} min)…\n")
@@ -218,22 +234,41 @@ def wait_for_checks(
     deadline = start + float(cap_minutes) * 60.0
     polls = 0
     last: dict | None = None  # last good classification (for the cap-time verdict)
+    none_since: float | None = None  # start of the current zero-checks streak
 
     while True:
         checks, fetch_err, fatal = fetch_checks(pr, runner, repo_dir)
         polls += 1
         if fetch_err is not None and (fatal or polls == 1):
             return {"error": fetch_err}, 2
+        now = monotonic()
         if fetch_err is None:
             last = classify(checks)
-            if not last["pending"]:
-                status = last["status"]  # none | failed | passed (pending list is empty)
-                break
-        now = monotonic()
+            if last["status"] == "none":
+                # Registration grace: zero checks right after the push usually means
+                # GitHub hasn't registered the check runs yet — keep polling until
+                # zero-checks has persisted past the grace window.
+                if none_since is None:
+                    none_since = now
+                if now - none_since >= float(none_grace_seconds):
+                    status = "none"
+                    break
+            else:
+                none_since = None  # real checks appeared: the grace logic ends
+                if not last["pending"]:
+                    status = last["status"]  # failed | passed (pending list is empty)
+                    break
         if now >= deadline:
-            # Cap reached with checks unsettled: a failure already on the board is a
-            # verdict ("failed" — ANY-failed dominates); otherwise it's a timeout.
-            status = "failed" if (last and last["failed_checks"]) else "timeout"
+            # Cap reached with checks unsettled: zero checks for the whole current
+            # streak is a true "none" (the cap clamps the grace); a failure already
+            # on the board is a verdict ("failed" — ANY-failed dominates); otherwise
+            # it's a timeout.
+            if last is not None and last["status"] == "none":
+                status = "none"
+            elif last and last["failed_checks"]:
+                status = "failed"
+            else:
+                status = "timeout"
             break
         sleep(min(float(interval_seconds), deadline - now))
 
@@ -375,15 +410,45 @@ def _run_self_test() -> int:
     assert code == 0 and res["ci_status"] == "failed" and res["polls"] == 1, res
     assert res["elapsed_seconds"] == 0 and res["failed_checks"] == ["build"], res
 
-    # --- zero checks => none: gh's "no checks reported" stderr shape, and a bare [] ---
+    # --- zero checks & the registration grace (default 120s): an empty poll right
+    # after the push is registration lag, NOT "none" ---
+    # (a) empty -> pending -> pass: the grace holds the early empty poll => passed
+    clk = _FakeClock()
+    run = _FakeRunner([(1, "", "no checks reported on the 'story/1-2' branch"),
+                       (8, pending_payload, ""), (0, passed_payload, "")])
+    res, code = wait_for_checks(7, 30, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
+                                err_stream=io.StringIO())
+    assert code == 0 and res["ci_status"] == "passed" and res["polls"] == 3, res
+    # (b) empty for the whole grace => none only once it expires (polls at t=0..120 @ 20s)
+    clk = _FakeClock()
+    run = _FakeRunner([(0, "[]", "")])
+    res, code = wait_for_checks(7, 30, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
+                                err_stream=io.StringIO())
+    assert code == 0 and res["ci_status"] == "none", res
+    assert res["polls"] == 7 and res["elapsed_seconds"] == 120, res
+    assert res["pending"] == [] and res["failed_checks"] == [], res
+    # (c) grace >= cap: the cap clamps the grace — zero checks for the ENTIRE cap is a
+    # true none, not a timeout (cap 1 min @ 20s, grace 600 => polls at t=0,20,40,60)
+    clk = _FakeClock()
     run = _FakeRunner([(1, "", "no checks reported on the 'story/1-2' branch")])
-    res, code = wait_for_checks(7, 30, 20, run, monotonic=_FakeClock().monotonic,
-                                sleep=lambda s: None, err_stream=io.StringIO())
-    assert code == 0 and res["ci_status"] == "none" and res["polls"] == 1, res
+    res, code = wait_for_checks(7, 1, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
+                                err_stream=io.StringIO(), none_grace_seconds=600)
+    assert code == 0 and res["ci_status"] == "none", res
+    assert res["polls"] == 4 and res["elapsed_seconds"] == 60, res
+    # a real-checks poll RESETS the streak (grace 60: empty@0, pending@20 resets, empty
+    # again from t=40 => none fires at t=100 — 60s after the reset, not after t=0)
+    clk = _FakeClock()
+    run = _FakeRunner([(0, "[]", ""), (8, pending_payload, ""), (0, "[]", "")])
+    res, code = wait_for_checks(7, 30, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
+                                err_stream=io.StringIO(), none_grace_seconds=60)
+    assert code == 0 and res["ci_status"] == "none", res
+    assert res["polls"] == 6 and res["elapsed_seconds"] == 100, res
+    # grace 0 disables the hold: immediate none on the first empty poll
     run = _FakeRunner([(0, "[]", "")])
     res, code = wait_for_checks(7, 30, 20, run, monotonic=_FakeClock().monotonic,
-                                sleep=lambda s: None, err_stream=io.StringIO())
-    assert code == 0 and res["ci_status"] == "none", res
+                                sleep=lambda s: None, err_stream=io.StringIO(),
+                                none_grace_seconds=0)
+    assert code == 0 and res["ci_status"] == "none" and res["polls"] == 1, res
 
     # --- gh missing / gh error on the FIRST call => exit 2 with {"error": ...} ---
     run = _FakeRunner([FileNotFoundError("gh")])
@@ -446,6 +511,12 @@ def _run_self_test() -> int:
     assert code == 2 and "error" in res, res
     res, code = classify_payload_text('"a string"')
     assert code == 2 and "error" in res, res
+    # non-empty payload with ZERO check objects => exit 2 ("couldn't evaluate CI"),
+    # never a "passed" verdict; a stray non-object beside real checks stays tolerated
+    res, code = classify_payload_text('["oops", 42]')
+    assert code == 2 and "no check objects" in res["error"], res
+    res, code = classify_payload_text('[{"bucket": "pass", "name": "a"}, "stray"]')
+    assert code == 0 and res["ci_status"] == "passed", res
 
     print("SELF-TEST PASSED (all assertions)")
     return 0
@@ -461,6 +532,10 @@ def main() -> int:
                         help="Max total wait in minutes (git.ci_wait_minutes).")
     parser.add_argument("--interval-seconds", type=float, default=20.0,
                         help="Seconds between polls (default 20).")
+    parser.add_argument("--none-grace-seconds", type=float, default=120.0,
+                        help="Hold a zero-checks poll as pending until zero-checks has "
+                             "persisted this long (default 120; the cap clamps it). "
+                             "Covers the push -> check-registration lag.")
     parser.add_argument("--repo-dir", help="Working directory for the gh calls.")
     parser.add_argument("--resolve-run-url", action="store_true",
                         help="Also resolve ci_run_url via `gh run list` (needs --branch + --head-sha).")
@@ -498,9 +573,12 @@ def main() -> int:
         return usage_error("--resolve-run-url requires --branch and --head-sha")
     if args.cap_minutes < 0 or args.interval_seconds <= 0:
         return usage_error("--cap-minutes must be >= 0 and --interval-seconds must be > 0")
+    if args.none_grace_seconds < 0:
+        return usage_error("--none-grace-seconds must be >= 0")
 
     result, code = wait_for_checks(args.pr, args.cap_minutes, args.interval_seconds,
-                                   _gh_runner, repo_dir=args.repo_dir)
+                                   _gh_runner, repo_dir=args.repo_dir,
+                                   none_grace_seconds=args.none_grace_seconds)
     if code != 0:
         print(json.dumps(result, indent=2))
         return code

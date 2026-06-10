@@ -155,7 +155,8 @@ shell. The rules below are the normative definition the script implements:
   - **How to wait:** one deterministic call —
     `python3 {skill-root}/scripts/ci_wait.py --pr <pr-number> --cap-minutes <git.ci_wait_minutes>
     --resolve-run-url --branch <branch> --head-sha <sha>` — then read `ci_status` and `ci_run_url`
-    from its single JSON object. The script owns the poll cadence, cap, and output discipline.
+    from its single JSON object. The script owns the poll cadence, cap, registration grace
+    (zero checks just after the push is lag — held as pending, not `none`), and output discipline.
     Exit 2 means it couldn't evaluate CI (gh missing/errored) — leave `ci_status: unknown`,
     never `failed`.
   - **Outcomes** (record in state as `ci_status` — this list is normative; `ci_wait.py` pins these

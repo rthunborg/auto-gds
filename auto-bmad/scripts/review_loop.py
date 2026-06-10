@@ -42,7 +42,7 @@ Four modes, each emitting ONE JSON object on stdout:
   | 2 | 1   | 0             | clean               | —    | exit-clean       | false (or input true)   | skip-halt if cfg else halt |
   | 3 | 1   | 0             | not clean           | no   | continue         | false/input             | null                       |
   | 4 | 1   | 1–2           | any (untrustworthy) | no   | continue         | false/input             | null                       |
-  | 5 | 1   | any ≤2        | not perfectly clean | yes  | exit-unconverged | true                    | halt                       |
+  | 5 | 1   | any ≤2        | any                 | yes  | → rows 6/7/9     | per row                 | per row                    |
   | 6 | ≥2  | 0             | converged           | —    | exit-clean       | false/input             | skip-halt if cfg else halt |
   | 7 | ≥2  | 1–2           | converged           | —    | exit-unconverged | true                    | halt                       |
   | 8 | ≥2  | ≤2            | not converged       | no   | continue         | false/input             | null                       |
@@ -51,8 +51,11 @@ Four modes, each emitting ONE JSON object on stdout:
   Semantics:
   - Row 2 is the ONLY first-pass early exit: "perfectly clean" = 0 non-deferred
     findings AND all 3 lenses ran. Any other first pass pulls the mandatory
-    second opinion (rows 3–4) or, when the cap blocks it (``max_iterations:
-    1``), exits as an unverified draft (row 5).
+    second opinion (rows 3–4) — unless the cap blocks it (``max_iterations:
+    1``, row 5): the cap is explicit consent to a single-pass review, so the
+    lone pass is judged by the final-iteration rules 6/7/9 — a converged pass
+    with all lenses exits clean; only an unconverged or lens-incomplete one
+    exits as an unverified draft.
   - Row 7: a converged pass with a failed/empty lens is the same flavor of
     unverified-ness as a cap exit — its ``reason`` carries the "incomplete
     review (only N/3 lenses ran)" caveat for the report and halt summary.
@@ -268,30 +271,29 @@ def decide_gate(
         action = "needs-human"
         reason = (f"code review incomplete — 0/{TOTAL_LENSES} lenses produced findings; "
                   "the review did not actually happen, never count it as clean")
-    elif iteration == 1:
-        if clean and lenses_failed == 0:  # row 2
-            action = "exit-clean"
-            reason = ("first pass perfectly clean (0 non-deferred findings, all "
-                      f"{TOTAL_LENSES} lenses ran) — the only first-pass early exit; second opinion skipped")
-        elif not cap:  # rows 3–4
-            action = "continue"
-            if lenses_failed:  # row 4 — even a 0-finding pass is untrustworthy
-                reason = (f"only {lenses_ran}/{TOTAL_LENSES} lenses ran — a first pass this incomplete "
-                          "is not trustworthy as clean; the second opinion is mandatory")
-            else:  # row 3
-                reason = f"first pass found {nondef} non-deferred finding(s) — the second opinion is mandatory"
-        else:  # row 5 (max_iterations == 1)
-            action = "exit-unconverged"
-            unverified = True
-            what = (f"{nondef} non-deferred finding(s)" if nondef
-                    else f"only {lenses_ran}/{TOTAL_LENSES} lenses ran")
-            reason = (f"single-pass cap (max_iterations == {max_iterations}): the pass is not perfectly "
-                      f"clean ({what}) and its mandatory second opinion cannot run — unverified draft")
+    elif iteration == 1 and clean and lenses_failed == 0:  # row 2
+        action = "exit-clean"
+        reason = ("first pass perfectly clean (0 non-deferred findings, all "
+                  f"{TOTAL_LENSES} lenses ran) — the only first-pass early exit; second opinion skipped")
+    elif iteration == 1 and not cap:  # rows 3–4
+        action = "continue"
+        if lenses_failed:  # row 4 — even a 0-finding pass is untrustworthy
+            reason = (f"only {lenses_ran}/{TOTAL_LENSES} lenses ran — a first pass this incomplete "
+                      "is not trustworthy as clean; the second opinion is mandatory")
+        else:  # row 3
+            reason = f"first pass found {nondef} non-deferred finding(s) — the second opinion is mandatory"
     else:
+        # Rows 6–9 — final-iteration rules. Row 5 (a capped first pass,
+        # max_iterations == 1) lands here too: the cap is explicit consent to a
+        # single-pass review, so the lone pass is judged by the same convergence
+        # rules as any other final iteration — the second opinion is mandatory
+        # only when an iteration remains to run it in.
         if converged and lenses_failed == 0:  # row 6
             action = "exit-clean"
             reason = (f"pass converged ({nondef} non-deferred finding(s), 0 Critical/High, "
                       f"all {TOTAL_LENSES} lenses ran)")
+            if iteration == 1:
+                reason += " — single pass accepted as final (max_iterations == 1)"
         elif converged:  # row 7
             action = "exit-unconverged"
             unverified = True
@@ -625,15 +627,24 @@ def _run_self_test():
     check("row4: two failed lenses also continue", o["action"] == "continue")
     check("row4: unverified false", o["convergence_unverified"] is False)
 
-    # row 5 — first pass not perfectly clean at the cap (max_iterations == 1).
-    o = decide_gate(_f(1), 1, 1, True, 0, False)
-    check("row5: exit-unconverged", o["action"] == "exit-unconverged")
-    check("row5: unverified true", o["convergence_unverified"] is True)
-    check("row5: halt", o["hitl"] == "halt")
-    o = decide_gate(_f(0), 1, 1, True, 1, True)  # clean but a lens failed
-    check("row5: missing lens is 'not perfectly clean' at max==1",
+    # row 5 — a capped first pass (max_iterations == 1) follows the
+    # final-iteration rules 6/7/9: the cap is consent to a single-pass review.
+    o = decide_gate(_f(1), 1, 1, True, 0, False)  # converged, all lenses → row 6
+    check("row5: converged single pass exits clean", o["action"] == "exit-clean")
+    check("row5: unverified false (ships non-draft)", o["convergence_unverified"] is False)
+    check("row5: halt without skip config", o["hitl"] == "halt")
+    check("row5: reason notes single-pass acceptance", "max_iterations == 1" in o["reason"])
+    o = decide_gate(_f(3), 1, 1, True, 0, True)  # boundary: exactly 3 still converges
+    check("row5: skip config fires on converged single pass", o["hitl"] == "skip-halt")
+    o = decide_gate(_f(0), 1, 1, True, 1, True)  # clean but a lens failed → row 7
+    check("row5: missing lens at max==1 is unverified (row 7)",
           o["action"] == "exit-unconverged" and o["convergence_unverified"] is True)
-    check("row5: skip config cannot fire", o["hitl"] == "halt")
+    check("row5: skip config cannot fire on a missing lens", o["hitl"] == "halt")
+    o = decide_gate(_f(4), 1, 1, True, 0, True)  # not converged → row 9
+    check("row5: unconverged single pass still drafts (row 9)",
+          o["action"] == "exit-unconverged" and o["convergence_unverified"] is True and o["hitl"] == "halt")
+    o = decide_gate(_f(1, 1, 0), 1, 1, False, 0, False)  # Critical/High blocks convergence
+    check("row5: Critical/High single pass still drafts", o["action"] == "exit-unconverged")
 
     # row 6 — i>=2, converged with all lenses: clean exit.
     o = decide_gate(_f(2), 2, 2, True, 0, True)

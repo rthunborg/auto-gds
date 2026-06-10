@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A converged single review pass no longer ships as an unverified draft.** Setting
+  `code_review.max_iterations: 1` now counts as explicit consent to a single-pass review. (review_loop.py, pipeline.md)
+
 ## [0.17.0] - 2026-06-10
 
 ### Added

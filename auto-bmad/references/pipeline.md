@@ -160,9 +160,11 @@ were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this o
 - Delegate the **`testarch-automate`** entry with `<story_file>`.
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
-## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean)
+## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean or the cap is 1)
 The loop runs **at least two review passes — unless the first pass is perfectly clean** (0
-non-deferred findings, all three lenses ran), and **ends at a human-in-the-loop halt** (step 4)
+non-deferred findings, all three lenses ran) **or `max_iterations: 1` caps it at one** (the cap is
+explicit consent to a single-pass review — the lone pass is judged by the same convergence rules
+as any final iteration), and **ends at a human-in-the-loop halt** (step 4)
 unless step 4's skip gate applies. Convergence is defined in step 3. Every continue/exit/halt rule
 is the `review_loop.py gate` decision table in step 3 — call the script and obey it, never
 re-derive the rules. Track `code_review_iterations` and `code_review_loop_done` in state (resume
@@ -297,7 +299,7 @@ For iteration `i` (1-based):
    | 2 | 1 | 0 | clean | — | exit-clean (only first-pass early exit) | false (or input true) | skip-halt if cfg else halt |
    | 3 | 1 | 0 | not clean | no | continue (second opinion mandatory) | false/input | null |
    | 4 | 1 | 1–2 | any (even 0 findings — untrustworthy) | no | continue | false/input | null |
-   | 5 | 1 | any≤2 | not perfectly clean (≥1 finding OR ≥1 lens failed) | yes (max==1) | exit-unconverged | true | halt |
+   | 5 | 1 | any≤2 | any | yes (max==1) | → rows 6/7/9 (the capped first pass follows the final-iteration rules — converged + all lenses exits clean) | per row | per row |
    | 6 | ≥2 | 0 | converged | — | exit-clean | false/input | skip-halt if cfg else halt |
    | 7 | ≥2 | 1–2 | converged | — | exit-unconverged (reason notes "incomplete review N/3 lenses") | true | halt |
    | 8 | ≥2 | ≤2 | not converged | no | continue | false/input | null |
@@ -308,13 +310,14 @@ For iteration `i` (1-based):
    **Skip gate — evaluate first, at step entry, on the loop-exit `convergence_unverified` value**
    (the post-halt re-review below also writes this flag, so read it *before* that machinery runs): if
    `code_review.skip_hitl_on_clean_convergence` is `true` **AND** `convergence_unverified` is `false`
-   (the loop converged cleanly — a perfectly-clean single pass or an `i ≥ 2` converged exit), **skip
+   (the loop converged cleanly — a perfectly-clean first pass, a converged `max_iterations: 1`
+   single pass, or an `i ≥ 2` converged exit), **skip
    the halt**: do **not** open `AskUserQuestion`. `log` one line ("review converged cleanly — Phase 7
    HITL halt skipped per config"), record `hitl_halt: skipped (clean convergence)` in state + the
    report's Code-review line, and proceed as the **Continue** path **with no external-change check**
    (there was no human pause, so there are no external changes to detect) — straight to the Phase 7
-   tail. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged,
-   incomplete-lens, or a non-clean `max_iterations: 1` single pass — those always halt). Default
+   tail. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged or
+   incomplete-lens — those always halt). Default
    (`false`) → always halt, as below.
 
    Otherwise (option off, or the loop did not converge cleanly) the loop *always* ends here

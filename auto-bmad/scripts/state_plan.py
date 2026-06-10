@@ -172,8 +172,29 @@ _FINALIZE_SCALAR_RE = {
     "gate_decision": re.compile(r"^gate_decision:\s*(.*?)\s*(?:#.*)?$"),
     "ci_status": re.compile(r"^ci_status:\s*(.*?)\s*(?:#.*)?$"),
 }
-_BLOCKERS_RE = re.compile(r"^blockers:\s*(.*?)\s*(?:#.*)?$")
-_LIST_ITEM_RE = re.compile(r"^\s*-\s+(.*?)\s*(?:#.*)?$")
+_BLOCKERS_RE = re.compile(r"^blockers:\s*(.*)$")
+_LIST_ITEM_RE = re.compile(r"^\s*-\s+(.*)$")
+
+
+def _strip_comment(value: str) -> str:
+    """Drop a trailing ``# comment`` — but never a ``#`` inside a quoted string
+    (the state writer double-quotes any value containing ``#``, so a bare ``#``
+    is always a comment while a quoted one is payload)."""
+    quote = None
+    esc = False
+    for i, c in enumerate(value):
+        if esc:
+            esc = False
+        elif quote == '"' and c == "\\":
+            esc = True
+        elif quote:
+            if c == quote:
+                quote = None
+        elif c in "\"'":
+            quote = c
+        elif c == "#":
+            return value[:i].strip()
+    return value.strip()
 
 # ci_status values that fire clause 4 (matched case-insensitively, like the
 # sibling clauses). passed/none/unknown do NOT — `unknown` means the CI wait
@@ -202,7 +223,7 @@ def read_finalize_fields(path: str):
         if in_blockers:
             m = _LIST_ITEM_RE.match(line)
             if m:
-                item = _unquote(m.group(1))
+                item = _unquote(_strip_comment(m.group(1)))
                 if item:
                     blockers.append(item)
                 continue
@@ -211,7 +232,7 @@ def read_finalize_fields(path: str):
             in_blockers = False  # block ended; fall through to this line
         bm = _BLOCKERS_RE.match(line)
         if bm:
-            val = bm.group(1).strip()
+            val = _strip_comment(bm.group(1))
             if val.startswith("["):
                 inner = val.strip("[]").strip()
                 if inner:
@@ -424,6 +445,23 @@ def _run_self_test():
     res, _ = build_finalize_result(fin_dir, "2-2b-inline")
     check("finalize inline blockers: count 2", res["blocker_count"] == 2)
     check("finalize inline blockers: draft", res["draft"] is True)
+
+    # Clause 1 — a quoted '#' is payload, not a comment (the state writer
+    # double-quotes any value containing '#'; comment stripping must respect it).
+    with open(os.path.join(fin_dir, "2-2c-hash.yaml"), "w", encoding="utf-8") as fh:
+        fh.write('story_key: 2-2c-hash\nstatus: done\nconvergence_unverified: false\n'
+                 'gate_decision: null\nci_status: passed\nblockers:\n'
+                 '  - "fix issue #123 upstream"\n  - "rotate key #2"  # urgent\n')
+    res, _ = build_finalize_result(fin_dir, "2-2c-hash")
+    check("finalize quoted-#: items intact",
+          res["blockers"] == ["fix issue #123 upstream", "rotate key #2"])
+    with open(os.path.join(fin_dir, "2-2d-hash.yaml"), "w", encoding="utf-8") as fh:
+        fh.write('story_key: 2-2d-hash\nstatus: done\nconvergence_unverified: false\n'
+                 'gate_decision: null\nci_status: passed\n'
+                 'blockers: ["fix issue #123 upstream"]  # one left\n')
+    res, _ = build_finalize_result(fin_dir, "2-2d-hash")
+    check("finalize quoted-# inline: item intact",
+          res["blockers"] == ["fix issue #123 upstream"])
 
     # Clause 2 — convergence_unverified.
     write_fin("2-3-unverified", convergence_unverified="true")

@@ -318,7 +318,7 @@ For iteration `i` (1-based):
    (there was no human pause, so there are no external changes to detect) — straight to the Phase 7
    tail. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged or
    incomplete-lens — those always halt). Default
-   (`false`) → always halt, as below.
+   (`true`) → skip the halt on a clean convergence; set `false` to always halt, as below.
 
    Otherwise (option off, or the loop did not converge cleanly) the loop *always* ends here
    (converged or capped). Summarize: iterations

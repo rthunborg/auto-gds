@@ -37,7 +37,7 @@ git:
 code_review:
   max_iterations: 2
   alternate_models: true   # odd iters use code_review_review, even iters code_review_review_secondary
-  skip_hitl_on_clean_convergence: false   # true => skip the Phase 7 HITL halt when the loop converged cleanly (convergence_unverified=false); the halt still fires otherwise
+  skip_hitl_on_clean_convergence: true    # (default) skip the Phase 7 HITL halt when the loop converged cleanly (convergence_unverified=false); the halt still fires otherwise. Set false to halt on every loop exit
 # profiles + phase_profiles complete the file — single source: assets/agents/profiles.yaml
 # (first run copies it in verbatim; edit it or this copy, then `/auto-bmad reprovision`;
 # `/auto-bmad reset-defaults` re-seeds — see below). Codex model names ship as real defaults —

@@ -1185,7 +1185,7 @@ def _run_self_test() -> int:
     # (the lockstep the asset header warns about). Cheap guard against a silent value edit.
     for kv in ("offer_merge: true", "ci_wait_minutes: 30", "min_epic_stories: 6",
                "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2",
-               "skip_hitl_on_clean_convergence: false"):
+               "skip_hitl_on_clean_convergence: true"):
         assert kv in setup_text, f"asset default drifted from the documented schema: expected `{kv}`"
 
     def _heal(cfg: str) -> tuple:

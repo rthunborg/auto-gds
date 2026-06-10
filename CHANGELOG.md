@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Phase 7 HITL halt now skips by default on a clean convergence.** New installs no longer pause for
+  a human when the review loop converges cleanly (no Critical/High, ≤3 minor findings, full lens
+  coverage); the halt still fires on any non-converged, incomplete-lens, or Critical/High exit.
+  Existing configs keep their current value — the append-only heal never overwrites it.
+  (`code_review.skip_hitl_on_clean_convergence`)
+
 ## [0.17.2] - 2026-06-10
 
 ### Changed

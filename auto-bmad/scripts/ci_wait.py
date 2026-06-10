@@ -235,6 +235,7 @@ def wait_for_checks(
     polls = 0
     last: dict | None = None  # last good classification (for the cap-time verdict)
     none_since: float | None = None  # start of the current zero-checks streak
+    saw_checks = False  # any poll ever returned real checks (cap-time none vs timeout)
 
     while True:
         checks, fetch_err, fatal = fetch_checks(pr, runner, repo_dir)
@@ -255,15 +256,17 @@ def wait_for_checks(
                     break
             else:
                 none_since = None  # real checks appeared: the grace logic ends
+                saw_checks = True
                 if not last["pending"]:
                     status = last["status"]  # failed | passed (pending list is empty)
                     break
         if now >= deadline:
-            # Cap reached with checks unsettled: zero checks for the whole current
-            # streak is a true "none" (the cap clamps the grace); a failure already
-            # on the board is a verdict ("failed" — ANY-failed dominates); otherwise
-            # it's a timeout.
-            if last is not None and last["status"] == "none":
+            # Cap reached with checks unsettled: zero checks for the ENTIRE run is a
+            # true "none" (the cap clamps the grace) — but a board that ever showed
+            # real checks is NOT none (a transient empty payload near the cap must
+            # not fake a check-less repo); there, a failure already on the board is
+            # a verdict ("failed" — ANY-failed dominates), otherwise it's a timeout.
+            if last is not None and last["status"] == "none" and not saw_checks:
                 status = "none"
             elif last and last["failed_checks"]:
                 status = "failed"
@@ -434,6 +437,16 @@ def _run_self_test() -> int:
     res, code = wait_for_checks(7, 1, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
                                 err_stream=io.StringIO(), none_grace_seconds=600)
     assert code == 0 and res["ci_status"] == "none", res
+    assert res["polls"] == 4 and res["elapsed_seconds"] == 60, res
+    # (d) a board that ever showed real checks is never "none" at the cap: pending@0,20
+    # then empty@40,60 with cap 1 min => timeout (a transient empty payload near the
+    # cap must not fake a check-less repo and skip the draft clause)
+    clk = _FakeClock()
+    run = _FakeRunner([(8, pending_payload, ""), (8, pending_payload, ""),
+                       (0, "[]", ""), (0, "[]", "")])
+    res, code = wait_for_checks(7, 1, 20, run, monotonic=clk.monotonic, sleep=clk.sleep,
+                                err_stream=io.StringIO())
+    assert code == 0 and res["ci_status"] == "timeout", res
     assert res["polls"] == 4 and res["elapsed_seconds"] == 60, res
     # a real-checks poll RESETS the streak (grace 60: empty@0, pending@20 resets, empty
     # again from t=40 => none fires at t=100 — 60s after the reset, not after t=0)

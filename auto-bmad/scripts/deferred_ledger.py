@@ -89,11 +89,24 @@ INDENTED_RE = re.compile(r"^\s+\S")
 # NO line is a heading or a top-level bullet — `## …` / `- …` lines in there
 # are literal content, never section/entry boundaries.
 FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+# A fence may also open right after a top-level bullet marker (`- ```py` is
+# CommonMark-legal). Without tracking it, the fence's CLOSING line would read
+# as an OPENER and invert the fence state for the rest of the document.
+# (Fences opened on a NESTED bullet are deliberately not tracked: their closing
+# line sits at the nested content indent, outside FENCE_OPEN_RE's reach, so the
+# inversion cannot occur there.)
+BULLET_FENCE_RE = re.compile(r"^[-*+]\s+(`{3,}|~{3,})")
 
 
 def _fence_open(line):
     """Return ``(char, length)`` if ``line`` opens a fence, else ``None``."""
     m = FENCE_OPEN_RE.match(line)
+    return (m.group(1)[0], len(m.group(1))) if m else None
+
+
+def _bullet_fence(line):
+    """Return ``(char, length)`` if a top-level bullet line opens a fence."""
+    m = BULLET_FENCE_RE.match(line)
     return (m.group(1)[0], len(m.group(1))) if m else None
 
 
@@ -187,7 +200,9 @@ def parse_document(text: str):
             continue
         if section is not None and TOP_BULLET_RE.match(line):
             entry_lines = [line]
-            entry_fence = None  # (char, length) of an open fence in the entry
+            # The entry's own bullet may open a fence (`- ```py`): track it so
+            # its closing line isn't mistaken for an opener.
+            entry_fence = _bullet_fence(line)  # (char, length) of an open fence in the entry
             i += 1
             while i < n:
                 nxt = lines[i]
@@ -242,6 +257,9 @@ def parse_document(text: str):
                 }
             )
             continue
+        opened = _bullet_fence(line)
+        if opened is not None:
+            fence = opened  # a bullet OUTSIDE a section may open a fence too
         add_text([line])
         i += 1
     return segments, entries, next_section
@@ -700,6 +718,29 @@ def _run_self_test():
               len(pu["entries"]) == 1
               and "## swallowed heading" in pu["entries"][0]["text"]
               and "- swallowed bullet" in pu["entries"][0]["text"])
+
+        # ---- a fence opened on the entry's OWN bullet line (`- ```py`) ----- #
+        # Without tracking it, the closing line would read as an OPENER and the
+        # sibling entry + everything to EOF would be swallowed into entry 0.
+        _segs, ents, _ = parse_document(
+            _HF + "\n\n"
+            "- ```py\n"
+            "  print('repro')\n"
+            "  ```\n"
+            "- Sibling entry still visible\n"
+        )
+        check("bullet fence: sibling survives", len(ents) == 2)
+        check("bullet fence: fence body stays in entry 0",
+              "print('repro')" in ents[0]["text"]
+              and "Sibling entry" in ents[1]["text"])
+        # Same shape in the intro (outside any section): the closing line must
+        # not flip fence state and hide the real section heading that follows.
+        _segs, ents, _ = parse_document(
+            "# Deferred Work\n\n- ```\n  intro fence\n  ```\n\n"
+            + _HF + "\n\n- Real entry\n"
+        )
+        check("intro bullet fence: section still parses", len(ents) == 1
+              and "Real entry" in ents[0]["text"])
 
         # ---- F2: crash-recovery re-run dedupes the archive ----------------- #
         lf3 = fresh("ledger-f2.md")

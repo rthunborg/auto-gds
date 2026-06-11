@@ -221,7 +221,10 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
   relaunch (`/clear` reuses the same process and does not re-scan).
 - **Codex:** subagents are TOML files in `.codex/agents/` (project) or `~/.codex/agents/`, with
   `model` + `model_reasoning_effort` (gpt-5.x effort: low|medium|high|xhigh — xhigh is the ceiling);
-  invoked by naming the agent in natural language — Codex spawns/collects them. Model names are
+  invoked by naming the agent in natural language — Codex spawns/collects them, **in parallel**
+  when several are named in one request (subagents GA 2026-03-16, on by default; `[agents]`
+  `max_threads` defaults to 6, `max_depth` defaults to 1 ⇒ a subagent can't spawn subagents, so
+  the Phase 7 fan-out hoist still stands). Model names are
   environment-specific (retunable per install), so they're config, not hardcoded — the shipped
   defaults are real.
 - **opencode** (verified against v1.16.2): markdown subagents in `.opencode/agent/` (SINGULAR —

@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI-routed review lenses now run in parallel on every host.** A routed reviewer slot's three
   lens invocations launch as concurrent background processes (across routed reviewers too); the
   triage still waits for all of them. (delegation-runtime.md, pipeline.md)
+- **Codex in-tool review lenses now fan out in parallel too.** Codex spawns subagents concurrently
+  when several are named in one request (GA March 2026, on by default), so the sequential in-tool
+  rule now applies only to opencode. (delegation-runtime.md, pipeline.md)
 
 ### Fixed
 

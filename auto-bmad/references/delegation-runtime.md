@@ -148,8 +148,8 @@ distinct `--label` per delegate (e.g. `blind-hunter-primary`, `edge-case-seconda
 `capture_log` / `-o` paths don't collide. **Launch the lens invocations in parallel** — across
 CLI-routed reviewers too — as concurrent background processes (the spawn rule above), and wait for
 all of them to exit before the triage, which consumes their outputs. This holds on **every** host:
-CLI delegates are plain OS child processes, not in-tool subagents, so the in-tool fan-out caveats
-(Codex's no-fan-out rule, opencode's unverified parallel fan-out) don't apply; and the lenses only
+CLI delegates are plain OS child processes, not in-tool subagents, so opencode's
+unverified-parallel-fan-out caveat doesn't apply; and the lenses only
 write their own reserved lens-output files, never the tree, so concurrent runs can't collide.
 Routing a slot whose `phase_profiles` value is blank is a
 config error (`cli_delegate.py` reports "no phase_profiles mapping").
@@ -172,8 +172,12 @@ Full fidelity: the delegate runs in an isolated context at the profile's tuned m
   > notes):
   > <the delegation.md prompt body>
 
-  Delegate **one** profile at a time and wait for its consolidated result (the pipeline is
-  sequential — do not fan out); parse the returned structured block exactly as on Claude Code.
+  For pipeline steps, delegate **one** profile at a time and wait for its consolidated result (the
+  pipeline itself is sequential). Where the pipeline fans out (the Phase 7 lenses), name **all** the
+  agents in one request — Codex spawns subagents **in parallel** and returns a consolidated
+  response once every one finishes (`[agents]` `max_threads` defaults to 6; `max_depth` defaults
+  to 1, so a delegate still can't spawn its own subagents — the fan-out hoist stands). Parse each
+  returned structured block exactly as on Claude Code.
 - **opencode:** spawns a subagent on request, identified by name — delegate via its Task tool or an
   `@ab-deep` mention (phrased as unambiguously as the Codex example), resolving to the
   project-level `.opencode/agent/<name>.md` rendered at setup. **Fidelity caveat:** the delegate

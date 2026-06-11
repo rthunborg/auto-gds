@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **auto-bmad** are documented here.
+All notable changes to **auto-gds** are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,10 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Maintainers: add notes under **[Unreleased]** as you go (under the right
 > heading — Added/Changed/Deprecated/Removed/Fixed/Security). At release time
 > `scripts/bump-version.py <patch|minor|major>` promotes that section to the new
-> version, bumps both version files, commits, and tags. A release is **blocked**
-> if `[Unreleased]` is empty. See CLAUDE.md → "Releasing".
+> version, bumps all four tracked version files, commits, and tags. A release is
+> **blocked** if `[Unreleased]` is empty. See CLAUDE.md → "Releasing".
 
 ## [Unreleased]
+
+### Added
+
+- **`/auto-gds status` — read-only health report.** Reports project detection, central
+  registration, config paths, rendered delegate agents, installed GDS skills, sprint-status
+  presence, and the next eligible story — without writing anything or running any GDS skill.
+  `dry run` is now explicitly documented as equally side-effect-free (no first-run trigger,
+  no state/config writes).
+
+### Changed
+
+- Converted the module identity and defaults from Auto-BMAD/BMM to Auto-GDS for BMGD/GDS projects:
+  `/auto-gds`, module code `agds`, `agds-*` delegate profiles, `_bmad/gds/config.yaml` project
+  detection, and `{output_folder}/auto-gds` runtime files.
+- Switched delegated production steps to the installed GDS skill names `gds-create-story`,
+  `gds-dev-story`, `gds-code-review`, `gds-generate-project-context`, and `gds-retrospective`.
+- **BMad v6 central TOML compatibility.** Module registration is detected under `[modules.agds]`
+  in `_bmad/config.toml` / `_bmad/config.user.toml` (installer-owned, read via stdlib `tomllib`);
+  setup no longer writes `_bmad/config.yaml` and delegates central registration to the BMad
+  installer. `_bmad/agds/config.yaml` is documented as the installer's carry-forward config,
+  distinct from the `{output_folder}/auto-gds/config.yaml` runtime config.
+- Disabled the old testing workflow by default for V0 and documented future GDS testing mappings.
+
+### Removed
+
+- `auto-gds/scripts/merge-config.py` — its sole purpose was writing the pre-v6 central
+  `_bmad/config.yaml`, which the BMad v6 installer now owns as TOML.
+
+> Earlier entries below preserve upstream Auto-BMAD history for traceability.
 
 ## [0.13.4] - 2026-06-08
 
@@ -411,7 +440,7 @@ First tagged release — the matching `v0.1.1` git tag for the module already pu
 - **Distribution** via the BMAD installer (custom Git source) and a Claude plugin `marketplace.json`,
   plus a README "Updating" section, `CHANGELOG.md`, and the `scripts/bump-version.py` release helper.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.4...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-gds/compare/v0.13.4...HEAD
 [0.13.4]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.3...v0.13.4
 [0.13.3]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/stefanoginella/auto-bmad/compare/v0.13.1...v0.13.2

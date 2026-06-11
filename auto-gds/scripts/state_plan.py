@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Deterministic auto-bmad state-file reader for the orchestrator.
+"""Deterministic auto-gds state-file reader for the orchestrator.
 
 Replaces the resume-detection shell the orchestrator used to improvise (raw
 ``for f in story-*.yaml`` glob loops, which both misname the files — state files
 are ``{key}.yaml`` with no ``story-`` prefix — and abort under zsh/fish on an
 unmatched glob). This script enumerates ``{state-dir}/*.yaml`` and reports which
-auto-bmad pipelines are still in flight (``status != done``), so the orchestrator
+auto-gds pipelines are still in flight (``status != done``), so the orchestrator
 calls a tool instead of writing shell.
 
 Two modes, both emitting a single JSON object on stdout:
@@ -220,8 +220,8 @@ def _run_self_test():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="auto-bmad state-file reader")
-    parser.add_argument("--state-dir", help="the {output_folder}/auto-bmad/state directory")
+    parser = argparse.ArgumentParser(description="auto-gds state-file reader")
+    parser.add_argument("--state-dir", help="the {output_folder}/auto-gds/state directory")
     parser.add_argument("--story-key", help="check one exact {key}.yaml instead of scanning all")
     parser.add_argument("--self-test", action="store_true", help="run built-in fixtures and exit")
     args = parser.parse_args(argv)

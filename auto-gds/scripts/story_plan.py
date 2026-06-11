@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deterministic sprint-status reader for the auto-bmad orchestrator.
+"""Deterministic GDS sprint-status reader for the auto-gds orchestrator.
 
-Parses a BMAD ``sprint-status.yaml`` and decides which story the pipeline should
+Parses a GDS/BMGD ``sprint-status.yaml`` and decides which story the pipeline should
 work next (or inspects a story passed explicitly), including the epic-boundary
 facts the orchestrator needs (first/last story of an epic, retrospective state).
 
@@ -25,10 +25,10 @@ EPIC_RE = re.compile(r"^epic-(\d+)$")
 RETRO_RE = re.compile(r"^epic-(\d+)-retrospective$")
 STORY_RE = re.compile(r"^(\d+)-(\d+)-(.+)$")
 
-# Legacy status aliases BMAD still honours.
+# Legacy status aliases the BMAD framework still honours.
 STATUS_ALIASES = {"drafted": "ready-for-dev", "contexted": "in-progress"}
 
-# Story status -> the BMAD action that advances it.
+# Story status -> the GDS/BMGD action that advances it.
 ACTION_FOR_STATUS = {
     "backlog": "create-story",
     "ready-for-dev": "dev-story",
@@ -92,7 +92,7 @@ def classify(entries):
 
 
 def pick_next(stories, retros):
-    """Mirror BMAD sprint-status next-action precedence. Stories are in file order."""
+    """Mirror GDS sprint-status next-action precedence. Stories are in file order."""
     for want in ("in-progress", "review", "ready-for-dev", "backlog"):
         for s in stories:
             if s["status"] == want:
@@ -136,7 +136,7 @@ def build_result(sprint_status_path, story_arg, impl_dir):
     if not os.path.isfile(sprint_status_path):
         result["error"] = f"sprint-status file not found: {sprint_status_path}"
         result["hard_stop"] = True
-        result["hard_stop_reason"] = "no sprint-status.yaml; run /bmad-sprint-planning first"
+        result["hard_stop_reason"] = "no sprint-status.yaml; run gds-sprint-planning first"
         return result
 
     with open(sprint_status_path, "r", encoding="utf-8") as fh:
@@ -146,7 +146,7 @@ def build_result(sprint_status_path, story_arg, impl_dir):
     if not entries:
         result["error"] = "no development_status entries found"
         result["hard_stop"] = True
-        result["hard_stop_reason"] = "empty/invalid sprint-status; run /bmad-sprint-planning"
+        result["hard_stop_reason"] = "empty/invalid sprint-status; run gds-sprint-planning"
         return result
 
     epics, stories, retros = classify(entries)
@@ -239,7 +239,7 @@ def _run_self_test():
     check("epic-1 status in-progress", auto["epic_status"] == "in-progress")
     check("epic-1 story count is 3", auto["epic_story_count"] == 3)
     check("retro status optional", auto["retrospective_status"] == "optional")
-    check("story_file joined", auto["story_file"] == "/impl/1-2-account-management.md")
+    check("story_file joined", auto["story_file"] == os.path.join("/impl", "1-2-account-management.md"))
 
     # Explicit backlog story -> create-story; is_last_in_epic for 1-3.
     ex = build_result(path, "1-3", "/impl")
@@ -272,7 +272,7 @@ def _run_self_test():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="auto-bmad sprint-status reader")
+    parser = argparse.ArgumentParser(description="auto-gds GDS sprint-status reader")
     parser.add_argument("--sprint-status", help="path to sprint-status.yaml")
     parser.add_argument("--story", help="explicit story id (N-N or N-N-slug)")
     parser.add_argument("--impl-dir", default="", help="implementation_artifacts dir (for absolute story_file)")

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""bmad_compat.py — assess BMAD-METHOD version changes against auto-bmad's surface.
+"""bmad_compat.py — assess BMAD-METHOD version changes against auto-gds's surface.
 
 The hard, error-prone part of "is the new BMAD release compatible?" is mechanical:
 work out which versions exist (stable vs prerelease), download the *published*
 packages, diff them, and decide which changed files actually touch the skills
-auto-bmad delegates to. This script does exactly that and emits structured JSON.
+auto-gds delegates to. This script does exactly that and emits structured JSON.
 The *judgement* — does a flagged change really break us, is a new skill worth
 adopting — is left to the caller (the SKILL.md reading this output), because that
 needs reading the real diff, not a heuristic.
@@ -43,30 +43,36 @@ REGISTRY = "https://registry.npmjs.org/bmad-method"
 ALLOWED_HOST_SUFFIX = ".npmjs.org"
 
 # Skills that don't just run in the pipeline but *own a durable contract*
-# auto-bmad reads or writes. A change here is the highest-signal kind: it can
+# auto-gds reads or writes. A change here is the highest-signal kind: it can
 # alter a file format the orchestrator parses, not just an internal step.
-CONTRACT_OWNERS = {
-    "bmad-sprint-planning": "sprint-status.yaml (status keys/shape)",
-    "bmad-sprint-status": "sprint-status.yaml (status keys/shape)",
-    "bmad-create-story": "story file (Status: field + section headings)",
-    "bmad-generate-project-context": "project-context.md (path + structure)",
-    "bmad-code-review": "### Review Findings + deferred-work ledger",
-    "bmad-retrospective": "retro notes consumed for project-context refresh",
+# The repo's references use the *installed* GDS names (gds-*); upstream package
+# directories have used the bmgd- prefix — keep both namings so a changed file
+# is recognized under either.
+_CONTRACT_OWNERS_BMGD = {
+    "bmgd-sprint-planning": "sprint-status.yaml (status keys/shape)",
+    "bmgd-sprint-status": "sprint-status.yaml (status keys/shape)",
+    "bmgd-create-story": "story file (Status: field + section headings)",
+    "bmgd-generate-project-context": "project-context.md (path + structure)",
+    "bmgd-code-review": "### Review Findings + deferred-work ledger",
+    "bmgd-retrospective": "retro notes consumed for project-context refresh",
 }
+CONTRACT_OWNERS = dict(_CONTRACT_OWNERS_BMGD)
+CONTRACT_OWNERS.update(
+    {"gds-" + k[len("bmgd-"):]: v for k, v in _CONTRACT_OWNERS_BMGD.items()}
+)
 
 # Fallback surface if the caller can't supply one from the repo. Kept small and
 # obviously-current; the real run derives the surface from references/ so this
 # never silently goes stale on its own.
 FALLBACK_SURFACE = sorted(set(CONTRACT_OWNERS) | {
-    "bmad-dev-story", "bmad-testarch-test-design", "bmad-testarch-atdd",
-    "bmad-testarch-automate", "bmad-testarch-trace", "bmad-testarch-nfr",
-    "bmad-testarch-test-review", "bmad-testarch-framework", "bmad-testarch-ci",
+    "bmgd-dev-story",
+    "gds-dev-story",
 })
 
 # Tokens the surface regex picks up that are not real skills.
-SURFACE_NOISE = {"bmad-output", "bmad-method", "bmad-testarch"}
+SURFACE_NOISE = {"bmad-output", "bmad-method", "gds-skills"}
 
-SKILL_SEG_RE = re.compile(r"^(?:bmad|gds)-[a-z0-9]+(?:-[a-z0-9]+)*$")
+SKILL_SEG_RE = re.compile(r"^(?:bmad|bmgd|gds)-[a-z0-9]+(?:-[a-z0-9]+)*$")
 SEMVER_RE = re.compile(r"\b(\d+)\.(\d+)\.(\d+)(?:-next\.(\d+))?\b")
 
 
@@ -86,27 +92,36 @@ def semver_key(version: str):
 
 
 def derive_surface(refs_text: str) -> list:
-    """Extract the set of BMAD skills auto-bmad delegates to by scanning its
+    """Extract the set of BMAD skills auto-gds delegates to by scanning its
     reference docs. Over-inclusion is safe (a flagged skill just gets read);
     omission is not, so we err toward catching everything that looks like a
-    skill id and only strip known non-skill tokens."""
-    found = set(re.findall(r"bmad-[a-z0-9]+(?:-[a-z0-9]+)*", refs_text))
+    skill id and only strip known non-skill tokens.
+
+    References use the installed GDS names (gds-*); each is also mirrored to
+    its bmgd-* spelling so package paths match under either upstream naming.
+    The lookbehind keeps embedded matches out — `agds-xhigh` is a delegate
+    profile, not the skill `gds-xhigh`."""
+    found = set(
+        re.findall(r"(?<![a-z-])(?:bmad|bmgd|gds)-[a-z0-9]+(?:-[a-z0-9]+)*", refs_text)
+    )
+    found |= {"bmgd-" + t[len("gds-"):] for t in found if t.startswith("gds-")}
     return sorted(t for t in found if t not in SURFACE_NOISE)
 
 
 def skill_name_of(path: str):
     """Return the skill-directory segment of a package path, or None.
-    e.g. src/bmm-skills/4-implementation/bmad-create-story/SKILL.md -> bmad-create-story."""
+    e.g. src/gds-skills/4-implementation/bmgd-create-story/SKILL.md -> bmgd-create-story.
+    Non-skill segments that merely look like one (e.g. gds-skills) are skipped."""
     for seg in path.split("/"):
-        if SKILL_SEG_RE.match(seg):
+        if SKILL_SEG_RE.match(seg) and seg not in SURFACE_NOISE:
             return seg
     return None
 
 
 def classify_path(path: str, surface) -> dict:
-    """Decide how much a changed file matters to auto-bmad.
+    """Decide how much a changed file matters to auto-gds.
 
-    high  — a skill auto-bmad delegates to changed (it runs this every story)
+    high  — a skill auto-gds delegates to changed (it runs this every story)
     low   — some other BMAD skill changed (not in the pipeline, but maybe a new
             capability worth a look)
     info  — a non-skill file (e.g. package.json) — version noise
@@ -115,16 +130,16 @@ def classify_path(path: str, surface) -> dict:
     surface = set(surface)
     if skill and skill in surface:
         entry = {"path": path, "skill": skill, "relevance": "high",
-                 "reason": "delegated skill — runs in the auto-bmad pipeline"}
+                 "reason": "delegated skill — runs in the auto-gds pipeline"}
         if skill in CONTRACT_OWNERS:
             entry["relevance"] = "critical"
             entry["owns_contract"] = CONTRACT_OWNERS[skill]
-            entry["reason"] = ("delegated skill that OWNS a contract auto-bmad "
+            entry["reason"] = ("delegated skill that OWNS a contract auto-gds "
                                "parses — read the diff for format changes")
         return entry
     if skill:
         return {"path": path, "skill": skill, "relevance": "low",
-                "reason": "BMAD skill not in auto-bmad's pipeline — possible new capability"}
+                "reason": "BMAD skill not in auto-gds's pipeline — possible new capability"}
     return {"path": path, "skill": None, "relevance": "info",
             "reason": "non-skill file"}
 
@@ -238,7 +253,7 @@ def _get(url: str, timeout: int = 30) -> bytes:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not (parsed.hostname or "").endswith(ALLOWED_HOST_SUFFIX):
         raise SystemExit(f"refusing to fetch non-npm URL: {url!r}")
-    req = urllib.request.Request(url, headers={"User-Agent": "auto-bmad-compat-check"})
+    req = urllib.request.Request(url, headers={"User-Agent": "auto-gds-compat-check"})
     # nosemgrep: dynamic-urllib-use-detected -- scheme+host pinned to https npm above
     with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
         return r.read()
@@ -440,23 +455,42 @@ def _self_test() -> int:
           semver_key("6.8.1-next.0") > semver_key("6.8.0"))
 
     # surface derivation strips noise, keeps real skills
-    surf = derive_surface("run /bmad-create-story and bmad-testarch-trace; _bmad-output/")
-    check("surface: keeps real skills", "bmad-create-story" in surf and "bmad-testarch-trace" in surf)
+    surf = derive_surface("run /bmgd-create-story and /bmgd-code-review; _bmad-output/")
+    check("surface: keeps real skills", "bmgd-create-story" in surf and "bmgd-code-review" in surf)
     check("surface: drops _bmad-output noise", "bmad-output" not in surf)
 
+    # installed gds-* names are caught and mirrored to the bmgd-* package naming
+    surf2 = derive_surface(
+        "delegate gds-create-story then gds-sprint-planning; profile agds-xhigh; "
+        "see .claude/skills/auto-gds-compat-check"
+    )
+    check("surface: keeps installed gds-* names",
+          "gds-create-story" in surf2 and "gds-sprint-planning" in surf2)
+    check("surface: mirrors gds-* to bmgd-*",
+          "bmgd-create-story" in surf2 and "bmgd-sprint-planning" in surf2)
+    check("surface: agds- profile names don't leak in as gds-*", "gds-xhigh" not in surf2)
+    check("surface: hyphen-embedded tokens don't leak in", "gds-compat-check" not in surf2)
+
     # skill-name extraction from realistic package paths
-    check("skill_name: bmm nested path",
-          skill_name_of("src/bmm-skills/4-implementation/bmad-create-story/SKILL.md") == "bmad-create-story")
+    check("skill_name: gds nested path",
+          skill_name_of("src/gds-skills/4-implementation/bmgd-create-story/SKILL.md") == "bmgd-create-story")
+    check("skill_name: gds-named skill dir",
+          skill_name_of("src/gds-skills/4-implementation/gds-create-story/SKILL.md") == "gds-create-story")
+    check("skill_name: gds-skills container dir is not a skill",
+          skill_name_of("src/gds-skills/index.md") is None)
     check("skill_name: core-skills path",
           skill_name_of("src/core-skills/bmad-party-mode/SKILL.md") == "bmad-party-mode")
     check("skill_name: non-skill path", skill_name_of("package.json") is None)
 
     # classification tiers
-    surface = ["bmad-create-story", "bmad-dev-story"]
-    c1 = classify_path("src/x/bmad-create-story/SKILL.md", surface)
+    surface = ["bmgd-create-story", "bmgd-dev-story"]
+    c1 = classify_path("src/x/bmgd-create-story/SKILL.md", surface)
     check("classify: contract owner -> critical", c1["relevance"] == "critical" and "owns_contract" in c1)
-    c2 = classify_path("src/x/bmad-dev-story/SKILL.md", surface)
+    c2 = classify_path("src/x/bmgd-dev-story/SKILL.md", surface)
     check("classify: delegated non-owner -> high", c2["relevance"] == "high")
+    c2g = classify_path("src/x/gds-create-story/SKILL.md", ["gds-create-story"])
+    check("classify: installed-name contract owner -> critical",
+          c2g["relevance"] == "critical" and "owns_contract" in c2g)
     c3 = classify_path("src/core-skills/bmad-party-mode/SKILL.md", surface)
     check("classify: off-pipeline skill -> low", c3["relevance"] == "low")
     c4 = classify_path("package.json", surface)
@@ -577,6 +611,12 @@ def main() -> int:
                 surface += derive_surface(fh.read())
         except OSError:
             pass
+    if args.refs and not surface:
+        print(
+            "warning: --refs yielded no skill tokens; falling back to the "
+            "built-in surface (it may be stale)",
+            file=sys.stderr,
+        )
     surface = sorted(set(surface)) or FALLBACK_SURFACE
 
     report = build_report(baseline, prev_prerelease, surface, args.max_diff_lines)

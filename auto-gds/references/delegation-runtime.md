@@ -4,13 +4,13 @@
 **how** to spawn it on the current host and degrade gracefully when the host can't do isolated,
 effort-tuned subagents.
 
-Two config fields (in `{output_folder}/auto-bmad/config.yaml`, see `state-and-resume.md`) drive
+Two config fields (in `<auto_gds_dir>/config.yaml`, see `state-and-resume.md`) drive
 everything:
 - `delegation.host` — `claude-code` | `codex` | `other`
 - `delegation.mode` — `custom-subagents` | `general-subagents` | `inline`
 
-`phase_profiles` (also in config) maps each phase to a profile name (`ab-xhigh`, `ab-high`,
-`ab-alt-xhigh`, `ab-alt-high`); `profiles` holds each profile's per-tool model + effort.
+`phase_profiles` (also in config) maps each phase to a profile name (`agds-xhigh`, `agds-high`,
+`agds-alt-xhigh`, `agds-alt-high`); `profiles` holds each profile's per-tool model + effort.
 
 ## Resolving host & mode (every run)
 
@@ -31,7 +31,7 @@ agent in memory and diffs it against the on-disk files:
 
 ```bash
 python3 ./scripts/render-agents.py --check --project-root "{project-root}" \
-  --tools "<comma-joined target_tools>" --profiles "{output_folder}/auto-bmad/config.yaml"
+  --tools "<comma-joined target_tools>" --profiles "<auto_gds_dir>/config.yaml"
 ```
 
 Read the JSON `needs_reprovision` (exit 1 ⇒ stale). When true, **auto-reprovision** — rerun the same
@@ -61,7 +61,7 @@ chat" starts a fresh *context* in the **same process** and does **not** re-scan 
 
 So `render-agents.py --check` reporting `fresh` proves the files are correct on disk — not that the
 current process can invoke them. The canonical symptom is the Agent/Task tool returning
-**`Agent type 'ab-…' not found`** though the file exists and is fresh. On a custom-subagents host,
+**`Agent type 'agds-…' not found`** though the file exists and is fresh. On a custom-subagents host,
 read that as **"restart needed," not "host lacks custom subagents":** stop and tell the user to quit
 & relaunch, then re-run — do **not** degrade to Tier 2, which would run the pipeline untuned when a
 restart restores full fidelity. (Only a host with no custom-subagent mechanism at all degrades — see
@@ -74,14 +74,14 @@ Full fidelity: the delegate runs in an isolated context at the profile's tuned m
 Look up the profile for the phase via `phase_profiles`, then:
 
 - **Claude Code:** delegate with the Agent/Task tool, `subagent_type` = the profile name
-  (`ab-xhigh` / `ab-high` / `ab-alt-xhigh` / `ab-alt-high`). These resolve to the project-level
+  (`agds-xhigh` / `agds-high` / `agds-alt-xhigh` / `agds-alt-high`). These resolve to the project-level
   `.claude/agents/<name>.md` rendered at setup. (No plugin namespace prefix — they are project
   agents now.) The agent body already carries the autonomy directive; the prompt is the
   `delegation.md` body with placeholders filled.
 - **Codex:** Codex spawns a subagent only when explicitly asked, and identifies it by its
   `name`. Phrase the delegation unambiguously, e.g.:
 
-  > Use the **ab-xhigh** agent to do the following, then report back its full structured result
+  > Use the **agds-xhigh** agent to do the following, then report back its full structured result
   > block (Outcome / Files changed / Status / Open questions / Deferred work / Blockers / Retro
   > notes):
   > <the delegation.md prompt body>
@@ -121,6 +121,6 @@ To keep the rest of the machinery intact:
 
 ## One rule that survives every tier
 
-The pipeline, phase conditions, TEA policy, git/PR conventions, resume logic, and the structured
+The pipeline, phase conditions, testing policy, git/PR conventions, resume logic, and the structured
 result contract are **identical across tiers**. Only the spawn mechanism changes. Never invent a
 delegation path not listed here; if the host fits none, use `inline`.

@@ -14,14 +14,14 @@ what is actually in the file, deterministically (no LLM re-read). It parses the
 
 The *rendering* of those bullets (a `[ ]`/`[x]` checkbox, ``**bold**``/``__emphasis__``
 around the tag, a trailing `[Med]` severity) is owned by the upstream
-``bmad-code-review`` skill and produced by a non-deterministic LLM, so the parser
+``gds-code-review`` skill and produced by a non-deterministic LLM, so the parser
 keys only on the semantic ``[Review][Type]`` tag and treats everything around it
 as optional. A finding with no checkbox counts as ``open`` (the safe default).
 
 It also reconciles the durable, cross-story deferral ledger
 (``{implementation_artifacts}/deferred-work.md``): the code-review step is
 supposed to append every ``[Review][Defer]`` finding there under a
-``## Deferred from: …`` heading, but auto-bmad's delegation prompt historically
+``## Deferred from: …`` heading, but auto-gds's delegation prompt historically
 emphasized only the story-file section, so that side-effect got dropped. With
 ``--deferred-work-file`` the gate confirms each defer finding in the story
 actually reached the ledger.
@@ -56,11 +56,11 @@ HEADING_RE = re.compile(r"^#{2,4}\s+review\s+findings\b", re.IGNORECASE)
 # Any ATX heading at level 1-4 — used to find where the section ends.
 ANY_HEADING_RE = re.compile(r"^#{1,4}\s+\S")
 # A triage bullet. The semantic signal is the `[Review][Type]` tag; the rendering
-# around it is owned by the upstream `bmad-code-review` skill and produced by a
+# around it is owned by the upstream `gds-code-review` skill and produced by a
 # non-deterministic LLM, so match flexibly. All of these count as one finding:
 #   - [ ] [Review][Patch] ...        (checkbox form)
 #   * [x] [Review][Defer] ...        (checked checkbox)
-#   - **[Review][Decision] [Med]** ..(bold prose, no checkbox — real BMAD output)
+#   - **[Review][Decision] [Med]** ..(bold prose, no checkbox — real GDS/BMGD output)
 #   - __[Review][Patch]__ ...        (underscore emphasis)
 # The checkbox is OPTIONAL: when absent the finding defaults to `open` (the safe
 # state — an unmarked finding is one still needing attention). Bold/emphasis
@@ -214,7 +214,7 @@ _WITH_FINDINGS = """\
 Not a finding: [Review][Patch] mentioned in prose should not count.
 """
 
-# Real `bmad-code-review` output: bold-prose bullets, no checkboxes, optional
+# Real `gds-code-review` output: bold-prose bullets, no checkboxes, optional
 # severity tag — plus one already-checked item and one underscore-emphasis item.
 # The gate must count all of these and default the un-checkboxed ones to `open`.
 _WITH_BOLD_FINDINGS = """\
@@ -277,7 +277,7 @@ def _run_self_test():
             failures.append(name)
 
     def write(text):
-        f = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False)
+        f = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
         f.write(text)
         f.close()
         return f.name
@@ -296,7 +296,7 @@ def _run_self_test():
     check("expect-min 4 ok", build_result(p1, 4)["reconciled"] is True)
     check("expect-min 5 shortfall", build_result(p1, 5)["reconciled"] is False)
 
-    # Bold-prose / no-checkbox rendering (real BMAD output) must count the same.
+    # Bold-prose / no-checkbox rendering (real GDS/BMGD output) must count the same.
     pb = write(_WITH_BOLD_FINDINGS)
     rb = build_result(pb, None)
     check("bold: section detected", rb["section_present"] is True)
@@ -358,7 +358,7 @@ def _run_self_test():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="auto-bmad review-findings reader")
+    parser = argparse.ArgumentParser(description="auto-gds review-findings reader")
     parser.add_argument("--story-file", help="path to the story markdown file")
     parser.add_argument(
         "--expect-min",

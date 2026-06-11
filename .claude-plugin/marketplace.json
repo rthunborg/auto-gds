@@ -1,27 +1,27 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "auto-bmad",
-  "description": "BMAD module that drives the full BMAD story workflow end-to-end, one story at a time, on Claude Code or Codex.",
+  "name": "auto-gds",
+  "description": "BMAD module that drives the GDS/BMGD story workflow end-to-end, one story at a time, on Claude Code or Codex.",
   "owner": {
     "name": "Stefano Ginella",
     "email": "stefano@stefanoginella.com"
   },
   "plugins": [
     {
-      "name": "auto-bmad",
+      "name": "auto-gds",
       "source": "./",
-      "description": "Drive the full BMAD story workflow (create-story -> dev-story -> code-review, plus risk-gated TEA + epic-boundary skills) for one story at a time: branch, commit per step, open a PR, and report. The orchestrator only delegates to model/effort-tuned subagents, with a graceful fallback to general subagents or inline execution on tools that lack them.",
+      "description": "Drive the GDS/BMGD story workflow (create-story -> dev-story -> code-review, plus project-context and retrospective work where applicable) for one story at a time: branch, commit per step, open a PR, and report. The orchestrator only delegates story work to model/effort-tuned subagents.",
       "version": "0.13.4",
       "author": {
         "name": "Stefano Ginella",
         "email": "stefano@stefanoginella.com"
       },
-      "homepage": "https://github.com/stefanoginella/auto-bmad",
-      "repository": "https://github.com/stefanoginella/auto-bmad",
+      "homepage": "https://github.com/stefanoginella/auto-gds",
+      "repository": "https://github.com/stefanoginella/auto-gds",
       "license": "MIT",
       "category": "development",
-      "keywords": ["bmad", "module", "orchestrator", "workflow", "automation", "stories", "tea", "codex"],
-      "skills": ["./auto-bmad"]
+      "keywords": ["bmad", "gds", "bmgd", "game-dev", "module", "orchestrator", "workflow", "automation", "stories", "codex"],
+      "skills": ["./auto-gds"]
     }
   ]
 }

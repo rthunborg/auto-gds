@@ -7,13 +7,13 @@ resumable and reviewable.
 ## Ownership
 
 This file is the single source for everything the orchestrator owns directly (does not delegate
-to an `ab-*` profile). The list — other docs link here by name instead of restating it:
+to an `agds-*` profile). The list — other docs link here by name instead of restating it:
 
 - git preflight, branching, every per-phase commit, push, PR open;
 - the Phase 9 **pre-push report write + commit** (`docs(story-{e}-{s}): pipeline report`) — the
   story-level report file is written and committed *before* push so it ships in the PR diff;
 - the **CI wait** + draft conversion (when `git.offer_merge` is on);
-- the Phase 9 **BMAD-level status flip** on a clean completion (story file `Status:` +
+- the Phase 9 **GDS/BMGD status flip** on a clean completion (story file `Status:` +
   `sprint-status.yaml` → `done`);
 - the Phase 9 **merge prompt + `gh pr merge` execution** (opt-in via `git.offer_merge`,
   default on, only on a clean completion);
@@ -52,17 +52,16 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
   every commit) and a **footer when relevant** — never subject-only. See "Message body & footer".
 - Scope is the story or epic: `story-{e}-{s}` or `epic-{e}`.
 - Type per phase (see `pipeline.md` for the exact strings):
-  - `chore` — pipeline start, review-passed checkpoint, Phase 9 finalize (mark done + BMAD status)
-  - `test` — TEA scaffolds/coverage, epic test design
-  - `docs` — story creation, epic-end docs (gate/context/retro), Phase 9 pipeline report
+  - `chore` — pipeline start, review-passed checkpoint, Phase 9 finalize (mark done + GDS status)
+  - `test` — reserved for future GDS testing integrations
+  - `docs` — story creation, epic-end docs (context/retro), Phase 9 pipeline report
   - `feat` — story implementation
   - `fix` — addressing code-review findings
 - **One commit per phase — the state update folds in.** A phase mutates the project artifacts
-  *and* the auto-bmad state file (`<output_folder>/auto-bmad/state/{key}.yaml`); stage **both
+  *and* the auto-gds state file (`<auto_gds_dir>/state/{key}.yaml`); stage **both
   together** and make a **single** commit. **Never** emit a standalone bookkeeping commit whose
   only change is the state file — no `chore(story-{e}-{s}): record Phase N in pipeline state`, no
-  `chore(...): update state/timestamps`. (Phase 7's trace commit in `pipeline.md` is the worked
-  example: "the trace matrix artifact … **plus the state update**" — one commit.)
+  `chore(...): update state/timestamps`.
 - **Recording each commit's own sha** can't happen inside that same commit (the sha doesn't exist
   yet), so do **not** chase it with a second commit: append the just-made phase commit's short sha
   to `commits[]` on the **next** phase's folded-in state write (Phase 9's finalize write closes out
@@ -81,16 +80,15 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
   - `feat` (dev-story): what was built + notable decisions/deviations + any deferred work.
   - `fix` (code review): the findings addressed this iteration, by severity, and the reviewer/iter;
     note anything deferred or dismissed.
-  - `test`: the scaffolds/coverage added (ATDD red, post-dev automation, epic test design).
-  - `docs`: which artifact and its scope (story context, project-context, epic gate/context/retro,
+  - `test`: future GDS testing artifacts, when an explicit future testing integration exists.
+  - `docs`: which artifact and its scope (story context, project-context, epic context/retro,
     pipeline report).
   - `chore` start: story title, epic, branch, and the delegation tier/profiles in use.
   - `chore` checkpoint (`code review passed`): reviewer/model, iteration, verdict, and that the pass
     had 0 non-deferred findings.
-  - `chore` finalize: clean-vs-caveated outcome, the BMAD-status flip, and PR URL / CI status /
-    gate decision.
+  - `chore` finalize: clean-vs-caveated outcome, the GDS/BMGD status flip, and PR URL / CI status.
 - **Footer — optional, only when relevant.** One blank line after the body, Conventional Commits
-  `token: value` form. auto-bmad emits one only when it holds the data — chiefly
+  `token: value` form. auto-gds emits one only when it holds the data — chiefly
   `BREAKING CHANGE: <what broke + how to migrate>` when a delegate reports an incompatible change
   (equivalently mark the type, e.g. `feat(story-1-2)!: …`). Don't invent footers the phase didn't
   produce.
@@ -108,25 +106,23 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
      last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High;
      **or** a post-halt re-review of external changes surfaced meaningful findings the user chose to
      **Ignore & continue**, or its Fix & re-review rounds hit the cap — see `pipeline.md` Phase 7 step 4);
-  3. `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the
-     trace skill — chose to ship despite the coverage gaps);
-  4. **CI is red or unknown** when the CI wait below resolves (a required check failed, or the wait
+  3. **CI is red or unknown** when the CI wait below resolves (a required check failed, or the wait
      cap was hit with checks still running) — see "CI wait" below. This condition can only be
      evaluated *after* the push, so if it fires the PR is **converted to draft after the fact**
      with `gh pr ready --undo <pr-number>` (the initial `gh pr create` is issued without
-     `--draft` for clauses 1–3 only).
+     `--draft` for clauses 1–2 only).
   **The negation of this same draft predicate is the "clean completion" test** that decides
-  whether Phase 9 also flips the BMAD-level story status (story file `Status:` + `sprint-status.yaml`)
+  whether Phase 9 also flips the GDS/BMGD story status (story file `Status:` + `sprint-status.yaml`)
   to `done` — non-draft ⇒ flip, draft ⇒ leave at `review` (see `pipeline.md` Phase 9). Keep the two
   coupled if you edit it.
 - Title: a conventional summary of the story, e.g. `feat(story-1-2): user authentication`.
 - Body must include:
   - one-paragraph summary of what the story delivered;
   - a link to the story file (`<impl>/{key}.md`);
-  - TEA outcomes / epic gate decision (if applicable);
+  - GDS testing outcomes (if a future explicit testing integration ran);
   - a `## Needs attention` checklist of open questions, deferred work, and human-action items
     (empty section omitted);
-  - a footer line: `🤖 Generated by auto-bmad`.
+  - a footer line: `Generated by auto-gds`.
 - Capture the returned PR URL into state (`pr_url`) for the **chat** report (chat-only artifact).
 - **CI link & wait:** if the repo has CI workflows (test existence with `find .github/workflows
   -name '*.yml' -o -name '*.yaml'` or `test -d`, never a bare `ls .github/workflows/*` glob —
@@ -149,14 +145,14 @@ state, the clean-vs-caveated decision; a round-trip to a delegate would only be 
     - `failed` — any required check is `failure`/`cancelled`/`timed_out`/`action_required`.
     - `timeout` — cap reached with checks still running.
     - `none` — no CI workflows or no checks reported.
-  - `failed` or `timeout` ⇒ draft-predicate clause 4 fires ⇒ convert PR to draft via
+  - `failed` or `timeout` ⇒ draft-predicate clause 3 fires ⇒ convert PR to draft via
     `gh pr ready --undo <pr-number>` and leave story at `review`.
-  - `passed` or `none` ⇒ clause 4 does not fire; the existing clauses 1–3 still decide draft vs
+  - `passed` or `none` ⇒ clause 3 does not fire; the existing clauses 1–2 still decide draft vs
     non-draft.
 
 ## Merging the PR (Phase 9, only when clean) — orchestrator
-auto-bmad never merges automatically. When the run is a **clean completion** (full draft
-predicate is false — clauses 1–4 above) AND `git.offer_merge` is `true` AND the run has no
+auto-gds never merges automatically. When the run is a **clean completion** (full draft
+predicate is false — clauses 1–3 above) AND `git.offer_merge` is `true` AND the run has no
 `skip merge-prompt` override, the orchestrator **asks** the user whether to merge before
 reporting. The merge is the user's call; the orchestrator just runs the chosen `gh` command on
 their behalf, then switches the working tree back to the base branch so the next run starts
@@ -164,7 +160,7 @@ clean.
 
 - **Prompt** (`AskUserQuestion`, 4 options, in this order — first is the default): **Merge commit
   (recommended)** / Rebase and merge / Squash and merge / Don't merge. Merge commit is the default
-  because it preserves every per-phase auto-bmad commit — the richest signal for an AI later
+  because it preserves every per-phase auto-gds commit — the richest signal for an AI later
   running `git log`/`blame`/`bisect` on the story. If a merge style is chosen, **ask a second
   question** — Delete branch? Yes / No.
 - **Execute** (only if the user picked a merge style):
@@ -174,7 +170,7 @@ clean.
   - On failure (branch protection, required reviews, conflict, CI required check missing, etc.):
     don't retry, don't error out — capture the `gh` stderr verbatim into the report under "Needs
     attention" ("PR merge failed: …; merge manually at `<pr_url>`") and leave the PR open. The
-    pipeline still ends `done` (the BMAD-status flip already happened); merging is a separate,
+    pipeline still ends `done` (the GDS/BMGD status flip already happened); merging is a separate,
     user-elected action and a failed attempt doesn't invalidate the completion.
 - **Record** in state: `pr_merged: true|false`, `merge_method: squash|merge|rebase|null`,
   `branch_deleted: true|false`. Surface the outcome in the **chat** report (it's a chat-only

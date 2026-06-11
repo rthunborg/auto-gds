@@ -1,3 +1,8 @@
+# --- Local install sandboxes: fresh-project simulations under sandbox/ ---
+# Each subfolder is its own git-init'ed throwaway project where BMAD + the
+# auto-gds custom module get installed for smoke testing. Never committed.
+sandbox/
+
 # --- Local BMAD test install (kept out of the published plugin repo) ---
 # This repo doubles as a dev sandbox: a full BMAD project is installed here so
 # the orchestrator can be tested end-to-end. None of it belongs in the plugin.
@@ -10,7 +15,7 @@ _bmad-output/
 .claude/*
 !.claude/skills/
 .claude/skills/*
-!.claude/skills/auto-bmad-compat-check/
+!.claude/skills/auto-gds-compat-check/
 # Generated tool-native delegate agents (rendered by scripts/render-agents.py).
 # .claude/* already covers .claude/agents/; .codex/ is the Codex equivalent.
 .codex/

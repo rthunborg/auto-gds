@@ -2,12 +2,13 @@
 
 The user can steer a single run by adding instructions to the invocation — natural language
 (primary) or flags. Examples:
-`/auto-bmad stop before code-review`, `/auto-bmad --story 1-3 skip git commits`,
-`/auto-bmad start at phase 5`, `/auto-bmad skip TEA, max 5 review iterations`,
-`/auto-bmad dry run`.
+`/auto-gds stop before code-review`, `/auto-gds --story 1-3 skip git commits`,
+`/auto-gds start at phase 5`, `/auto-gds skip testing, max 5 review iterations`,
+`/auto-gds dry run`.
 
 Parse the invocation text into the **normalized override set** below, **echo the interpretation
-back to the user before running**, and record it in state (`overrides:`) and the report.
+back to the user before running**, and record it in state (`overrides:`) and the report
+(`dry_run` excepted — a dry run writes no state).
 Overrides apply to **this run only** — never write them to `config.yaml`. `--story` is not an
 override; it is the existing target selector.
 
@@ -17,13 +18,13 @@ override; it is the existing target selector.
 |---|-------|----------------|
 | 0 | Preflight & triage | preflight, triage |
 | 1 | Branch | branch |
-| 2 | Epic start (epic test design) | epic-start, test-design |
+| 2 | Project context bootstrap | project-context, context |
 | 3 | Create story | create-story, story |
-| 4 | Pre-dev TEA (ATDD) | atdd |
+| 4 | GDS testing placeholder (disabled in V0) | testing, test-design |
 | 5 | Dev story | dev, dev-story, implement |
-| 6 | Post-dev TEA (automate) | automate |
+| 6 | GDS testing placeholder (disabled in V0) | testing, automate |
 | 7 | Code-review loop | code-review, review |
-| 8 | Epic end (gates / context / retro) | epic-end, gates, retro, retrospective |
+| 8 | Epic end (context / retro) | epic-end, context, retro, retrospective |
 | 9 | Finalize (push / PR / hand off) | finalize, pr |
 
 ## Normalized override set
@@ -32,13 +33,16 @@ override; it is the existing target selector.
   (below) and hard-stop if they're missing.
 - `stop_before: <phase>` / `stop_after: <phase>` — end the run at that boundary, then go straight
   to the report (Step 3).
-- `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `tea`,
+- `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `testing`,
   `code-review`, `retrospective`, `branch`, `merge-prompt`, `project-context-bootstrap`,
-  `trace-advisory`.
+  `testing-advisory`.
 - `max_review_iterations: <int>` — override `code_review.max_iterations` for this run.
 - `git_mode: local` — force local mode (no push/PR), regardless of detection.
 - `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded.
-- `dry_run: true` — resolve everything and print the plan; execute nothing.
+- `dry_run: true` — resolve everything **read-only** and print the plan (target story, phase
+  window, per-phase profiles); execute nothing — no branch, no commits, no PR, no delegate
+  spawns, no GDS skill runs, no state/config writes. If the runtime config is missing, plan
+  from the shipped defaults in memory instead of triggering the first-run flow.
 
 ## How each maps to the pipeline
 
@@ -51,19 +55,15 @@ override; it is the existing target selector.
   then the only resume record.
 - **skip pr** / **git_mode local:** Phase 9 pushes/opens nothing; the branch is left in place and
   noted in the report.
-- **skip tea:** treat `tea.enabled` as false for this run — skips Phases 4, 6, Phase 2's
-  *test-design sub-step*, and the epic-end TEA gates in Phase 8 (project-context + retrospective
-  still run; Phase 2's project-context-bootstrap sub-step is independent of TEA and still runs
-  when needed).
+- **skip testing:** no-op in V0 because GDS testing integration is already disabled by default.
+  Keep it for forward compatibility with future `gds-test-*` mappings.
 - **skip project-context-bootstrap:** suppress only Phase 2's project-context bootstrap sub-step,
   even when `needs_project_context_bootstrap` is true. Use sparingly — every create-story in the
   epic will then run without persistent_facts injection (see Phase 0 → "Project-context probe").
 - **skip code-review:** skip Phase 7 entirely. ⚠️ Quality gate removed — flag prominently.
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
-- **skip trace-advisory:** suppress only the Phase 7 tail per-story trace advisory for this run,
-  even when its conditions hold (high risk, long epic — see `tea-policy.md` §3). It is already
-  non-blocking, so this just removes the extra story-scope trace pass; the epic-end trace gate is
-  unaffected. (No effect unless the story would have triggered the advisory.)
+- **skip testing-advisory:** no-op in V0. Future versions may use it to suppress non-blocking
+  story-scope GDS test review, performance, or playtest advisories.
 - **skip branch:** stay on the current branch (do not create `story/...`). Only sensible with a
   clean intent like a dry run or when the user is already on the right branch; warn otherwise.
 - **skip merge-prompt:** Phase 9 still pushes and opens the PR, but does **not** wait for CI and

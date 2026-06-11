@@ -1,186 +1,145 @@
-# auto-bmad — hands-off BMAD stories, human-in-the-loop where it counts
+# auto-gds — Auto-GDS Orchestrator for BMGD/GDS
 
-[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.13.4-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Tested with BMAD 6.8.x](https://img.shields.io/badge/tested%20with%20BMAD-6.8.x-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Works best with: Claude Code | Codex](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-0.13.4-blue.svg)](./CHANGELOG.md)
+[![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD)
+[![Tested with BMAD 6.8.x](https://img.shields.io/badge/tested%20with%20BMAD-6.8.x-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD)
 
-A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code or Codex**, with **[human-in-the-loop checkpoints](#human-in-the-loop-stops)** at the decisions that matter.
+Auto-GDS is a fork/adaptation of `auto-bmad` for **BMad Game Dev Studio / BMGD** projects. It keeps
+the original orchestration model: one story at a time, an orchestrator that owns git/state/reports,
+and delegated subagents for story creation, implementation, and code review.
 
-`auto-bmad` chains the core BMM skills (`create-story` → `dev-story` → `code-review`) and the optional TEA (Test Architect) skills into a single resumable pipeline. It detects the next story from `sprint-status.yaml` (or takes one as an argument), runs every step in an isolated git branch with conventional-commit checkpoints, opens a PR, and finishes with a report of the PR link, open questions, deferred work, and anything that needs your attention — then stops so **you** decide when to start the next story.
+> **Compatibility:** tested against the **[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD)
+> v6 skill line**, currently up to **6.8.0** (and the **6.8.1-next.4** prerelease) with GDS v0.6.0 —
+> the check couples to those skills' contracts rather than a pinned version.
 
-The orchestrator **only delegates and reports.** Every BMAD step runs inside a sub-agent, with the model and thinking effort matched to the stakes of the step (e.g. Opus/max for high-stakes implementation, a faster model for low-stakes mechanics). On **Claude Code and Codex** those delegates are real, tuned subagents (`.claude/agents` / `.codex/agents`, generated from a configurable profiles block); on a tool with generic subagents it falls back to those (untuned), and on one with none it runs steps inline — same pipeline either way.
+Auto-GDS must be run inside a target game project that has:
 
-> Requires the BMAD skills it orchestrates (`bmm`, plus `tea` for the test phases) and a `_bmad/` config in your project — the installer below can add these in the same run. auto-bmad drives those skills; it does not replace them.
+```text
+_bmad/gds/config.yaml
+```
 
-> **Compatibility:** tested against the **[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) v6 skill line**, currently up to **6.8.0** (and the **6.8.1-next.4** prerelease).
+If that file is missing, run the BMAD installer with Game Dev Studio enabled first.
 
-> ⚠️ **It can't save you from bad inputs.** auto-bmad automates the *workflow*, not judgment — the quality of what comes out is capped by what goes in. Vague epics, thin acceptance criteria, or a shaky architecture produce vague, untrustworthy code, just faster and more confidently. The automated code-review loop and the human-in-the-loop stops below are guardrails, not guarantees; the real leverage is clear stories and a sound design *before* you press go. Garbage in, garbage out.
+## What It Does
+
+`/auto-gds` drives the next story from GDS `sprint-status.yaml`:
+
+- resolves `_bmad/gds/config.yaml`;
+- reads `planning_artifacts`, `implementation_artifacts`, `project_name`, `output_folder`, and
+  optional GDS keys such as `project_knowledge`, `primary_platform`, `game_dev_experience`,
+  `communication_language`, and `document_output_language`;
+- resumes any incomplete Auto-GDS state before starting new backlog work;
+- delegates the installed GDS skills `gds-create-story`, `gds-dev-story`, and `gds-code-review`;
+- refreshes `gds-generate-project-context` and runs `gds-retrospective` where applicable;
+- owns branch creation, commits, PR creation, state, reports, and final status updates.
+
+The orchestrator must not implement story code itself.
+
+## Runtime Files
+
+Runtime config/state/reports live in the **target game project**, not this module source repo:
+
+```text
+{output_folder}/auto-gds/
+```
+
+If `_bmad/gds/config.yaml` has no `output_folder`, Auto-GDS falls back to:
+
+```text
+{project-root}/_bmad-output/auto-gds/
+```
+
+Do not commit generated target-project runtime folders from this module repository.
+
+## Commands
+
+```text
+/auto-gds
+/auto-gds 1-3
+/auto-gds 1-3-user-auth
+/auto-gds status
+/auto-gds dry run
+/auto-gds stop before code-review
+/auto-gds --story 1-3 skip git commits
+/auto-gds reprovision
+/auto-gds reset-defaults
+```
+
+`/auto-gds status` prints a read-only health report (project detection, registration, config
+paths, installed GDS skills, sprint status, next eligible story). `/auto-gds dry run` resolves
+the full phase plan and stops. Neither creates branches, commits, PRs, or runs GDS production
+skills — both are safe for smoke testing.
+
+`/auto-gds reprovision` re-renders local delegate agents:
+
+```text
+.claude/agents/agds-*.md
+.codex/agents/agds-*.toml
+```
+
+Those files are local target-project artifacts and may be gitignored.
 
 ## Install
 
-auto-bmad is a BMAD module, so the official way to install it — for **any** supported tool, Claude Code included — is the **BMAD installer**. Requires **Node.js 20.12+** and Git.
-
-From your project directory, run the installer and add this repo as a custom source:
+Install as a custom-source BMAD module using this repository URL:
 
 ```bash
-npx bmad-method install
+npx bmad-method install --custom-source <your-auto-gds-repo-url>
 ```
 
-When the interactive flow asks **"Would you like to install from a custom source (Git URL or local path)?"**, choose **Yes** and enter:
+Select the GDS/BMGD production skills in the same install when needed. The installer records the
+module under `[modules.agds]` in `_bmad/config.toml` (team scope) and/or `_bmad/config.user.toml`
+(user scope), and writes the module's carry-forward config at `_bmad/agds/config.yaml`. Auto-GDS
+reads registration from those TOML files — it never uses `_bmad/config.yaml` — and keeps its own
+runtime config at `{output_folder}/auto-gds/config.yaml`. Then run:
 
 ```text
-https://github.com/stefanoginella/auto-bmad
+/auto-gds setup
 ```
-
-The installer reads this repo's `marketplace.json`, offers the `auto-bmad` module, and copies it into your tool's skills dir (`.claude/skills/` for Claude Code, `.agents/skills/` for Codex, …). In the same run, also select the official modules auto-bmad orchestrates if they aren't already installed — at least **bmm**, plus **tea** for the test-architecture phases.
-
-Non-interactive equivalent:
-
-```bash
-npx bmad-method install \
-  --directory . \
-  --modules bmm,tea \
-  --custom-source https://github.com/stefanoginella/auto-bmad \
-  --tools claude-code \
-  --yes
-```
-
-Use `--tools codex` for Codex (`npx bmad-method install --list-tools` lists every target). Re-run `npx bmad-method install` anytime to update.
-
-Then provision the delegate agents once with `/auto-bmad setup` — though auto-bmad also self-registers on the first normal `/auto-bmad` run if you skip it.
-
-<details>
-<summary>Claude Code–only alternative (plugin marketplace)</summary>
-
-If you exclusively use Claude Code, you can instead add this repo as a Claude plugin marketplace (you'll still need the `bmm`/`tea` BMAD skills installed separately via the installer above):
-
-```text
-/plugin marketplace add stefanoginella/auto-bmad
-/plugin install auto-bmad@auto-bmad
-```
-</details>
 
 ## Updating
 
-auto-bmad installs as a **custom-source** BMAD module, so an update has to re-supply its Git source. Re-run the installer in `update` mode pointing at this repo (requires Node.js 20.12+):
+Auto-GDS installs as a **custom-source** BMAD module, so an update has to re-supply its source.
+Re-run the installer in `update` mode pointing at this repo:
 
 ```bash
-npx bmad-method install \
-  --action update \
-  --custom-source https://github.com/stefanoginella/auto-bmad \
-  --yes
+npx bmad-method install --action update --custom-source <your-auto-gds-repo-url> --yes
 ```
 
-This re-clones the repo into BMAD's module cache and rewrites the install manifest with auto-bmad's source, so the update applies and future `bmad update` runs resolve it cleanly. To track development versions ahead of a tagged release, add the prerelease installer channel: `npx bmad-method@next install --action update --custom-source https://github.com/stefanoginella/auto-bmad --yes`.
+> ⚠️ **Don't update Auto-GDS with `--action quick-update`** (also the interactive default for an
+> existing install). quick-update only re-pulls modules whose source is already cached under
+> `~/.bmad/cache/` and skips custom-source re-cloning entirely — Auto-GDS is then **silently
+> skipped** and `bmad update` keeps warning `could not locate module.yaml for 'agds'`. Always
+> re-supply `--custom-source` as above.
 
-> ⚠️ **Don't update auto-bmad with `--action quick-update`** (which is also the interactive default for an existing install). quick-update only re-pulls modules whose source is already cached under `~/.bmad/cache/`, and it skips custom-source re-cloning entirely — so unless auto-bmad's repo is already cached from a prior `--custom-source` run, it is **silently skipped** and you keep seeing `[warn] … could not locate module.yaml for 'abm'` on the next `bmad update`. Always re-supply `--custom-source` as above (interactively: choose **"Modify BMAD Installation"** and re-enter the custom source — don't accept the quick-update default).
+Delegate agents re-render themselves after an update: the next `/auto-gds` run detects stale
+generated agents at preflight and reprovisions automatically. To refresh them yourself (e.g.
+right after editing `profiles`), run `/auto-gds reprovision`.
 
-> 💡 **Delegate agents re-render themselves after an update.** auto-bmad generates its tuned subagents from `profiles`/templates, so a module update (or a `profiles` edit) would otherwise leave the generated `.claude/agents` / `.codex/agents` stale. The next `/auto-bmad` run **detects this at preflight and reprovisions automatically**, noting it in the report — so you normally don't need to do anything. To refresh them yourself (e.g. right after editing `profiles`), run `/auto-bmad reprovision`. Nothing else needs reconfiguring — the running tool is auto-detected every run.
+## Testing Workflow Status
 
-If you installed via the Claude plugin marketplace (the alternative above) rather than the BMAD installer, update through Claude Code instead:
+GDS testing workflow integration is future work in V0. Auto-GDS does **not** require or call the old
+BMM Test Architect workflow by default.
 
-```text
-/plugin marketplace update auto-bmad
-/plugin install auto-bmad@auto-bmad
+Future mappings may include:
+
+- `gds-test-design`
+- `gds-test-automate`
+- `gds-test-review`
+- `gds-performance-test`
+- `gds-playtest-plan`
+- `gds-test-framework`
+- `gds-e2e-scaffold`
+
+## Development
+
+Run helper self-tests from the repository root:
+
+```bash
+python auto-gds/scripts/story_plan.py --self-test
+python auto-gds/scripts/state_plan.py --self-test
+python auto-gds/scripts/render-agents.py --self-test
+python auto-gds/scripts/config_plan.py --self-test
+python auto-gds/scripts/review_findings.py --self-test
 ```
-
-## Usage
-
-Run from the root of a BMAD-enabled project:
-
-```text
-/auto-bmad              # implement the next story from sprint-status.yaml
-/auto-bmad 1-3          # implement a specific story (epic 1, story 3)
-/auto-bmad 1-3-user-auth
-/auto-bmad stop before code-review        # steer a single run (see Overrides)
-/auto-bmad --story 1-3 skip git commits
-/auto-bmad reprovision                    # re-render delegate agents after editing profiles
-/auto-bmad reset-defaults                 # discard profile retunes, restore shipped defaults
-```
-
-> 💡 **Run it in an auto-approve / "YOLO" mode.** auto-bmad is built to run autonomously between the [human-in-the-loop stops](#human-in-the-loop-stops) below, so it works best when the host tool isn't prompting for permission on every tool call — Claude Code's `--dangerously-skip-permissions` (aka YOLO mode), or Codex's full-auto/auto-approve mode. Because that hands the agent broad access, run it inside a sandbox: see [aicontainer](https://github.com/stefanoginella/aicontainer) for a containerized environment that lets you skip permission prompts safely.
-
-- **First run in a project** asks a few one-time setup questions — confirms which AIs to provision delegate agents for (`target_tools`, re-detected from your installed skill dirs), then **Quick** (default: TEA on/off only, sensible defaults for the rest) or **Full** (also git mode/prefix + code-review iteration cap) — writes `_bmad-output/auto-bmad/config.yaml`, then **stops and asks you to start a fresh session** so the first story runs clean (configuration pollutes the context window).
-- **No-argument `/auto-bmad` resumes unfinished work first.** It picks up an interrupted auto-bmad pipeline if one exists, otherwise the next actionable story by status (`in-progress → review → ready-for-dev → backlog`) — it doesn't jump straight to a fresh backlog item. Pass a story id to target one explicitly.
-- **A clean run marks the story `done`** (story file + `sprint-status.yaml`) at the end, so the next `/auto-bmad` advances to the next story instead of re-picking the one just finished. On a clean completion auto-bmad **waits for in-progress CI** (cap `git.ci_wait_minutes`, default 30) and then **asks** whether to merge — **Merge commit (default)** / Rebase / Squash / Don't merge, plus a delete-branch sub-question. Merge commit is the default because auto-bmad's per-phase commits (initial dev, review fixes, the report commit) are the richest signal an AI later running `git log`/`blame`/`bisect` on the story can use to reconstruct what happened — squashing collapses that. It never merges silently; "Don't merge" leaves the PR open for you, same as before. The merge prompt is opt-out: set `git.offer_merge: false` or pass `skip merge-prompt` for a single run. A run that ends as a **draft** PR (unresolved review / waived gate / CI red or timed-out) or with a recorded blocker stays at `review` for you to finish — no merge prompt offered.
-- The pipeline is **resumable** — re-run `/auto-bmad` to continue from the last completed phase after an interruption.
-- **Code review starts on Opus** and alternates Opus/Sonnet across iterations. It **runs at least two review passes** — so the alternate model weighs in — **unless the first pass is perfectly clean** (0 non-deferred findings), which exits after a single pass. Otherwise it exits the loop once a pass found-and-fixed ≤3 non-deferred findings with no Critical/High remaining — re-reviewing up to the iteration cap (default 3). The loop **always ends by asking whether to continue**, suggesting you run an external review (a human, another model/AI) on the changes while the pipeline is paused; on continue it **re-reviews** anything you added — a fresh whole-story pass on the alternate model — and, if that surfaces meaningful findings (>3, or any Critical/High), re-asks whether to fix, fix-and-re-review, or ignore them. If the loop hit the cap still unconverged, the eventual PR opens as a **draft**.
-- A per-story **report log** is saved to `_bmad-output/auto-bmad/reports/<story>.md` — each run appends a timestamped section (never overwritten on resume). On a clean run the file is **committed before push so it ships in the PR diff**; it holds the story-level outputs (overrides, TEA outcomes, timing — total elapsed plus an AI-run vs human-wait split, open questions, deferred work, planning drift (epic-end), blockers, next-story preview). The PR / CI links, merge method, and the final status-flip are printed to chat only (already retrievable from GitHub and the BMAD status files, so the file never needs touching after the PR/CI/merge resolve) — but the one-line pipeline **disposition** (clean / caveated / draft + its summary reason) stays in the committed report.
-- It **stops and tells you** whenever something genuinely needs a human (missing planning docs, merge conflicts, missing credentials, etc.).
-
-## What it does per story
-
-| Phase | Step | Skill | When |
-|-------|------|-------|------|
-| 0 | Preflight, triage, first-run config | — | always |
-| 1 | Create `story/X-Y-slug` branch | — | always |
-| 2 | Bootstrap `project-context.md` (greenfield/brownfield onboarding) | `bmad-generate-project-context` | no `project-context.md` exists yet |
-| 2 | Epic-level test design | `bmad-testarch-test-design` | first story of epic, TEA on |
-| 3 | Create + self-validate story | `bmad-create-story` | always |
-| 4 | ATDD acceptance scaffolds | `bmad-testarch-atdd` | TEA on + risk-warranted |
-| 5 | Implement story | `bmad-dev-story` | always |
-| 6 | Expand automated coverage | `bmad-testarch-automate` | TEA on + risk-warranted |
-| 7 | Code review (Opus-first, alternating models, 1–3 iters; always halts for your go-ahead) | `bmad-code-review` | always |
-| 7 | Per-story trace advisory (after review; non-blocking — surfaces uncovered ACs early) | `bmad-testarch-trace` | TEA on + risk-warranted, *not* last story of epic, long epic (≥6 stories) |
-| 8 | Gates (asks if trace fails), project context, archive resolved deferred work, retrospective | `bmad-testarch-trace`/`nfr`/`test-review`, `bmad-generate-project-context`, `bmad-retrospective` | last story of epic |
-| 9 | Push, open PR, wait for CI, mark story `done` (clean run), **ask whether to merge** (clean run, opt-in), final report | — | always |
-
-Each phase ends with a conventional commit, so progress survives interruptions and is easy to review.
-
-## Human-in-the-loop stops
-
-auto-bmad runs autonomously between the points below — delegated sub-agents answer BMAD's interactive prompts with sensible defaults. It pauses for **you** only here:
-
-| Stop | When | What you decide / do |
-|------|------|----------------------|
-| **First-run setup** | First `/auto-bmad` in a project | One-time questions: confirm `target_tools`, choose **Quick** (TEA on/off + framework/CI scaffolding) or **Full** (also git + code-review prefs). Writes `config.yaml`, then stops — **start a new session and re-run `/auto-bmad`** so the first story runs on fresh context. |
-| **Module setup** | `/auto-bmad setup` (or module not yet registered) | Confirm or adjust which AIs to provision delegate agents for (defaults to the ones your BMAD install targets). |
-| **Code-review loop done** | Phase 7 — end of the review loop, **every run** | Choose: continue, or stop. While paused you're encouraged to run an external review (a human, another model/AI); on continue auto-bmad **re-reviews** any changes you added (alternate-model, whole-story) and, if they're meaningful, re-asks: fix, fix-and-re-review, or ignore (ignore ships the PR as a **draft**). If the loop hit the iteration cap still unconverged (>3 non-deferred findings, or a Critical/High remaining), the PR opens as a **draft**. |
-| **Epic trace gate failed** | Phase 8 — `bmad-testarch-trace` returns `FAIL` (requirements/ACs lack test coverage) | Choose: remediate & re-gate (auto-expand coverage, then re-run trace; capped, default 2), waive and continue (PR opened as a **draft** with the gaps noted), or stop. `CONCERNS` is advisory and doesn't pause. |
-| **Merge the PR?** | Phase 9 — clean completion only (no blocker, code review converged, gates passed, CI green), with `git.offer_merge: true` (default) | Choose: **Merge commit (default — preserves the per-phase auto-bmad commits for AI archaeology)** / **Rebase and merge** / **Squash and merge** / **Don't merge**. If you pick a merge style, a follow-up asks whether to **delete the branch**. auto-bmad runs the chosen `gh pr merge`; on failure (branch protection, required reviews, etc.) it surfaces the error and leaves the PR open. Opt out with `git.offer_merge: false` or `skip merge-prompt`. |
-| **Re-running a completed story** | You target an already-`done` story | Confirm before its report log is overwritten; otherwise it won't redo the story. |
-| **Blocker / needs-human** | Any phase | Hard-stop: a missing secret/credential, a required external service or manual step, a merge/rebase conflict, a dirty tree on the wrong branch, not a BMAD project, a missing required skill, or an ambiguous/not-found `--story`. It reports exactly what's needed and never pushes past it. |
-
-Use overrides (below) if you want to add your own stops — e.g. `stop before code-review`.
-
-## Overrides
-
-Steer a single run by adding instructions to the invocation (natural language or flags) — e.g. `stop before code-review`, `start at phase 5`, `skip git commits`, `skip TEA`, `skip merge-prompt`, `max 5 review iterations`, `git mode local`, `dry run`. The orchestrator echoes how it interpreted them and which phases will run before executing. See `references/overrides.md`.
-
-## Split a story across Claude Code and Codex
-
-The running tool is auto-detected every run and the pipeline is resumable, so you can hand a single story off between tools mid-pipeline — e.g. **implement in Claude Code, review in Codex** (or the reverse). There's no built-in per-phase tool switching; it's a manual workaround built from overrides: run part of the pipeline in one tool, stop at a phase boundary, then resume in the other.
-
-**Prerequisites:** install the `auto-bmad` skill in **both** tools and provision delegates for both — `delegation.target_tools` must list `claude-code` *and* `codex` (confirm at `/auto-bmad setup`). Keep git commits **on** (the default): the per-phase checkpoint commits and the shared `_bmad-output/auto-bmad/state/` file are exactly what let the other tool pick up where the first left off.
-
-Implement in Claude Code, review in Codex:
-
-```text
-# In Claude Code — runs phases 0–6 (create-story → dev-story), committing each phase
-/auto-bmad stop before code-review
-
-# In Codex, same project directory — resumes at phase 7 (code-review) through the PR
-/auto-bmad
-```
-
-Implement in Codex, review in Claude Code — same idea, tools swapped:
-
-```text
-# In Codex
-/auto-bmad stop before code-review
-
-# In Claude Code
-/auto-bmad                 # or, explicitly: /auto-bmad start at phase 7
-```
-
-A plain no-arg `/auto-bmad` resumes the interrupted pipeline at the next unfinished phase; `start at phase 7` is the explicit equivalent (it first validates the story is implemented). The same pattern works at any phase boundary — e.g. `stop after phase 5`, then resume — so you can route any slice of the pipeline to whichever tool you prefer for it.
-
-## Configuration
-
-`_bmad-output/auto-bmad/config.yaml` (created on first run) controls TEA on/off (including the non-blocking long-epic per-story trace advisory, `tea.story_trace_advisory` — toggle + `min_epic_stories` threshold), git mode (PR vs local-only), branch prefix, code-review iteration cap + model alternation, the per-phase profile mapping (`phase_profiles`), and the per-tool model + effort for each delegate (`profiles`). It also records `delegation.target_tools` — the tools agents are provisioned for. Setup **defaults this to whichever AIs your BMAD install already targets** (detected from where the skill is installed — `.claude/skills` for Claude Code, `.agents/skills` for Codex) and lets you confirm or adjust. **Provision more than one and the same project works in either** — the running tool is auto-detected each run, so you never reconfigure when you switch. After editing `profiles` (e.g. to set your Codex model names), run `/auto-bmad reprovision`; to undo your edits and restore the shipped defaults, run `/auto-bmad reset-defaults` (scope it to one profile, all profiles, or the phase mapping — your git/TEA/delegation settings are never touched). See `references/state-and-resume.md` for the full schema.
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) and our [Code of Conduct](./CODE_OF_CONDUCT.md).
-
-## License
-
-[MIT](./LICENSE) © 2026 Stefano Ginella

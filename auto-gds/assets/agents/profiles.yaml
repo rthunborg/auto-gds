@@ -1,0 +1,81 @@
+# Default delegate profiles for auto-gds.
+#
+# Each profile carries:
+#   * tool-neutral persona strings (description / role_blurb / status_example),
+#     used to render the SAME wording into both Claude and Codex agent files —
+#     this is where every per-profile difference lives, so Claude vs Codex
+#     output cannot drift;
+#   * per-tool model + effort, used to fill in the tool-native frontmatter.
+#
+# `scripts/render-agents.py` reads this file (or the `profiles:` block of the
+# runtime config) and writes the tool-native delegate definitions from ONE
+# shared body template per tool:
+#   - Claude Code -> .claude/agents/<name>.md    (frontmatter `model:` / `effort:`)
+#   - Codex       -> .codex/agents/<name>.toml   (`model` / `model_reasoning_effort`)
+#
+# To retune: copy this block into {output_folder}/auto-gds/config.yaml, edit it,
+# and run `/auto-gds reprovision`. Keep the BLOCK style shown here (two-space
+# nesting) — the renderer's dependency-free parser expects it.
+#
+# Codex reasoning effort (gpt-5.x) is one of: low | medium | high | xhigh — xhigh
+# is the ceiling (older GPT-5 also exposed minimal/none). Claude effort is one of:
+# low | medium | high | xhigh | max (set via the sub-agent `effort:` frontmatter).
+# Model names are environment-specific — retune above if your Codex install differs.
+profiles:
+  agds-xhigh:
+    description: "auto-gds delegate for the highest-stakes, deep-reasoning steps: implementing story code (`dev-story`), building the story context file (`create-story`), and primary adversarial code review. Invoked by the auto-gds orchestrator; not meant for direct use."
+    role_blurb: "the highest-stakes, deep-reasoning work: implementing story code (`dev-story`), building the comprehensive story context file (`create-story`), and running adversarial primary code review. Be exhaustive and skeptical — correctness matters more than speed: reason hard about edge cases, regressions, acceptance criteria, and game-specific platform constraints."
+    status_example: "for dev-story — any status/state the skill set (e.g. story moved to `review`) and test results; for create-story — the story key, path, and final status; for reviews — the verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low finding counts"
+    claude:
+      model: opus
+      effort: xhigh
+    codex:
+      model: gpt-5.5
+      reasoning_effort: xhigh
+
+  agds-high:
+    description: "auto-gds delegate for substantive, well-scoped steps: applying primary code-review fixes and building/refreshing `project-context.md`. Invoked by the auto-gds orchestrator; not meant for direct use."
+    role_blurb: "substantive, well-scoped work: applying the fixes from the primary adversarial code review (the findings are already identified — implement them faithfully and re-verify), plus building or refreshing `project-context.md`, the durable AI-rules doc every later story inherits. These are judgment-heavy — answer every interactive prompt yourself using the provided context and sensible judgment, and produce the complete output document."
+    status_example: "for code-review fixes — which findings were resolved and whether tests pass; for project-context — the file written/refreshed and the key facts captured"
+    claude:
+      model: opus
+      effort: high
+    codex:
+      model: gpt-5.5
+      reasoning_effort: high
+
+  agds-alt-xhigh:
+    description: "auto-gds delegate for the alternate-model secondary code-review iterations (for model diversity): a second, independent adversarial reviewer on the same diff, run at full reasoning depth. Invoked by the auto-gds orchestrator; not meant for direct use."
+    role_blurb: "the diversity-oriented adversarial work: running the alternate-model secondary code-review iterations that give the review loop model diversity. Be exhaustive and skeptical — you are a second, independent pair of eyes on the same diff, run at full reasoning depth precisely to catch what the primary reviewer's model missed."
+    status_example: "the verdict (Approve / Changes Requested / Blocked) and Critical/High/Med/Low finding counts"
+    claude:
+      model: sonnet
+      effort: xhigh
+    codex:
+      model: gpt-5.4
+      reasoning_effort: xhigh
+
+  agds-alt-high:
+    description: "auto-gds delegate for lighter-weight synthesis steps on a faster model, primarily the epic retrospective. Invoked by the auto-gds orchestrator; not meant for direct use."
+    role_blurb: "the lighter-weight synthesis work: distilling the epic retrospective from accumulated notes, story files, sprint status, and game-specific context."
+    status_example: "for the retrospective — key action items, planning drift, and any next-epic prep flagged"
+    claude:
+      model: sonnet
+      effort: high
+    codex:
+      model: gpt-5.4
+      reasoning_effort: high
+
+# Phase -> profile mapping. This is the SINGLE source of the phase->profile
+# binding: pipeline.md / delegation.md name these keys, never raw profile names.
+# `render-agents.py` only reads the `profiles:` block above and ignores this one
+# (its parser stops at the next top-level key), so editing here is renderer-safe.
+# Copied alongside `profiles` into config.yaml at first run; retune there.
+phase_profiles:
+  create_story: agds-xhigh
+  dev_story: agds-xhigh                          # highest-stakes coding step
+  code_review_review: agds-xhigh                 # primary reviewer (odd iterations)
+  code_review_review_secondary: agds-alt-xhigh   # even iterations, when code_review.alternate_models
+  code_review_fix: agds-high                     # apply already-identified findings (mechanical vs the hunt)
+  retrospective: agds-alt-high
+  project_context: agds-high                     # Phase 2 bootstrap + Phase 8 refresh

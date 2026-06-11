@@ -1,10 +1,14 @@
 # Delegation prompts
 
-**This file is the single source of truth for what each BMAD step runs** — its exact `/bmad-*`
-command, prompt body, and the placeholders below. One entry per step, named by its heading (e.g.
+**This file is the single source of truth for what each delegated GDS/BMGD step runs** — its exact
+installed GDS skill name, prompt body, and the placeholders below. One entry per step, named by its heading (e.g.
 `create-story`); `pipeline.md` references each by heading name and never repeats the command, so a
 command changes here and nowhere else. Git/PR steps are not delegated and have no entry here — the
 orchestrator runs them; see `git-and-pr.md`.
+
+Auto-GDS delegates to installed GDS skill names from `_bmad/_config/skill-manifest.csv`. For
+BMad 6.8.0 with GDS v0.6.0 these are `gds-*` names. If a future GDS release changes names,
+resolve exact names from the installed skill manifest rather than relying on documentation aliases.
 
 The orchestrator fills the placeholders and sends the result as the Agent prompt to the profile
 that `phase_profiles` assigns to the step's phase (see `pipeline.md` for the phase→profile-key
@@ -31,21 +35,23 @@ already carry the full form, so the short version is enough.
 - `{decisions}` — the human-chosen fix directions from Phase 7.
 - `<project_root>` — absolute cwd.
 - `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
+- `<auto_gds_dir>` — resolved Auto-GDS runtime directory (`{output_folder}/auto-gds`, or the
+  `_bmad-output/auto-gds` fallback when GDS config has no `output_folder`).
 - `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
 
 ---
 
 ### create-story
 ```
-Run `/bmad-create-story {e}-{s}` in <project_root>.
+Run `gds-create-story {e}-{s}` in <project_root>.
 Create the comprehensive story context file for story {e}-{s}.
 {retro_notes_hint}
 {deferred_work_hint}
 ```
 The orchestrator fills `{retro_notes_hint}` from on-disk state:
-- If `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` exists and is non-empty (earlier stories in
+- If `<auto_gds_dir>/retro-notes/epic-{e}.md` exists and is non-empty (earlier stories in
   this epic have landed signal): `BEFORE drafting the story context, ALSO read
-  _bmad-output/auto-bmad/retro-notes/epic-{e}.md and treat each '## Story <key>' section's bullets
+  <auto_gds_dir>/retro-notes/epic-{e}.md and treat each '## Story <key>' section's bullets
   as constraints surfaced by earlier stories in the same epic — epic-wide gotchas, schema
   inheritance, conventions ratified, things later stories MUST or MUST NOT do. Reflect any that
   apply to this story directly in the Story Context (constraints, persistent_facts, or test
@@ -70,8 +76,8 @@ Phase notes in the retro file use a `[Phase X — short-name]` prefix (e.g.
 lets later stories filter by phase if they need to.
 
 The orchestrator also fills `{deferred_work_hint}` from on-disk state. The ledger
-`<impl>/deferred-work.md` is BMAD's own code-review/quick-dev defer sink (append-only,
-project-wide, keyed by `## Deferred from: <source> (<date>)` headings) — no BMAD or TEA skill
+`<impl>/deferred-work.md` is the project-wide code-review defer sink (append-only,
+project-wide, keyed by `## Deferred from: <source> (<date>)` headings) — no GDS/BMGD skill
 reads it back, so create-story only sees it if we inject it here.
 - If `<impl>/deferred-work.md` exists and is non-empty: `ALSO read <impl>/deferred-work.md before
   drafting the story context. It is a project-wide ledger of work earlier stories consciously
@@ -84,7 +90,7 @@ reads it back, so create-story only sees it if we inject it here.
 
 ### dev-story
 ```
-Run `/bmad-dev-story <story_file>` in <project_root>.
+Run `gds-dev-story <story_file>` in <project_root>.
 Implement the story to completion: all tasks/subtasks done, tests written and passing, story
 moved to `review`. Do not commit or branch — the orchestrator handles git.
 When done, report a short summary of what you built plus any deviations, key decisions, and
@@ -95,7 +101,7 @@ body (and a `BREAKING CHANGE:` footer).
 
 ### code-review
 ```
-Run `/bmad-code-review` in <project_root>, reviewing story {key}, current branch's diff against 
+Run `gds-code-review` in <project_root>, reviewing story {key}, current branch's diff against 
 the base branch (excluding `_bmad`, `_bmad-output`, cache files and folders, and obvious non-code 
 files), with <story_file> as the spec/story file. 
 
@@ -113,7 +119,7 @@ Critical/High/Med/Low counts; the count of open `[Review][Decision]` items (a hu
 
 ### code-review fix
 ```
-Run `/bmad-dev-story <story_file>` in <project_root>, focused ONLY on the open code-review
+Run `gds-dev-story <story_file>` in <project_root>, focused ONLY on the open code-review
 findings under the story's `### Review Findings` section: resolve every unresolved `[Review][Patch]`
 item, plus each `[Review][Decision]` item for which a human-chosen fix direction is listed below.
 Implement each in the stated direction and mark it resolved in place (tick its `[ ]` checkbox if it
@@ -125,74 +131,31 @@ Resolved decisions (implement exactly these): {decisions}
 (The orchestrator fills `{decisions}` from the Phase 7 AskUserQuestion answers, or omits the line
 when there are none.)
 
-### testarch-test-design (epic level)
-```
-Run `/bmad-testarch-test-design` in <project_root>. Choose EPIC-LEVEL mode for epic {e}
-(epic + its stories). Produce the epic test plan / risk matrix.
-```
+### GDS testing workflow (disabled in V0)
 
-### testarch-atdd
-```
-Run `/bmad-testarch-atdd` in <project_root> for story file <story_file>.
-Generate the red-phase acceptance test scaffolds + checklist for this story.
-```
-
-### testarch-automate
-```
-Run `/bmad-testarch-automate` in <project_root> for story file <story_file>.
-Expand automated test coverage for the code implemented in this story.
-```
-(Phase 8 trace-gate remediation reuses this skill at **epic scope**: pass epic {e} instead of a
-single story file and target the specific coverage gaps the trace gate reported.)
-
-### testarch-trace (epic gate)
-```
-Run `/bmad-testarch-trace` in <project_root> for epic {e}. Build the traceability matrix and
-produce the quality-gate decision. Report the gate verdict (PASS/CONCERNS/FAIL/WAIVED) + rationale.
-If the verdict is not PASS, also list the specific requirements / acceptance criteria left
-uncovered, so the orchestrator can summarize them for the human and target remediation.
-```
-
-### testarch-trace (story advisory)
-```
-Run `/bmad-testarch-trace` in <project_root> for story file <story_file> — STORY SCOPE: trace
-ONLY this story's acceptance criteria, not the whole epic. Build the story-level traceability
-matrix (each AC -> its covering test(s)) and report the verdict (PASS/CONCERNS/FAIL) plus the
-specific ACs left uncovered. This is an ADVISORY pass: its job is to surface coverage gaps early
-so they are visible at review time — do NOT block, remediate, or open a gate; just report.
-```
-(Same skill as the epic gate, narrowed to one story and stripped of gate semantics. The blocking
-quality gate stays at epic end — see `tea-policy.md` → "Long-epic trace advisory".)
-
-### testarch-nfr (epic gate)
-```
-Run `/bmad-testarch-nfr` in <project_root> for epic {e}. Audit NFR evidence
-(performance/security/reliability/maintainability) for the work completed in this epic.
-```
-
-### testarch-test-review (epic gate)
-```
-Run `/bmad-testarch-test-review` in <project_root> with suite scope (the tests added across
-epic {e}). Report quality findings + score.
-```
+There are no runnable testing delegate entries in Auto-GDS V0. Do not call the old BMM Test
+Architect commands from the default pipeline. Future GDS testing integration may add dedicated entries for
+`gds-test-design`, `gds-test-automate`, `gds-test-review`, `gds-performance-test`, and
+`gds-playtest-plan`, plus framework/scaffold support through `gds-test-framework` and
+`gds-e2e-scaffold`.
 
 ### generate-project-context
 ```
-Run `/bmad-generate-project-context` in <project_root>. {bootstrap_intent}
+Run `gds-generate-project-context` in <project_root>. {bootstrap_intent}
 Use sensible defaults for any prompt.
 ```
 The orchestrator fills `{bootstrap_intent}` from the calling phase:
 - Phase 2 bootstrap (no `project-context.md` exists yet): `Create project context for the first time`
 - Phase 8 refresh (epic-end, file already exists): `Update project-context.md to reflect the
   current stack, patterns, and conventions after epic {e}. BEFORE rewriting, read the accumulated
-  retro notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md (and scan <impl>/deferred-work.md
+  retro notes at <auto_gds_dir>/retro-notes/epic-{e}.md (and scan <impl>/deferred-work.md
   for any DURABLE constraint).`
 
 ### retrospective
 ```
-Run `/bmad-retrospective` in <project_root> for epic {e}.
+Run `gds-retrospective` in <project_root> for epic {e}.
 You are the sole facilitator AND participant — answer all party-mode questions yourself using
-the accumulated notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md plus the story files and
+the accumulated notes at <auto_gds_dir>/retro-notes/epic-{e}.md plus the story files and
 sprint-status. Produce the full retrospective document and mark the epic retrospective `done`.
 In the structured result, add a `Planning drift` line: if the retro surfaced planning assumptions
 the epic proved wrong (PRD / architecture / epic scope that no longer matches what was actually

@@ -4,7 +4,7 @@ name: release
 # `scripts/bump-version.py` + `git push --follow-tags`) creates the GitHub
 # Release from that version's CHANGELOG.md section.
 #
-# auto-bmad is a BMAD module distributed by git tag (the installer's upgrade
+# auto-gds is a BMAD module distributed by git tag (the installer's upgrade
 # detection) and the Claude plugin marketplace manifest — there is NO npm/GHCR
 # artifact to build or publish. So this workflow only mints the Release (notes +
 # a Releases page). The tag itself is what consumers actually pull.
@@ -51,11 +51,11 @@ jobs:
           fail=0
           grep -qE "\"version\": \"${esc}\"" .claude-plugin/marketplace.json \
             || { echo "marketplace.json version != $ver"; fail=1; }
-          grep -qE "^module_version: ${esc}$" auto-bmad/assets/module.yaml \
+          grep -qE "^module_version: ${esc}$" auto-gds/assets/module.yaml \
             || { echo "module.yaml module_version != $ver"; fail=1; }
           grep -qE "badge/version-${esc}-blue" README.md \
             || { echo "README version badge != $ver"; fail=1; }
-          grep -qE "profiles_source_version: \"${esc}\"" auto-bmad/references/state-and-resume.md \
+          grep -qE "profiles_source_version: \"${esc}\"" auto-gds/references/state-and-resume.md \
             || { echo "state-and-resume.md profiles_source_version != $ver"; fail=1; }
           [ "$fail" = 0 ] \
             || { echo "tag v$ver disagrees with the version files; use scripts/bump-version.py"; exit 1; }

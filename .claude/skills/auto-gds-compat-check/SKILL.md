@@ -1,29 +1,29 @@
 ---
-name: auto-bmad-compat-check
-# Maintainer/utility skill: user-invocable only (run /auto-bmad-compat-check);
+name: auto-gds-compat-check
+# Maintainer/utility skill: user-invocable only (run /auto-gds-compat-check);
 # never auto-triggered by the model, so it can't fire mid-pipeline.
 disable-model-invocation: true
 description: >
-  Maintainer tool for the auto-bmad repo itself (run it with
-  /auto-bmad-compat-check) — not for end-user BMAD projects. Checks whether new
+  Maintainer tool for the auto-gds repo itself (run it with
+  /auto-gds-compat-check) — not for end-user BMAD projects. Checks whether new
   BMAD-METHOD releases (the npm `latest` stable and `next` prerelease) are
-  compatible with auto-bmad: reports what changed since the last verified
+  compatible with auto-gds: reports what changed since the last verified
   version (diffing the published packages and cross-referencing the BMAD repo's
-  release notes and post-stable commits), whether it impacts auto-bmad's
+  release notes and post-stable commits), whether it impacts auto-gds's
   delegated-skill pipeline, and which new skills/features are worth adopting —
   then offers to update the README/CHANGELOG compatibility markers.
 ---
 
 # BMAD compatibility check
 
-auto-bmad is an orchestrator layered on top of BMAD-METHOD's skills. When BMAD
+auto-gds is an orchestrator layered on top of BMAD-METHOD's skills. When BMAD
 ships a new version, the only questions that matter are: **did anything we
 delegate to or parse change, and is there a new capability we should wire in?**
 This skill answers both, grounded in the *published* npm package (what users
 actually install) rather than guesswork.
 
-Run it from the **root of the auto-bmad repo** (it reads the repo to find both
-the baseline versions and the set of skills auto-bmad depends on).
+Run it from the **root of the auto-gds repo** (it reads the repo to find both
+the baseline versions and the set of skills auto-gds depends on).
 
 It checks **incrementally**: each line is diffed only from where you last left
 off — last-checked stable → current stable, and last-checked prerelease →
@@ -37,22 +37,22 @@ time. There is no separate state file to drift.
 
 A dependency-free helper does the mechanical, error-prone part — resolving
 versions, downloading and diffing the published tarballs, and classifying every
-changed file against auto-bmad's surface. Your job is the judgement it can't do:
+changed file against auto-gds's surface. Your job is the judgement it can't do:
 reading the flagged diffs, cross-checking the repo's release notes and
 post-stable commits (Step 3), and deciding whether a change *actually* affects us.
 
 ### Step 1 — run the helper
 
 ```bash
-python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py \
-  --report --readme README.md --refs auto-bmad/references/*.md \
+python3 .claude/skills/auto-gds-compat-check/scripts/bmad_compat.py \
+  --report --readme README.md --refs auto-gds/references/*.md \
   > /tmp/bmad-compat.json
 ```
 
 - **Baseline** = the last-checked versions (stable *and* prerelease), parsed from
   the README compat blockquote — the exact pair we last signed off on.
-- **Surface** = the BMAD skills auto-bmad delegates to, derived live from
-  `auto-bmad/references/*.md` so it never goes stale as the pipeline evolves.
+- **Surface** = the BMAD skills auto-gds delegates to, derived live from
+  `auto-gds/references/*.md` so it never goes stale as the pipeline evolves.
 - The script fetches the npm `latest` (stable) and `next` (prerelease) versions
   and diffs **incrementally**, each line anchored at the highest version you've
   already checked below it:
@@ -80,13 +80,13 @@ network is unavailable it exits with a clear error — say so and stop.
 
 ### Step 2 — read the classification
 
-Each changed file is tagged by how much it can affect auto-bmad:
+Each changed file is tagged by how much it can affect auto-gds:
 
 | Relevance | Meaning | What you do |
 |-----------|---------|-------------|
-| **critical** | A delegated skill that *owns a contract auto-bmad parses* changed (e.g. `bmad-create-story` → story `Status:` field; `bmad-sprint-*` → `sprint-status.yaml`; `bmad-generate-project-context` → `project-context.md`; `bmad-code-review` → `### Review Findings`). | **Read the diff.** Decide if the file *format/structure* auto-bmad reads actually changed. Cross-check the parser it would break: `scripts/story_plan.py`, `review_findings.py`, `state_plan.py`. |
-| **high** | A delegated skill changed, but not one that owns a parsed contract (e.g. `bmad-dev-story`, the `bmad-testarch-*` family). | Skim the diff for changed invocation flags/modes or removed capabilities auto-bmad's delegation prompts assume (`references/delegation.md`). |
-| **low** | A BMAD skill auto-bmad does **not** use changed, or a brand-new skill appeared. | Not a compatibility risk. Assess only as a *new-capability* opportunity (Step 4). |
+| **critical** | A delegated skill that *owns a contract auto-gds parses* changed (e.g. `bmgd-create-story` -> story `Status:` field; `bmgd-sprint-*` -> `sprint-status.yaml`; `bmgd-generate-project-context` -> `project-context.md`; `bmgd-code-review` -> `### Review Findings`). | **Read the diff.** Decide if the file *format/structure* auto-gds reads actually changed. Cross-check the parser it would break: `scripts/story_plan.py`, `review_findings.py`, `state_plan.py`. |
+| **high** | A delegated skill changed, but not one that owns a parsed contract (e.g. `bmgd-dev-story`). | Skim the diff for changed invocation flags/modes or removed capabilities auto-gds's delegation prompts assume (`references/delegation.md`). |
+| **low** | A BMAD skill auto-gds does **not** use changed, or a brand-new skill appeared. | Not a compatibility risk. Assess only as a *new-capability* opportunity (Step 4). |
 | **info** | Non-skill file (e.g. `package.json`). | Version noise — ignore. |
 
 Remember the package excludes `docs/` and tests, so a docs-only BMAD release
@@ -135,9 +135,9 @@ tarball-only verdict** — this step sharpens judgement, it isn't a gate.
 
 For every entry in each comparison's `new_skills` (and any `low`/off-pipeline
 change that looks like a genuinely new capability), ask concretely: **which
-auto-bmad phase could use this?** Map it to the pipeline (README "What it does
-per story" table) — e.g. a new test-architecture skill might slot into the
-TEA-gated phases; a new review layer might strengthen Phase 7. Recommend only
+auto-gds phase could use this?** Map it to the pipeline
+(`auto-gds/references/pipeline.md`) — e.g. a new GDS testing skill might inform the future testing
+placeholders; a new review layer might strengthen Phase 7. Recommend only
 where there's a real fit; say "nothing actionable" when there isn't. Don't
 invent uses.
 
@@ -149,7 +149,7 @@ Produce this exact template in chat:
 # BMAD compatibility check — <YYYY-MM-DD>
 
 ## Versions
-- Last checked (auto-bmad): <baseline stable> + <prev_prerelease, or "no prerelease recorded">
+- Last checked (auto-gds): <baseline stable> + <prev_prerelease, or "no prerelease recorded">
 - Current stable (npm `latest`): <stable, or "unchanged since last check">
 - Current prerelease (npm `next`): <prerelease, "unchanged since last check", or "none ahead of stable">
 
@@ -162,16 +162,16 @@ off-pipeline churn, say so plainly. If `comparisons` is empty (verdict
 `up-to-date`), say plainly that nothing is new on either line since the last
 check — that is the whole point of the incremental check.>
 
-## Impact on auto-bmad
+## Impact on auto-gds
 - **Verdict:** none / low / needs-attention / breaking
 - <specifics, citing the file + what you concluded from its diff. If a
   contract-owner changed, state explicitly whether the parsed format moved.>
 - <repo cross-check (Step 3): any maintainer-flagged breaking change or
   deprecation, and any `tools/` installer change — note whether it touches
-  auto-bmad's delegation or the README "Updating" guidance.>
+  auto-gds's delegation or the README "Updating" guidance.>
 
 ## New skills/features worth considering
-- <skill → concrete auto-bmad phase it could improve, or "nothing actionable">
+- <skill → concrete auto-gds phase it could improve, or "nothing actionable">
 
 ## Recommendation
 - <e.g. "Safe to advance the markers to <stable> + <prerelease>", "Already
@@ -201,7 +201,7 @@ contract), **offer** to update the compatibility markers — never write silentl
    compatible, nothing changed" check — including a benign prerelease-marker
    advance — needs no changelog entry.
 
-Note for the user: `scripts/bump-version.py` rewrites auto-bmad's *own* version
+Note for the user: `scripts/bump-version.py` rewrites auto-gds's *own* version
 badge but **not** these BMAD-compat markers, so they're hand-maintained — which
 is exactly what this skill automates.
 
@@ -221,6 +221,6 @@ is exactly what this skill automates.
   *installer* behavior change (those live in `tools/`, not the skill payload) —
   which is exactly why Step 3 reads the release notes and post-stable commits.
   Weigh any installer finding against the install/update notes in `CLAUDE.md`.
-- `python3 .claude/skills/auto-bmad-compat-check/scripts/bmad_compat.py --self-test`
+- `python3 .claude/skills/auto-gds-compat-check/scripts/bmad_compat.py --self-test`
   validates the classification logic offline — run it if you change the script.
 ```

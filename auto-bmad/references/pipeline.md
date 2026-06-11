@@ -285,11 +285,11 @@ For iteration `i` (1-based):
    `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
    --max-iterations {cap} --lenses-failed {failed-layer count from step 1b} --lenses-total {3×R}`
    (add `--convergence-unverified true` when state already
-   holds the sticky flag) and **OBEY its `action`, `hitl`, and `convergence_unverified`**: `continue`
+   holds the sticky flag) and **OBEY its `action` and `convergence_unverified`**: `continue`
    → run iteration `i+1` (same roster); `exit-clean`/`exit-unconverged` → exit the loop,
    persist `convergence_unverified` to state (`true` ⇒ Phase 9 ships a **draft** — `git-and-pr.md`
-   draft predicate), and enter step 4 with `hitl` (`halt` → the ask runs; `skip-halt` → step 4's
-   skip gate fires); `needs-human` → stop and report `needs-human` ("code review incomplete — 0/M
+   draft predicate), and enter step 4 (whose skip gate reads that same flag);
+   `needs-human` → stop and report `needs-human` ("code review incomplete — 0/M
    lenses produced findings"), keeping `<review_tmp>` for debugging. Carry the gate's `reason` (it
    includes any "incomplete review (only N/M lenses ran)" caveat) into the report and the step-4
    halt summary. **The normative contract is `review_loop.py`** — its docstring carries the
@@ -297,17 +297,17 @@ For iteration `i` (1-based):
    only (`M` = `--lenses-total`). On any discrepancy the script's JSON wins — obey it, never
    re-derive from this table:
 
-   | # | i | lenses-failed | findings | cap (i==max)? | action | convergence_unverified | hitl |
-   |---|---|---|---|---|---|---|---|
-   | 1 | any | M (all) | — | — | needs-human ("0/M lenses produced findings") | input value (unchanged) | null |
-   | 2 | 1 | 0 | clean | — | exit-clean (only first-pass early exit) | false (or input true) | skip-halt (halt if sticky true) |
-   | 3 | 1 | 0 | not clean | no | continue (second opinion mandatory — a Low-only first pass included) | false/input | null |
-   | 4 | 1 | 1..M-1 | any (even 0 findings — untrustworthy) | no | continue | false/input | null |
-   | 5 | 1 | any<M | any | yes (max==1) | → rows 6/7/9 (the capped first pass follows the final-iteration rules — converged + all lenses exits clean) | per row | per row |
-   | 6 | ≥2 | 0 | converged | — | exit-clean | false/input | skip-halt (halt if sticky true) |
-   | 7 | ≥2 | 1..M-1 | converged | — | exit-unconverged (reason notes "incomplete review N/M lenses") | true | halt |
-   | 8 | ≥2 | <M | not converged | no | continue | false/input | null |
-   | 9 | ≥2 | <M | not converged | yes | exit-unconverged | true | halt |
+   | # | i | lenses-failed | findings | cap (i==max)? | action | convergence_unverified |
+   |---|---|---|---|---|---|---|
+   | 1 | any | M (all) | — | — | needs-human ("0/M lenses produced findings") | input value (unchanged) |
+   | 2 | 1 | 0 | clean | — | exit-clean (only first-pass early exit) | false (or input true) |
+   | 3 | 1 | 0 | not clean | no | continue (second opinion mandatory — a Low-only first pass included) | false/input |
+   | 4 | 1 | 1..M-1 | any (even 0 findings — untrustworthy) | no | continue | false/input |
+   | 5 | 1 | any<M | any | yes (max==1) | → rows 6/7/9 (the capped first pass follows the final-iteration rules — converged + all lenses exits clean) | per row |
+   | 6 | ≥2 | 0 | converged | — | exit-clean | false/input |
+   | 7 | ≥2 | 1..M-1 | converged | — | exit-unconverged (reason notes "incomplete review N/M lenses") | true |
+   | 8 | ≥2 | <M | not converged | no | continue | false/input |
+   | 9 | ≥2 | <M | not converged | yes | exit-unconverged | true |
 
    On any exit, set `code_review_loop_done: true`, then go to step 4.
 4. **HITL halt — ASK the user on every loop exit, except a clean convergence (always skipped).**

@@ -117,8 +117,13 @@ claude/codex; for **opencode** append it as the **final positional `argv` elemen
 does NOT read stdin). Run in the **same repo dir** (`cwd`) — no HOME/Docker isolation; the child
 edits the real working tree you then commit. codex (`-C <cwd>`) and opencode (`--dir <cwd>`) pin
 their working root in the argv; the **claude** argv has no equivalent, so a `claude` route MUST
-`cd "$cwd"` before the call. A routed step can outlive the 10-min foreground cap (`dev_story`) —
-run it in the **background**, stdout redirected to `capture_log`, and monitor to process exit.
+`cd "$cwd"` before the call. **Every routed invocation runs in the background — never foreground:**
+host shell tools cap foreground commands far below real delegate runtimes (Claude Code: 2-min
+default, 10-min max; a routed step — `dev_story`, a review lens — routinely needs 20+ min). Launch
+it detached, stdout redirected to `capture_log`, and monitor to process exit; if the background
+mechanism still takes a timeout knob, set it to **at least 30 minutes**. Long runtimes are normal —
+declare a delegate wedged (a failed delegation: hard-stop) only after `capture_log` has been silent
+for that same allowance with the process still alive.
 Then read `result_source`: claude → parse `result_field` (`.result`) from the JSON envelope,
 `error_field` (`.is_error`) true = failed delegation; codex → read the `-o` last-message file
 verbatim; opencode → pass `capture_log` (the `--format json` event stream) through
@@ -138,9 +143,15 @@ cloud login — an unauthenticated `opencode run` on a cloud/Zen model **blocks 
 sure opencode is logged in before routing to it. Routing a reviewer-slot phase
 (`code_review_review`, `code_review_review_secondary`, `code_review_review_tertiary`) sends **that
 reviewer's three lens delegates** through the CLI — plus, for `code_review_review` only, the
-**triage** (it always runs at the primary profile) — one invocation each, still sequential — with a
+**triage** (it always runs at the primary profile) — one invocation each, with a
 distinct `--label` per delegate (e.g. `blind-hunter-primary`, `edge-case-secondary`, `triage`) so
-`capture_log` / `-o` paths don't collide. Routing a slot whose `phase_profiles` value is blank is a
+`capture_log` / `-o` paths don't collide. **Launch the lens invocations in parallel** — across
+CLI-routed reviewers too — as concurrent background processes (the spawn rule above), and wait for
+all of them to exit before the triage, which consumes their outputs. This holds on **every** host:
+CLI delegates are plain OS child processes, not in-tool subagents, so the in-tool fan-out caveats
+(Codex's no-fan-out rule, opencode's unverified parallel fan-out) don't apply; and the lenses only
+write their own reserved lens-output files, never the tree, so concurrent runs can't collide.
+Routing a slot whose `phase_profiles` value is blank is a
 config error (`cli_delegate.py` reports "no phase_profiles mapping").
 
 ## Tier 1 — `custom-subagents` (Claude Code, Codex & opencode)

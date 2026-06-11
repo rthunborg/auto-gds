@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CLI-routed review lenses now run in parallel on every host.** A routed reviewer slot's three
+  lens invocations launch as concurrent background processes (across routed reviewers too); the
+  triage still waits for all of them. (delegation-runtime.md, pipeline.md)
+
+### Fixed
+
+- **CLI-routed delegates no longer time out mid-run.** Every `cli_phases` invocation now runs in
+  the background with a ≥30-minute allowance — host foreground shell caps (2–10 min on Claude
+  Code) are far below real delegate runtimes. (delegation-runtime.md)
+
 ## [0.19.0] - 2026-06-11
 
 ### Added

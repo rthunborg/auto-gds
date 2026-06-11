@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verdict and auto-continues; an unconverged one re-opens the halt. Also offered at the
   post-external-review re-ask, where it acts as the in-pipeline fix loop. (pipeline.md,
   state-and-resume.md)
+- **The Phase 7 re-ask can now ship the PR as ready instead of draft.** A "Continue (ship as
+  ready)" option continues with the findings open like "Continue (ship as draft)", but sets the
+  `no_pr_draft` override so Phase 9 opens a non-draft PR; the run stays caveated. (pipeline.md,
+  overrides.md)
 
 ### Changed
 

@@ -370,7 +370,7 @@ For iteration `i` (1-based):
      - **Meaningful → re-ask ONCE.** Commit the persisted findings
        `chore(story-{e}-{s}): re-review external changes`, then **ask again** (`AskUserQuestion`),
        summarizing the new findings (verdict + `Critical N / High N / Medium N / Low N` + the
-       non-deferred count). Three options — there is no inline fix loop here, but the loop itself
+       non-deferred count). Four options — there is no inline fix loop here, but the loop itself
        can be re-entered:
        - **Run another review iteration** *(recommended for fixing in-pipeline)* — the same
          extension as the option above: re-enter the loop one (final) iteration. Its fix step
@@ -381,6 +381,11 @@ For iteration `i` (1-based):
          `<story_file>`, surface in the report + PR `Needs attention` checklist, and set
          `convergence_unverified: true` so Phase 9 ships a **draft**. Any changes made during this
          second pause are committed (git-only) but NOT re-reviewed.
+       - **Continue (ship as ready)** — identical to **Continue (ship as draft)** — findings stay
+         open, surface in the report + PR checklist, `convergence_unverified: true` — but
+         additionally set `no_pr_draft: true` in this run's `overrides` (state + report), so
+         Phase 9 opens the PR **non-draft** anyway (`--no-pr-draft` flips only `draft`; the run
+         stays caveated and the story stays at `review` — `git-and-pr.md`).
        - **Stop now** *(recommended for fixing outside the pipeline)* — as the **Stop the pipeline now** option below;
          report the open findings as `needs-human`. To get fixes re-reviewed, address the findings
          and re-run `/auto-bmad`: the resume re-opens this halt and its change check runs the

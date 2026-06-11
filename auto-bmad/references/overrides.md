@@ -36,7 +36,8 @@ override; it is the existing target selector.
   `trace-advisory`.
 - `max_review_iterations: <int>` — override `code_review.max_iterations` for this run.
 - `git_mode: local` — force local mode (no push/PR), regardless of detection.
-- `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded.
+- `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded. (Also set
+  mid-run by the Phase 7 re-ask's **Continue (ship as ready)** option — see `pipeline.md`.)
 - `dry_run: true` — resolve everything and print the plan; execute nothing.
 
 ## How each maps to the pipeline

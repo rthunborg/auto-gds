@@ -22,6 +22,14 @@
 # and run `/auto-bmad reprovision`. Keep the BLOCK style shown here (two-space
 # nesting) — the renderer's dependency-free parser expects it.
 #
+# You may also ADD custom profiles to that config copy (e.g. `ab-ultradeep`):
+# same field set as the shipped ones, and the name MUST start with `ab-` (the
+# renderer skips other names — only ab-* agent files are tracked for freshness/
+# cleanup). Point phase_profiles entries at the new name and run
+# `/auto-bmad reprovision`. Note: `/auto-bmad reset-defaults` with a whole-block
+# scope prunes custom profiles (they're not in this asset); a single-profile
+# scope leaves them intact.
+#
 # Codex reasoning effort (gpt-5.x) is one of: low | medium | high | xhigh — xhigh
 # is the ceiling (older GPT-5 also exposed minimal/none). Claude effort is one of:
 # low | medium | high | xhigh | max (set via the sub-agent `effort:` frontmatter).

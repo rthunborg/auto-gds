@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Custom delegate profiles.** Add your own `ab-*` profile to the config's `profiles` block (same
+  field set as the shipped ones), map phases to it, and `/auto-bmad reprovision` renders it for
+  every target tool. A whole-block `reset-defaults` still prunes custom profiles (confirmed first);
+  a scoped reset leaves them intact.
+
+### Changed
+
+- **Generic-subagent and CLI-routed delegates now take their persona from your config.** Tier 2 and
+  `cli_phases` prompts substitute `role_blurb`/`status_example` from the runtime config's `profiles`
+  block (where retunes and custom profiles live), falling back to the shipped asset only when the
+  config lacks the strings. (delegation-runtime.md)
+
 ## [0.18.0] - 2026-06-11
 
 ### Added

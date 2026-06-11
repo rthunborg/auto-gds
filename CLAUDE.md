@@ -86,7 +86,10 @@ schema, first-run).
   - `overrides.md` — invocation-override vocabulary.
 - `auto-bmad/assets/agents/profiles.yaml` — the single per-profile source (model/effort + persona
   strings). `claude/agent.md.tmpl` + `codex/agent.toml.tmpl` — one shared body template per tool the
-  renderer fills in, so the four `ab-*` personas can't drift between tools.
+  renderer fills in, so the `ab-*` personas can't drift between tools. The renderer renders **every**
+  `ab-*` profile in its source — the shipped four plus any user-added custom profiles in the runtime
+  config (non-`ab-` names are skipped with a warning; custom profiles are first-class in
+  config_plan.py too: the heal ignores them, a whole-block reset prunes them).
 - `auto-bmad/assets/config-defaults.yaml` — the source of truth for the **constant-default
   setup-block** keys (`delegation`/`tea`/`git`/`code_review`) that the Phase 0 drift heal appends to
   an existing `config.yaml` (those blocks are otherwise setup answers with no asset). Deliberately

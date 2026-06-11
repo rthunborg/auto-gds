@@ -8,8 +8,10 @@
 - `delegation.cli_phases` — opt-in per-phase override routing a phase to an external CLI instead of
   an in-tool sub-agent (absent/empty ⇒ none; see "Per-phase external-CLI routing" below).
 
-`phase_profiles` (also in config) maps each phase to a profile name (`ab-deep`, `ab-standard`,
-`ab-alt-deep`, `ab-alt-standard`); `profiles` holds each profile's per-tool model + effort.
+`phase_profiles` (also in config) maps each phase to a profile name — one of the shipped four
+(`ab-deep`, `ab-standard`, `ab-alt-deep`, `ab-alt-standard`) or a custom `ab-*` profile the user
+added to the config's `profiles` block (see `state-and-resume.md`); `profiles` holds each
+profile's per-tool model + effort.
 
 ## Resolving host & mode (every run)
 
@@ -103,8 +105,10 @@ routed phases + resolved tool/model/effort in the Phase 0 preflight and final re
 **Build the prompt exactly as Tier 2 does** (a CLI invocation has no pre-rendered agent persona):
 the shared autonomy directive from `delegation.md` **plus** the "How you operate / What you return"
 body from `assets/agents/claude/agent.md.tmpl`, with the mapped profile's `role_blurb` /
-`status_example` substituted, **plus** the `delegation.md` step body with placeholders filled
-(story id, absolute paths).
+`status_example` substituted **from the runtime config's `profiles` block** (the live source —
+it carries persona retunes and custom profiles the shipped asset doesn't; fall back to
+`assets/agents/profiles.yaml` only if the config lacks the strings), **plus** the `delegation.md`
+step body with placeholders filled (story id, absolute paths).
 
 **Spawn it in-place and capture:** deliver the prompt per `prompt_via` — pipe to **stdin** for
 claude/codex; for **opencode** append it as the **final positional `argv` element** (`opencode run`
@@ -175,7 +179,9 @@ The host has isolated subagents/Task delegation but **no per-agent model/effort 
 host's generic subagent with the prompt body; because there's no baked-in agent persona, **prepend
 the operating guidance inline**: the shared autonomy directive from `delegation.md` **plus** the
 "How you operate / What you return" guidance from `assets/agents/claude/agent.md.tmpl`, with the
-mapped profile's `role_blurb` and `status_example` substituted from `assets/agents/profiles.yaml`.
+mapped profile's `role_blurb` and `status_example` substituted from the runtime config's
+`profiles` block (the live source — it carries persona retunes and custom profiles; fall back to
+`assets/agents/profiles.yaml` only if the config lacks the strings).
 Effort is not honored — record `delegation.mode: general-subagents` in the run report (steps ran
 untuned).
 

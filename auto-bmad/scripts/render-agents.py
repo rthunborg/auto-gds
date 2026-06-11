@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Render auto-bmad's tool-native delegate agents from a profiles definition.
 
-The auto-bmad orchestrator delegates each pipeline step to one of four profiles
-(``ab-deep``, ``ab-standard``, ``ab-alt-deep``, ``ab-alt-standard``). Each profile carries both
-tool-neutral persona strings (``description`` / ``role_blurb`` /
+The auto-bmad orchestrator delegates each pipeline step to a profile — one of the
+four shipped (``ab-deep``, ``ab-standard``, ``ab-alt-deep``, ``ab-alt-standard``) or a
+CUSTOM profile the user added to the runtime config's ``profiles:`` block (same
+field set; the name MUST start with ``ab-`` — see "custom profiles" below). Each
+profile carries both tool-neutral persona strings (``description`` / ``role_blurb`` /
 ``status_example``) and per-tool model + thinking/reasoning effort. This script
-fills ONE shared body template per tool with those values, so the four profiles
+fills ONE shared body template per tool with those values, so all profiles
 share a single body and the same persona strings appear in both Claude and Codex
 output (no Claude-vs-Codex drift):
 
@@ -43,6 +45,15 @@ it uses the same inputs as a real render (current profiles + current templates +
 drift source: a module update that changed the templates, an edited ``profiles``
 block, an added/removed ``target_tool``, or a hand-mangled generated file.
 
+Custom profiles: the renderer renders EVERY profile found in the source, not just
+the shipped four — so a user can add e.g. ``ab-ultradeep`` to the config's
+``profiles:`` block, map phases to it in ``phase_profiles``, and ``reprovision``.
+Two rules keep that safe: a custom name must start with ``ab-`` (the ``--check``
+extra-file scan, the docs' cleanup rules, and the gitignore guidance all track
+``ab-*`` agent files only — a non-conforming name is skipped with a warning), and
+a shipped profile missing from the source still warns (the default
+``phase_profiles`` mapping depends on all four).
+
 Output: a single JSON object on stdout.
 """
 from __future__ import annotations
@@ -54,7 +65,15 @@ import sys
 import tempfile
 from pathlib import Path
 
+# The SHIPPED profile set (what the default phase_profiles mapping names). The renderer
+# renders every `ab-*` profile in the source — shipped AND user-added custom — but a
+# shipped name missing from the source is worth a warning, so the set stays pinned here.
 PROFILE_NAMES = ("ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard")
+
+# Custom profile names must carry this prefix: --check's extra-file scan (and every doc
+# that talks about cleaning up generated agents) tracks `ab-*` files only, so an agent
+# file rendered under any other name would linger untracked once its profile is removed.
+PROFILE_PREFIX = "ab-"
 
 # tool -> (one shared body template, output dir + suffix, tool-specific placeholders)
 TOOLS = {
@@ -208,11 +227,14 @@ def _plan(
 ) -> tuple[list[tuple[Path, str]], list[str]]:
     """Render every requested profile×tool in memory (no writes).
 
-    Each tool has ONE shared body template; the four profile outputs are
-    produced by substituting per-profile metadata + per-tool model/effort into
-    that same template. This is the single source of truth shared by
-    ``render`` (which writes) and ``check`` (which diffs), so the two can
-    never disagree about what the agent files *should* contain.
+    Each tool has ONE shared body template; each profile's output is produced by
+    substituting its per-profile metadata + per-tool model/effort into that same
+    template. EVERY ``ab-*`` profile in the source is rendered — the shipped four
+    plus any user-added custom profiles (a non-``ab-`` name is skipped with a
+    warning; a shipped name absent from the source warns too). This is the single
+    source of truth shared by ``render`` (which writes) and ``check`` (which
+    diffs), so the two can never disagree about what the agent files *should*
+    contain.
     """
     outputs: list[tuple[Path, str]] = []
     warnings: list[str] = []
@@ -227,9 +249,19 @@ def _plan(
         tmpl_content = tmpl_path.read_text(encoding="utf-8")
 
         for name in PROFILE_NAMES:
-            prof = profiles.get(name)
-            if not prof:
+            if not profiles.get(name):
                 warnings.append(f"profile '{name}' missing from profiles source — skipped for {tool}")
+
+        for name, prof in profiles.items():
+            if not name.startswith(PROFILE_PREFIX):
+                warnings.append(
+                    f"profile '{name}' skipped for {tool}: custom profile names must start with "
+                    f"'{PROFILE_PREFIX}' (only ab-* agent files are tracked by --check / cleanup)"
+                )
+                continue
+            if not prof:
+                if name not in PROFILE_NAMES:  # an empty SHIPPED block already warned above
+                    warnings.append(f"profile '{name}' is empty — skipped for {tool}")
                 continue
             tool_cfg = prof.get(spec["cfg_key"])
             if not tool_cfg:
@@ -538,6 +570,55 @@ def _run_self_test() -> int:
         chk_extra = check(profiles, ["claude-code"], templates_dir, root)
         assert chk_extra["status"] == "fresh", chk_extra
         assert any(p.endswith("ab-deep.toml") for p in chk_extra["extra"]), chk_extra
+
+        # ------------------------------------------------------------------ #
+        # Custom profiles: every ab-* profile in the source renders, not just  #
+        # the shipped four.                                                    #
+        # ------------------------------------------------------------------ #
+        custom = json.loads(json.dumps(profiles))
+        custom["ab-ultradeep"] = {
+            "description": "my custom ultra-deep delegate",
+            "role_blurb": "the truly hard problems",
+            "status_example": "what the skill reported",
+            "claude": {"model": "opus", "effort": "max"},
+            "codex": {"model": "gpt-x", "reasoning_effort": "xhigh"},
+            "opencode": {"model": "", "variant": ""},
+        }
+        with tempfile.TemporaryDirectory() as tdc:
+            rootc = Path(tdc)
+            rc = render(custom, ["claude-code", "codex", "opencode"], templates_dir, rootc)
+            assert not rc["warnings"], rc["warnings"]
+            assert len(rc["files_written"]) == 15, rc["files_written"]  # 5 profiles x 3 tools
+            cu = (rootc / ".claude/agents/ab-ultradeep.md").read_text(encoding="utf-8")
+            assert "model: opus" in cu and "effort: max" in cu, cu[:200]
+            assert "truly hard problems" in cu and "@@" not in cu, cu[:400]
+            assert (rootc / ".codex/agents/ab-ultradeep.toml").is_file(), "custom codex agent not rendered"
+            assert (rootc / ".opencode/agent/ab-ultradeep.md").is_file(), "custom opencode agent not rendered"
+            # Fresh right after the render; removing the custom profile from the source
+            # leaves its files flagged 'extra' (informational), like a dropped tool.
+            chk_c = check(custom, ["claude-code", "codex", "opencode"], templates_dir, rootc)
+            assert chk_c["status"] == "fresh" and len(chk_c["ok"]) == 15, chk_c
+            chk_drop = check(profiles, ["claude-code", "codex", "opencode"], templates_dir, rootc)
+            assert chk_drop["status"] == "fresh", chk_drop
+            assert sum(1 for p in chk_drop["extra"] if "ab-ultradeep" in p) == 3, chk_drop["extra"]
+
+        # A custom name without the ab- prefix is skipped with a warning, never rendered.
+        bad = json.loads(json.dumps(profiles))
+        bad["my-deep"] = bad["ab-deep"]
+        with tempfile.TemporaryDirectory() as tdb:
+            rb = render(bad, ["claude-code"], templates_dir, Path(tdb))
+            assert any("my-deep" in w and "must start with 'ab-'" in w for w in rb["warnings"]), rb["warnings"]
+            assert not (Path(tdb) / ".claude/agents/my-deep.md").exists(), "non-ab- profile must not render"
+            assert (Path(tdb) / ".claude/agents/ab-deep.md").exists(), "shipped profiles must still render"
+
+        # A shipped profile missing from the source still warns (the default
+        # phase_profiles mapping depends on it) while the rest render.
+        partial = json.loads(json.dumps(profiles))
+        del partial["ab-alt-standard"]
+        with tempfile.TemporaryDirectory() as tdm:
+            rmis = render(partial, ["claude-code"], templates_dir, Path(tdm))
+            assert any("ab-alt-standard" in w and "missing" in w for w in rmis["warnings"]), rmis["warnings"]
+            assert len(rmis["files_written"]) == 3, rmis["files_written"]
 
         # dry-run writes nothing new.
         with tempfile.TemporaryDirectory() as td2:

@@ -928,6 +928,29 @@ def _run_self_test() -> int:
     assert not info_fresh["manual_review"], info_fresh["manual_review"]
     assert info_fresh["version"]["drift"] is False, info_fresh["version"]
 
+    # --- custom profiles are first-class: a config that ADDS an ab-* profile (and remaps a
+    # phase to it) must read fully fresh — no drift nag on any run — and the additive heal
+    # must pass both the profile and the remapped phase through untouched. (Reset semantics
+    # for customs — whole-block prunes, scoped keeps — are pinned further down.) ---
+    custom_block = (
+        '  ab-ultradeep:\n'
+        '    description: "mine"\n'
+        '    role_blurb: "the truly hard problems"\n'
+        '    status_example: "ok"\n'
+        '    claude:\n      model: opus\n      effort: max\n'
+        '    codex:\n      model: gpt-x\n      reasoning_effort: xhigh\n'
+        '    opencode:\n      model: ""\n      variant: ""\n'
+    )
+    cfg_custom = fresh_from_asset.replace("\nprofiles:\n", "\nprofiles:\n" + custom_block, 1)
+    cfg_custom = cfg_custom.replace("  dev_story: ab-deep", "  dev_story: ab-ultradeep", 1)
+    assert "ab-ultradeep" in cfg_custom and "dev_story: ab-ultradeep" in cfg_custom, "fixture: custom profile not injected"
+    info_cust = analyze(cfg_custom, asset_text, "0.9.0", "0.9.0")
+    assert not info_cust["needs_reseed"], _public(info_cust)
+    assert not info_cust["manual_review"], f"a custom profile must never be flagged: {info_cust['manual_review']}"
+    res_cust = apply(cfg_custom, asset_text, "0.9.0", "0.9.0")
+    assert "ab-ultradeep" in res_cust["new_text"], "heal dropped the custom profile"
+    assert "dev_story: ab-ultradeep" in res_cust["new_text"], "heal reverted the custom phase mapping"
+
     # --- manual_review: an existing profile missing a sub-key the asset has. ---
     # Drop ONLY ab-deep's claude.effort from an otherwise-complete config.
     cfg_subkey = fresh_from_asset.replace(

@@ -109,6 +109,9 @@ module is ready to run immediately after setup.
    so opencode delegates inherit the user's opencode default model and run out of the box — but for
    per-phase model tiering and cross-vendor review diversity (e.g. point `ab-alt-*` at a different
    provider), the user sets `opencode.model` per profile. Mention this as optional, not required.
+   The user can also **add custom profiles** to the config's `profiles` block (same field set;
+   the name must start with `ab-`) and map phases to them — `reprovision` renders every `ab-*`
+   profile it finds. Also optional; don't volunteer it beyond this.
 
 **Reprovision-only path:** if the user invoked with `reprovision` (or asked only to regenerate
 agents after editing profiles), skip config collection entirely and run just step 3 above,

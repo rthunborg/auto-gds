@@ -44,13 +44,17 @@ code_review:
 profiles: {…}              # ab-deep | ab-standard | ab-alt-deep | ab-alt-standard, each:
                            #   {claude: {model, effort}, codex: {model, reasoning_effort},
                            #    opencode: {model, variant}} — opencode is model-only + ships model
-                           #   BLANK (inherit your opencode default); variant is cli_phases-only
+                           #   BLANK (inherit your opencode default); variant is cli_phases-only.
+                           #   CUSTOM profiles may be ADDED here (same field set incl. the persona
+                           #   strings; name MUST start with `ab-`) — reprovision renders every
+                           #   ab-* profile it finds; a whole-block reset-defaults prunes them
 phase_profiles: {…}        # create_story, dev_story, code_review_review, code_review_review_secondary,
                            #   code_review_review_tertiary (the two extra reviewer slots are OPTIONAL —
                            #   blank "" => disabled; secondary ships on, tertiary ships blank),
                            #   code_review_fix, tea_triage, tea_per_story, tea_epic, tea_epic_audit,
                            #   retrospective, project_context (git/PR work runs in the orchestrator
-                           #   directly — no delegate profile)
+                           #   directly — no delegate profile). Values may name ANY profile in the
+                           #   profiles block above — shipped or custom
 ```
 
 ## First-run flow (only when config.yaml is absent)

@@ -1168,12 +1168,13 @@ def _run_self_test() -> int:
     assert "gate_max_iterations" in s_nodes["tea"]["children"], "asset missing tea.gate_max_iterations"
     sta = s_nodes["tea"]["children"].get("story_trace_advisory")
     assert sta and {"enabled", "min_epic_stories", "skip_last_stories"}.issubset(set(sta["children"])), "asset story_trace_advisory shape"
-    for k in ("max_iterations", "skip_hitl_on_clean_convergence"):
-        assert k in s_nodes["code_review"]["children"], f"asset missing code_review.{k}"
+    assert "max_iterations" in s_nodes["code_review"]["children"], "asset missing code_review.max_iterations"
     # Removed keys must never be re-healed into configs (a stale copy in a user
     # config is harmless — the orchestrator just stops reading it).
     assert "alternate_models" not in s_nodes["code_review"]["children"], \
         "asset must NOT carry code_review.alternate_models (removed in 0.18)"
+    assert "skip_hitl_on_clean_convergence" not in s_nodes["code_review"]["children"], \
+        "asset must NOT carry code_review.skip_hitl_on_clean_convergence (removed in 0.18 — always-on behavior)"
 
     # ... and DELIBERATELY EXCLUDES environment-detected / interviewed fields, so the heal can
     # never bake in a wrong static guess for one (the safety invariant — enforced here in code).
@@ -1188,8 +1189,7 @@ def _run_self_test() -> int:
     # pin that their values still match the state-and-resume.md schema + orchestrator fallbacks
     # (the lockstep the asset header warns about). Cheap guard against a silent value edit.
     for kv in ("offer_merge: true", "ci_wait_minutes: 30", "min_epic_stories: 6",
-               "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2",
-               "skip_hitl_on_clean_convergence: true"):
+               "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2"):
         assert kv in setup_text, f"asset default drifted from the documented schema: expected `{kv}`"
 
     def _heal(cfg: str) -> tuple:
@@ -1316,8 +1316,8 @@ def _run_self_test() -> int:
                'tea:\n  gate_max_iterations: 2\n  story_trace_advisory:\n'
                '    enabled: true\n    min_epic_stories: 6\n    skip_last_stories: 3\n'
                'git:\n  branch_prefix: "story/"\n  ci_wait_minutes: 30\n'   # <- git.offer_merge missing
-               # alternate_models is a REMOVED key deliberately left stale here:
-               # the heal must ignore it, never flag or strip it.
+               # alternate_models + skip_hitl_on_clean_convergence are REMOVED keys
+               # deliberately left stale here: the heal must ignore them, never flag or strip them.
                'code_review:\n  max_iterations: 2\n  alternate_models: true\n'
                '  skip_hitl_on_clean_convergence: false\n')
         cfgp.write_text(cur, encoding="utf-8")

@@ -45,4 +45,3 @@ git:
   ci_wait_minutes: 30       # max wait for in-progress CI before deciding (only when offer_merge is on)
 code_review:
   max_iterations: 2
-  skip_hitl_on_clean_convergence: true    # true (default): skip the Phase 7 HITL halt when the loop converged cleanly (convergence_unverified=false) — it still fires when the review did not converge cleanly (capped-unconverged, incomplete-lens, or any Critical/High/untagged). Set false to halt on every loop exit. Trade-off: a skipped halt forgoes the external-review recommendation, the "Stop now" option, and a last look at any deferred Critical/High before the PR.

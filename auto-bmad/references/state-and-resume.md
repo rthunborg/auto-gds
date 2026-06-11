@@ -36,7 +36,6 @@ git:
   ci_wait_minutes: 30      # max wait for in-progress CI before deciding (used only when offer_merge is on)
 code_review:
   max_iterations: 2
-  skip_hitl_on_clean_convergence: true    # (default) skip the Phase 7 HITL halt when the loop converged cleanly (convergence_unverified=false); the halt still fires otherwise. Set false to halt on every loop exit
 # profiles + phase_profiles complete the file — single source: assets/agents/profiles.yaml
 # (first run copies it in verbatim; edit it or this copy, then `/auto-bmad reprovision`;
 # `/auto-bmad reset-defaults` re-seeds — see below). Codex model names ship as real defaults —
@@ -169,7 +168,7 @@ review_gate: {}                # mid-iteration resume capsule, folded in at step
                                #   open_nondeferred, open_crit_high, medium, untagged, fix_done}. fix_done flips true
                                #   once post-fix verification passes (or the pass had no fixable work). Stale once the
                                #   loop exits — consult it only while code_review_loop_done is false
-code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (code_review.skip_hitl_on_clean_convergence=true AND convergence_unverified=false), in which case proceed to the Phase 7 tail without re-opening
+code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (convergence_unverified=false, a clean convergence), in which case proceed to the Phase 7 tail without re-opening
 hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached)
 external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue; capped by code_review.max_iterations; 0 if none
 convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings the user chose to Ignore & continue, or its Fix & re-review rounds hit the cap, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft
@@ -256,8 +255,8 @@ python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad
   `action` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
   HITL halt rather than re-iterating — the re-opened halt re-runs its git-only change check, so a
   post-halt external-change re-review resumes naturally from `external_review_iterations`; but if
-  the step-4 skip gate applies — `code_review.skip_hitl_on_clean_convergence` true and
-  `convergence_unverified` false — proceed to the Phase 7 tail without re-opening). Re-detect git
+  the step-4 skip gate applies — `convergence_unverified` false, a clean
+  convergence — proceed to the Phase 7 tail without re-opening). Re-detect git
   mode/branch (cheap) rather than trusting stale values if the branch is missing.
 - `exists: false` → start fresh (state file init in Phase 1) — **after the status-mismatch
   guard:** check the story's BMAD status from the `story_plan.py` read (`current_status` /

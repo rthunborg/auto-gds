@@ -44,17 +44,17 @@ Four modes, each emitting ONE JSON object on stdout:
   ``--iteration``; cap = ``i`` reaching ``--max-iterations``; ``M`` =
   ``--lenses-total``):
 
-  | # | i   | lenses-failed | findings            | cap? | action           | convergence_unverified | hitl                       |
-  |---|-----|---------------|---------------------|------|------------------|------------------------|----------------------------|
-  | 1 | any | M (all)       | —                   | —    | needs-human      | input (unchanged)       | null                       |
-  | 2 | 1   | 0             | clean               | —    | exit-clean       | false (or input true)   | skip-halt if cfg else halt |
-  | 3 | 1   | 0             | not clean           | no   | continue         | false/input             | null                       |
-  | 4 | 1   | 1..M-1        | any (untrustworthy) | no   | continue         | false/input             | null                       |
-  | 5 | 1   | any < M       | any                 | yes  | → rows 6/7/9     | per row                 | per row                    |
-  | 6 | ≥2  | 0             | converged           | —    | exit-clean       | false/input             | skip-halt if cfg else halt |
-  | 7 | ≥2  | 1..M-1        | converged           | —    | exit-unconverged | true                    | halt                       |
-  | 8 | ≥2  | < M           | not converged       | no   | continue         | false/input             | null                       |
-  | 9 | ≥2  | < M           | not converged       | yes  | exit-unconverged | true                    | halt                       |
+  | # | i   | lenses-failed | findings            | cap? | action           | convergence_unverified | hitl                          |
+  |---|-----|---------------|---------------------|------|------------------|------------------------|-------------------------------|
+  | 1 | any | M (all)       | —                   | —    | needs-human      | input (unchanged)       | null                          |
+  | 2 | 1   | 0             | clean               | —    | exit-clean       | false (or input true)   | skip-halt (halt if sticky)    |
+  | 3 | 1   | 0             | not clean           | no   | continue         | false/input             | null                          |
+  | 4 | 1   | 1..M-1        | any (untrustworthy) | no   | continue         | false/input             | null                          |
+  | 5 | 1   | any < M       | any                 | yes  | → rows 6/7/9     | per row                 | per row                       |
+  | 6 | ≥2  | 0             | converged           | —    | exit-clean       | false/input             | skip-halt (halt if sticky)    |
+  | 7 | ≥2  | 1..M-1        | converged           | —    | exit-unconverged | true                    | halt                          |
+  | 8 | ≥2  | < M           | not converged       | no   | continue         | false/input             | null                          |
+  | 9 | ≥2  | < M           | not converged       | yes  | exit-unconverged | true                    | halt                          |
 
   Semantics:
   - Row 2 is the ONLY first-pass early exit: "perfectly clean" = 0 non-deferred
@@ -68,14 +68,14 @@ Four modes, each emitting ONE JSON object on stdout:
   - Row 7: a converged pass with a failed/empty lens is the same flavor of
     unverified-ness as a cap exit — its ``reason`` carries the "incomplete
     review (only N/M lenses ran)" caveat for the report and halt summary.
-  - ``hitl`` is non-null only on exit-* actions. ``skip-halt`` fires iff
-    ``--skip-hitl-on-clean-convergence true`` AND the OUTPUT
-    ``convergence_unverified`` is false; ``exit-unconverged`` always halts;
+  - ``hitl`` is non-null only on exit-* actions. ``skip-halt`` fires iff the
+    OUTPUT ``convergence_unverified`` is false — a clean convergence always
+    auto-continues (no config knob); ``exit-unconverged`` always halts;
     ``needs-human`` is a hard stop (hitl null — there is no halt to skip).
   - ``--convergence-unverified true`` is a pre-existing STICKY flag (e.g. set
     by an earlier event): the output value is ``input OR what this decision
     sets`` — the gate can NEVER clear it, and a sticky true forces ``halt``
-    even on rows 2/6 (the skip gate never fires while the flag is true).
+    even on rows 2/6 (skip-halt never fires while the flag is true).
   - The decision IS the result: exit 0 whatever the action (2 only on
     usage/bad JSON). Defensive: an iteration OVERSHOOTING ``--max-iterations``
     still counts as capped (the loop exits; it can never spin past the cap).
@@ -100,8 +100,7 @@ Four modes, each emitting ONE JSON object on stdout:
 Usage:
     review_loop.py prep-diff --project-root DIR --base BRANCH
     review_loop.py gate --findings-json -|FILE --iteration I --max-iterations M \\
-        --lenses-failed 0..T --lenses-total 3|6|9 \\
-        --skip-hitl-on-clean-convergence true|false [--convergence-unverified true|false]
+        --lenses-failed 0..T --lenses-total 3|6|9 [--convergence-unverified true|false]
     review_loop.py post-fix --findings-json -|FILE [--retry-used]
     review_loop.py converged --findings-json -|FILE
     review_loop.py --self-test
@@ -264,7 +263,6 @@ def decide_gate(
     max_iterations: int,
     lenses_failed: int,
     lenses_total: int,
-    skip_hitl_on_clean_convergence: bool,
     convergence_unverified: bool = False,
 ) -> dict:
     """Encode the Phase 7 decision table. Pure; raises ValueError on bad findings."""
@@ -324,7 +322,7 @@ def decide_gate(
 
     hitl = None
     if action == "exit-clean":
-        hitl = "skip-halt" if (skip_hitl_on_clean_convergence and not unverified) else "halt"
+        hitl = "halt" if unverified else "skip-halt"
     elif action == "exit-unconverged":
         hitl = "halt"
 
@@ -600,159 +598,160 @@ def _run_self_test():
 
     # ---------------- gate: one case per decision-table row ----------------
     # (decide_gate args: findings, iteration, max_iterations, lenses_failed,
-    #  lenses_total, skip_hitl_on_clean_convergence[, convergence_unverified])
+    #  lenses_total[, convergence_unverified])
     # row 1 — ALL lenses failed: hard stop, sticky flag passes through unchanged.
-    o = decide_gate(_f(0), 1, 2, 3, 3, False)
+    o = decide_gate(_f(0), 1, 2, 3, 3)
     check("row1: needs-human", o["action"] == "needs-human")
     check("row1: hitl null (hard stop)", o["hitl"] is None)
     check("row1: reason names 0/3 lenses", "0/3 lenses produced findings" in o["reason"])
     check("row1: unverified unchanged (false in)", o["convergence_unverified"] is False)
-    o = decide_gate(_f(5, 2, 0), 2, 2, 3, 3, True, convergence_unverified=True)
+    o = decide_gate(_f(5, 2, 0), 2, 2, 3, 3, convergence_unverified=True)
     check("row1: unverified unchanged (true in)",
           o["action"] == "needs-human" and o["convergence_unverified"] is True and o["hitl"] is None)
-    o = decide_gate(_f(0), 1, 2, 9, 9, False)  # three-reviewer roster, all nine failed
+    o = decide_gate(_f(0), 1, 2, 9, 9)  # three-reviewer roster, all nine failed
     check("row1: all 9 lenses failed => needs-human",
           o["action"] == "needs-human" and "0/9 lenses" in o["reason"])
 
     # row 2 — perfectly clean first pass: the only first-pass early exit.
-    o = decide_gate(_f(0), 1, 2, 0, 3, True)
+    o = decide_gate(_f(0), 1, 2, 0, 3)
     check("row2: exit-clean", o["action"] == "exit-clean")
     check("row2: unverified false", o["convergence_unverified"] is False)
-    check("row2: skip-halt when configured", o["hitl"] == "skip-halt")
+    check("row2: skip-halt (clean convergence auto-continues)", o["hitl"] == "skip-halt")
     check("row2: clean+converged flags", o["clean"] is True and o["converged"] is True)
-    o = decide_gate(_f(0), 1, 2, 0, 3, False)
-    check("row2: halt without skip config", o["action"] == "exit-clean" and o["hitl"] == "halt")
-    o = decide_gate(_f(0), 1, 1, 0, 3, False)  # max_iterations == 1, perfectly clean
+    o = decide_gate(_f(0), 1, 1, 0, 3)  # max_iterations == 1, perfectly clean
     check("row2: clean single pass at max==1 still exits clean (non-draft)",
           o["action"] == "exit-clean" and o["convergence_unverified"] is False)
     # invariant: empty diff == row 2 (an all-zero findings JSON + 0 failed lenses).
-    o = decide_gate(_f(0, 0, 0), 1, 2, 0, 6, False)
+    o = decide_gate(_f(0, 0, 0), 1, 2, 0, 6)
     check("row2: empty-diff zeros land here (two-reviewer roster)",
           o["action"] == "exit-clean" and "all 6 lenses ran" in o["reason"])
-    # invariant: a sticky input true forces halt even here — skip gate never fires.
-    o = decide_gate(_f(0), 1, 2, 0, 3, True, convergence_unverified=True)
+    # invariant: a sticky input true forces halt even here — skip-halt never fires.
+    o = decide_gate(_f(0), 1, 2, 0, 3, convergence_unverified=True)
     check("row2: sticky true survives", o["convergence_unverified"] is True)
-    check("row2: sticky true forces halt despite skip config", o["hitl"] == "halt")
+    check("row2: sticky true forces halt", o["hitl"] == "halt")
 
     # row 3 — first pass with findings: mandatory second opinion.
-    o = decide_gate(_f(2), 1, 2, 0, 3, True)
+    o = decide_gate(_f(2), 1, 2, 0, 3)
     check("row3: continue", o["action"] == "continue")
     check("row3: hitl null", o["hitl"] is None)
     check("row3: unverified false", o["convergence_unverified"] is False)
-    o = decide_gate(_f(1), 1, 2, 0, 3, False)
+    o = decide_gate(_f(1), 1, 2, 0, 3)
     check("row3: even a would-converge first pass continues", o["action"] == "continue" and o["converged"] is True)
-    o = decide_gate(_f(5, low=5), 1, 2, 0, 6, False)
+    o = decide_gate(_f(5, low=5), 1, 2, 0, 6)
     check("row3: a Low-only first pass still pulls the second opinion",
           o["action"] == "continue" and o["converged"] is True)
 
     # row 4 — first pass with some (not all) lenses failed: untrustworthy even at 0 findings.
-    o = decide_gate(_f(0), 1, 2, 1, 3, True)
+    o = decide_gate(_f(0), 1, 2, 1, 3)
     check("row4: 0-finding pass with a failed lens continues", o["action"] == "continue")
     check("row4: hitl null", o["hitl"] is None)
     check("row4: reason notes 2/3 lenses", "2/3" in o["reason"])
-    o = decide_gate(_f(2), 1, 3, 2, 3, False)
+    o = decide_gate(_f(2), 1, 3, 2, 3)
     check("row4: two failed lenses also continue", o["action"] == "continue")
     check("row4: unverified false", o["convergence_unverified"] is False)
-    o = decide_gate(_f(0), 1, 2, 5, 9, False)
+    o = decide_gate(_f(0), 1, 2, 5, 9)
     check("row4: 5 of 9 lenses failed continues, reason notes 4/9",
           o["action"] == "continue" and "4/9" in o["reason"])
 
     # row 5 — a capped first pass (max_iterations == 1) follows the
     # final-iteration rules 6/7/9: the cap is consent to a single-pass review.
-    o = decide_gate(_f(1), 1, 1, 0, 3, False)  # converged, all lenses → row 6
+    o = decide_gate(_f(1), 1, 1, 0, 3)  # converged, all lenses → row 6
     check("row5: converged single pass exits clean", o["action"] == "exit-clean")
     check("row5: unverified false (ships non-draft)", o["convergence_unverified"] is False)
-    check("row5: halt without skip config", o["hitl"] == "halt")
+    check("row5: skip-halt on converged single pass", o["hitl"] == "skip-halt")
     check("row5: reason notes single-pass acceptance", "max_iterations == 1" in o["reason"])
-    o = decide_gate(_f(3), 1, 1, 0, 3, True)  # boundary: exactly 3 still converges
-    check("row5: skip config fires on converged single pass", o["hitl"] == "skip-halt")
-    o = decide_gate(_f(0), 1, 1, 1, 3, True)  # clean but a lens failed → row 7
+    o = decide_gate(_f(3), 1, 1, 0, 3)  # boundary: exactly 3 still converges
+    check("row5: skip-halt at the convergence boundary", o["hitl"] == "skip-halt")
+    o = decide_gate(_f(0), 1, 1, 1, 3)  # clean but a lens failed → row 7
     check("row5: missing lens at max==1 is unverified (row 7)",
           o["action"] == "exit-unconverged" and o["convergence_unverified"] is True)
-    check("row5: skip config cannot fire on a missing lens", o["hitl"] == "halt")
-    o = decide_gate(_f(4), 1, 1, 0, 3, True)  # not converged → row 9
+    check("row5: skip-halt cannot fire on a missing lens", o["hitl"] == "halt")
+    o = decide_gate(_f(4), 1, 1, 0, 3)  # not converged → row 9
     check("row5: unconverged single pass still drafts (row 9)",
           o["action"] == "exit-unconverged" and o["convergence_unverified"] is True and o["hitl"] == "halt")
-    o = decide_gate(_f(1, 1, 0), 1, 1, 0, 3, False)  # Critical/High blocks convergence
+    o = decide_gate(_f(1, 1, 0), 1, 1, 0, 3)  # Critical/High blocks convergence
     check("row5: Critical/High single pass still drafts", o["action"] == "exit-unconverged")
-    o = decide_gate(_f(7, low=7), 1, 1, 0, 3, False)  # Low-only lone pass at max==1
+    o = decide_gate(_f(7, low=7), 1, 1, 0, 3)  # Low-only lone pass at max==1
     check("row5: Low-only single pass at max==1 exits clean", o["action"] == "exit-clean")
 
     # row 6 — i>=2, converged with all lenses: clean exit.
-    o = decide_gate(_f(2), 2, 2, 0, 3, True)
+    o = decide_gate(_f(2), 2, 2, 0, 3)
     check("row6: exit-clean", o["action"] == "exit-clean")
     check("row6: unverified false", o["convergence_unverified"] is False)
-    check("row6: skip-halt when configured", o["hitl"] == "skip-halt")
-    o = decide_gate(_f(3), 2, 2, 0, 3, False)  # boundary: exactly 3 non-deferred converges
-    check("row6: boundary 3 findings converge", o["action"] == "exit-clean" and o["hitl"] == "halt")
-    o = decide_gate(_f(2), 2, 2, 0, 3, True, convergence_unverified=True)
-    check("row6: sticky true forces halt despite skip config",
+    check("row6: skip-halt (clean convergence auto-continues)", o["hitl"] == "skip-halt")
+    o = decide_gate(_f(3), 2, 2, 0, 3)  # boundary: exactly 3 non-deferred converges
+    check("row6: boundary 3 findings converge", o["action"] == "exit-clean" and o["hitl"] == "skip-halt")
+    o = decide_gate(_f(2), 2, 2, 0, 3, convergence_unverified=True)
+    check("row6: sticky true forces halt",
           o["convergence_unverified"] is True and o["hitl"] == "halt")
     # Low-only arm: a final pass whose findings are ALL Low converges, no count cap.
-    o = decide_gate(_f(7, low=7), 2, 2, 0, 6, True)
+    o = decide_gate(_f(7, low=7), 2, 2, 0, 6)
     check("row6: Low-only pass converges with no count cap",
           o["action"] == "exit-clean" and o["converged"] is True and o["hitl"] == "skip-halt")
     check("row6: Low-only reason names the arm",
           "all 7 non-deferred findings Low severity" in o["reason"])
-    o = decide_gate(_f(4, low=3), 2, 2, 0, 3, False)  # 4 findings, one Medium => neither arm
+    o = decide_gate(_f(4, low=3), 2, 2, 0, 3)  # 4 findings, one Medium => neither arm
     check("row6 boundary: 4 findings with one Medium do NOT converge",
           o["action"] == "exit-unconverged" and "not Low-only (1 Medium)" in o["reason"])
-    o = decide_gate(_f(7, crit_high=1, low=6), 2, 3, 0, 3, False)
+    o = decide_gate(_f(7, crit_high=1, low=6), 2, 3, 0, 3)
     check("row6 boundary: a Critical/High blocks the Low-only arm", o["converged"] is False)
-    o = decide_gate(_f(7, untagged=1, low=6), 2, 3, 0, 3, False)
+    o = decide_gate(_f(7, untagged=1, low=6), 2, 3, 0, 3)
     check("row6 boundary: an untagged finding blocks the Low-only arm", o["converged"] is False)
 
     # row 7 — i>=2, converged but a lens missing: unverified exit.
-    o = decide_gate(_f(1), 2, 3, 1, 3, True)
+    o = decide_gate(_f(1), 2, 3, 1, 3)
     check("row7: exit-unconverged", o["action"] == "exit-unconverged")
     check("row7: unverified true", o["convergence_unverified"] is True)
-    check("row7: halt (skip config cannot fire)", o["hitl"] == "halt")
+    check("row7: halt (skip-halt cannot fire)", o["hitl"] == "halt")
     check("row7: reason notes incomplete review 2/3 lenses",
           "incomplete review" in o["reason"] and "2/3" in o["reason"])
-    o = decide_gate(_f(0), 2, 2, 2, 3, True)
+    o = decide_gate(_f(0), 2, 2, 2, 3)
     check("row7: clean-with-2-missing-lenses also unverified",
           o["action"] == "exit-unconverged" and "1/3" in o["reason"])
-    o = decide_gate(_f(2, low=2), 2, 2, 3, 9, True)
+    o = decide_gate(_f(2, low=2), 2, 2, 3, 9)
     check("row7: converged 3-reviewer pass with 3 failed lenses is unverified",
           o["action"] == "exit-unconverged" and "6/9" in o["reason"])
 
     # row 8 — i>=2, not converged, below the cap: continue.
-    o = decide_gate(_f(5), 2, 3, 0, 3, False)
+    o = decide_gate(_f(5), 2, 3, 0, 3)
     check("row8: >3 findings continue", o["action"] == "continue" and o["hitl"] is None)
-    o = decide_gate(_f(2, 1, 0), 2, 3, 0, 3, False)
+    o = decide_gate(_f(2, 1, 0), 2, 3, 0, 3)
     check("row8: Critical/High blocks convergence", o["action"] == "continue" and o["converged"] is False)
-    o = decide_gate(_f(1, 0, 1), 2, 3, 1, 3, False)
+    o = decide_gate(_f(1, 0, 1), 2, 3, 1, 3)
     check("row8: untagged blocks convergence (treated as Crit/High)",
           o["action"] == "continue" and o["converged"] is False)
     check("row8: unverified false", o["convergence_unverified"] is False)
-    o = decide_gate(_f(5, low=4), 2, 3, 0, 6, False)
+    o = decide_gate(_f(5, low=4), 2, 3, 0, 6)
     check("row8: one Medium among Lows still blocks the Low-only arm",
           o["action"] == "continue" and "not Low-only (1 Medium)" in o["reason"])
 
     # row 9 — i>=2, not converged, at the cap: unconverged draft exit.
-    o = decide_gate(_f(4), 2, 2, 0, 3, False)
+    o = decide_gate(_f(4), 2, 2, 0, 3)
     check("row9: exit-unconverged", o["action"] == "exit-unconverged")
     check("row9: unverified true + halt", o["convergence_unverified"] is True and o["hitl"] == "halt")
-    o = decide_gate(_f(1, 1, 0), 2, 2, 2, 3, True)
+    o = decide_gate(_f(1, 1, 0), 2, 2, 2, 3)
     check("row9: crit/high at cap with missing lenses",
           o["action"] == "exit-unconverged" and o["hitl"] == "halt")
     # Defensive: an overshoot (i > max) still caps — never continues past the cap.
-    o = decide_gate(_f(5), 3, 2, 0, 3, False)
+    o = decide_gate(_f(5), 3, 2, 0, 3)
     check("row9: overshoot still exits", o["action"] == "exit-unconverged")
 
     # ---------------- gate: invariant sweep ----------------
     findings_variants = [(0, 0, 0, 0), (2, 0, 0, 0), (2, 1, 0, 0), (2, 0, 1, 0),
                          (5, 0, 0, 0), (5, 0, 0, 5), (5, 1, 0, 4), (7, 0, 0, 6)]
     bools = (False, True)
-    for (i, m), total, fv, skip, sticky in itertools.product(
+    for (i, m), total, fv, sticky in itertools.product(
             [(i, m) for i in (1, 2, 3) for m in (1, 2, 3) if i <= m],
-            VALID_LENS_TOTALS, findings_variants, bools, bools):
+            VALID_LENS_TOTALS, findings_variants, bools):
         for lf in {0, 1, total - 1, total}:
-            out = decide_gate(_f(*fv), i, m, lf, total, skip, sticky)
-            tag = f"sweep i={i} m={m} lf={lf}/{total} f={fv} skip={skip} sticky={sticky}"
+            out = decide_gate(_f(*fv), i, m, lf, total, sticky)
+            tag = f"sweep i={i} m={m} lf={lf}/{total} f={fv} sticky={sticky}"
             check(f"{tag}: exact key set", set(out) == _GATE_KEYS)
             check(f"{tag}: skip-halt never with unverified true",
                   not (out["hitl"] == "skip-halt" and out["convergence_unverified"]))
+            check(f"{tag}: exit-clean => skip-halt iff unverified false",
+                  out["action"] != "exit-clean"
+                  or (out["hitl"] == "skip-halt") == (out["convergence_unverified"] is False))
             check(f"{tag}: hitl null iff continue/needs-human",
                   (out["hitl"] is None) == (out["action"] in ("continue", "needs-human")))
             if out["action"] == "exit-unconverged":
@@ -774,7 +773,7 @@ def _run_self_test():
                          {"open_nondeferred": "x", "open_crit_high": 0,
                           "open_severity": {"untagged": 0, "medium": 0}}):
         try:
-            decide_gate(bad_findings, 1, 2, 0, 3, False)
+            decide_gate(bad_findings, 1, 2, 0, 3)
             check(f"gate: bad findings {bad_findings!r} must raise", False)
         except ValueError:
             pass
@@ -845,8 +844,7 @@ def _run_self_test():
         return rc, out.getvalue()
 
     gate_args = ["gate", "--iteration", "1", "--max-iterations", "2",
-                 "--lenses-failed", "0", "--lenses-total", "3",
-                 "--skip-hitl-on-clean-convergence", "false"]
+                 "--lenses-failed", "0", "--lenses-total", "3"]
     rc, out = run_main(gate_args + ["--findings-json", "-"], stdin_text=json.dumps(_f(0)))
     check("cli: gate via stdin exits 0", rc == 0)
     check("cli: gate stdin decision", json.loads(out)["action"] == "exit-clean")
@@ -856,7 +854,6 @@ def _run_self_test():
     ftmp.close()
     rc, out = run_main(["gate", "--findings-json", ftmp.name, "--iteration", "2",
                         "--max-iterations", "2", "--lenses-failed", "0", "--lenses-total", "6",
-                        "--skip-hitl-on-clean-convergence", "true",
                         "--convergence-unverified", "false"])
     parsed = json.loads(out)
     check("cli: gate via file exits 0 (decision IS the result)", rc == 0)
@@ -869,21 +866,21 @@ def _run_self_test():
     rc, _ = run_main(["gate", "--findings-json", "/no/such/findings.json"] + gate_args[1:])
     check("cli: missing args usage exit 2 or file error 2", rc == 2)
     rc, _ = run_main(["gate", "--findings-json", "-", "--iteration", "0",
-                      "--max-iterations", "2", "--lenses-failed", "0", "--lenses-total", "3",
-                      "--skip-hitl-on-clean-convergence", "false"])
+                      "--max-iterations", "2", "--lenses-failed", "0", "--lenses-total", "3"])
     check("cli: iteration < 1 is usage error", rc == 2)
     rc, _ = run_main(["gate", "--findings-json", "-", "--iteration", "1",
-                      "--max-iterations", "2", "--lenses-failed", "4", "--lenses-total", "3",
-                      "--skip-hitl-on-clean-convergence", "false"])
+                      "--max-iterations", "2", "--lenses-failed", "4", "--lenses-total", "3"])
     check("cli: lenses-failed > lenses-total is usage error", rc == 2)
     rc, _ = run_main(["gate", "--findings-json", "-", "--iteration", "1",
-                      "--max-iterations", "2", "--lenses-failed", "0", "--lenses-total", "4",
-                      "--skip-hitl-on-clean-convergence", "false"])
+                      "--max-iterations", "2", "--lenses-failed", "0", "--lenses-total", "4"])
     check("cli: lenses-total not in 3|6|9 is usage error", rc == 2)
     rc, _ = run_main(["gate", "--findings-json", "-", "--iteration", "1",
                       "--max-iterations", "2", "--lenses-failed", "0", "--lenses-total", "3",
-                      "--skip-hitl-on-clean-convergence", "yes"])
+                      "--convergence-unverified", "yes"])
     check("cli: non-true/false bool is usage error", rc == 2)
+    rc, _ = run_main(gate_args + ["--findings-json", "-",
+                                  "--skip-hitl-on-clean-convergence", "true"])
+    check("cli: removed --skip-hitl-on-clean-convergence flag is usage error", rc == 2)
 
     rc, out = run_main(["post-fix", "--findings-json", "-"],
                        stdin_text=json.dumps({"open_patch": 1, "open_decision": 0}))
@@ -945,8 +942,6 @@ def main(argv=None):
                         help="how many lenses failed or returned empty, across ALL reviewers (0..total)")
     p_gate.add_argument("--lenses-total", type=int, required=True,
                         help="total lenses this pass fanned out: 3 per configured reviewer (3|6|9)")
-    p_gate.add_argument("--skip-hitl-on-clean-convergence", type=_parse_bool, required=True,
-                        metavar="true|false", help="code_review.skip_hitl_on_clean_convergence")
     p_gate.add_argument("--convergence-unverified", type=_parse_bool, default=False,
                         metavar="true|false",
                         help="pre-existing sticky flag from state; the gate can set but never clear it")
@@ -988,7 +983,7 @@ def main(argv=None):
             result = decide_gate(
                 findings, args.iteration, args.max_iterations,
                 args.lenses_failed, args.lenses_total,
-                args.skip_hitl_on_clean_convergence, args.convergence_unverified,
+                args.convergence_unverified,
             )
         except (OSError, ValueError) as exc:
             print(json.dumps({"status": "error", "message": str(exc)}))

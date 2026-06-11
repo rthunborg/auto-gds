@@ -287,8 +287,8 @@ For iteration `i` (1-based):
    **Drive the loop — tool call, not prose.** Pipe the gate-time `review_findings.py` JSON — the
    post-decision, PRE-fix capture from the top of this step, never the post-fix re-run — to
    `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
-   --max-iterations {cap} --lenses-failed {failed-layer count from step 1b} --lenses-total {3×R}
-   --skip-hitl-on-clean-convergence {cfg}` (add `--convergence-unverified true` when state already
+   --max-iterations {cap} --lenses-failed {failed-layer count from step 1b} --lenses-total {3×R}`
+   (add `--convergence-unverified true` when state already
    holds the sticky flag) and **OBEY its `action`, `hitl`, and `convergence_unverified`**: `continue`
    → run iteration `i+1` (same roster); `exit-clean`/`exit-unconverged` → exit the loop,
    persist `convergence_unverified` to state (`true` ⇒ Phase 9 ships a **draft** — `git-and-pr.md`
@@ -304,31 +304,31 @@ For iteration `i` (1-based):
    | # | i | lenses-failed | findings | cap (i==max)? | action | convergence_unverified | hitl |
    |---|---|---|---|---|---|---|---|
    | 1 | any | M (all) | — | — | needs-human ("0/M lenses produced findings") | input value (unchanged) | null |
-   | 2 | 1 | 0 | clean | — | exit-clean (only first-pass early exit) | false (or input true) | skip-halt if cfg else halt |
+   | 2 | 1 | 0 | clean | — | exit-clean (only first-pass early exit) | false (or input true) | skip-halt (halt if sticky true) |
    | 3 | 1 | 0 | not clean | no | continue (second opinion mandatory — a Low-only first pass included) | false/input | null |
    | 4 | 1 | 1..M-1 | any (even 0 findings — untrustworthy) | no | continue | false/input | null |
    | 5 | 1 | any<M | any | yes (max==1) | → rows 6/7/9 (the capped first pass follows the final-iteration rules — converged + all lenses exits clean) | per row | per row |
-   | 6 | ≥2 | 0 | converged | — | exit-clean | false/input | skip-halt if cfg else halt |
+   | 6 | ≥2 | 0 | converged | — | exit-clean | false/input | skip-halt (halt if sticky true) |
    | 7 | ≥2 | 1..M-1 | converged | — | exit-unconverged (reason notes "incomplete review N/M lenses") | true | halt |
    | 8 | ≥2 | <M | not converged | no | continue | false/input | null |
    | 9 | ≥2 | <M | not converged | yes | exit-unconverged | true | halt |
 
    On any exit, set `code_review_loop_done: true`, then go to step 4.
-4. **HITL halt — ASK the user on every loop exit (unless configured to skip a clean convergence).**
+4. **HITL halt — ASK the user on every loop exit, except a clean convergence (always skipped).**
    **Skip gate — evaluate first, at step entry, on the loop-exit `convergence_unverified` value**
    (the post-halt re-review below also writes this flag, so read it *before* that machinery runs): if
-   `code_review.skip_hitl_on_clean_convergence` is `true` **AND** `convergence_unverified` is `false`
+   `convergence_unverified` is `false`
    (the loop converged cleanly — a perfectly-clean first pass, a converged `max_iterations: 1`
    single pass, or an `i ≥ 2` converged exit), **skip
    the halt**: do **not** open `AskUserQuestion`. `log` one line ("review converged cleanly — Phase 7
-   HITL halt skipped per config"), record `hitl_halt: skipped (clean convergence)` in state + the
+   HITL halt skipped"), record `hitl_halt: skipped (clean convergence)` in state + the
    report's Code-review line, and proceed as the **Continue** path **with no external-change check**
    (there was no human pause, so there are no external changes to detect) — straight to the Phase 7
    tail. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged or
-   incomplete-lens — those always halt). Default
-   (`true`) → skip the halt on a clean convergence; set `false` to always halt, as below.
+   incomplete-lens — those always halt). There is no config knob — a clean convergence always
+   auto-continues (a stale `code_review.skip_hitl_on_clean_convergence` key in a config is ignored).
 
-   Otherwise (option off, or the loop did not converge cleanly) the loop *always* ends here
+   Otherwise (the loop did not converge cleanly) the loop *always* ends here
    (converged or capped). Summarize: iterations
    run, each pass's verdict + `Critical N / High N / Medium N / Low N` counts, the total non-deferred
    findings found-and-fixed, and whether the loop converged or hit the cap unconverged

@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`code_review.alternate_models` is gone.** Review models no longer alternate by iteration — every
   configured reviewer runs on every pass. A stale key left in an existing config is ignored.
+- **`code_review.skip_hitl_on_clean_convergence` is gone — a clean convergence always auto-continues.**
+  The Phase 7 HITL halt now fires only when the review did not converge cleanly; there is no opt-out.
+  A stale key left in an existing config is ignored (use the `stop after phase 7` override to force a
+  stop on a given run).
 
 ## [0.17.3] - 2026-06-11
 

@@ -28,6 +28,7 @@ target_tools:
       label: "Codex  (.codex/agents — model + reasoning effort)"
   default:
     - claude-code
+    - codex
 
 post-install-notes: >
   Auto-GDS renders its delegate agent files on first run (or via `/auto-gds setup`). To change

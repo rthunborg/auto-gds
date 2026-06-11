@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   distinct from the `{output_folder}/auto-gds/config.yaml` runtime config.
 - Disabled the old testing workflow by default for V0 and documented future GDS testing mappings.
 
+### Fixed
+
+- **Codex-only installs now get Codex delegate agents.** Setup previously trusted the
+  installer-recorded `[modules.agds].target_tools` (a static `module.yaml` default the installer
+  cannot detect the host for) and rendered only `.claude/agents/agds-*.md` on a Codex project.
+  Host detection now takes precedence — the default is the union of the detected tools and the
+  recorded answer — and the shipped install default lists both `claude-code` and `codex`.
+  Caught live by running `auto-gds setup` inside Codex.
+
 ### Removed
 
 - `auto-gds/scripts/merge-config.py` — its sole purpose was writing the pre-v6 central

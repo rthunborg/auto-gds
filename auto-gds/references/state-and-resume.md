@@ -76,7 +76,10 @@ defaults without touching user setup answers.
 
 The first run happens only when `<auto_gds_dir>/config.yaml` is absent.
 
-1. Confirm `target_tools` using the same detection rules as `assets/module-setup.md`.
+1. Confirm `target_tools` using the same detection rules as `assets/module-setup.md` — the
+   detected set unioned with any `[modules.agds].target_tools` from the central TOML. Detection
+   takes precedence: the installer's recorded value is a static default that cannot know the
+   host, so it must never narrow the detected set.
 2. Seed `delegation`, `profiles`, and `phase_profiles` from shipped defaults.
 3. Set `testing.enabled: false`. V0 does not ask to enable the old BMM Test Architect workflow,
    and it must not run those commands by default.

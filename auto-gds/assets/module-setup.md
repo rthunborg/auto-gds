@@ -49,7 +49,10 @@ Before writing anything, confirm the target project is a BMGD/GDS project: `_bma
    On older Pythons, fall back to scanning the file text for a `[modules.agds]` table header.
 3. Interpret the result:
    - **Registered** (table found in either file): this is an update (reconfiguration) — say so,
-     and use any values recorded under `[modules.agds]` as defaults below.
+     and use any values recorded under `[modules.agds]` as defaults below — **except
+     `target_tools`**: the installer records a static default from `module.yaml` and cannot
+     detect which tool(s) the install actually targets, so for `target_tools` host detection
+     takes precedence (see "Provision Delegate Agents" step 1).
    - **Not registered, but the Auto-GDS runtime config already exists**: the project was
      provisioned without installer registration (e.g. a plugin-style install). Unless the user
      explicitly asked for `setup`/`configure`/`install`/`reprovision`, inform them once —
@@ -125,10 +128,13 @@ module is ready to run immediately after setup.
    - `codex` if `.agents/skills/auto-gds/` exists (BMAD installs Codex skills under `.agents/`),
      or if `.codex/skills/auto-gds/` / `~/.codex/skills/auto-gds/` exists.
 
-   Use that detected set as the **default** for the `target_tools` question (fall back to
-   `[claude-code]` if nothing matches), then **still ask** — the user confirms, drops one, or adds
-   a tool they plan to install later. Provisioning is independent of which tool *runs* the
-   pipeline (that's auto-detected each run).
+   Use the **union** of the detected set and any `target_tools` recorded under `[modules.agds]`
+   as the **default** for the `target_tools` question (fall back to `[claude-code]` if both are
+   empty) — detection reflects where the skill is actually installed, while the recorded value
+   is only the installer's static `module.yaml` default, so it must never *narrow* the detected
+   set. Then **still ask** — the user confirms, drops one, or adds a tool they plan to install
+   later. On a headless/accept-all-defaults run, use that union default as-is. Provisioning is
+   independent of which tool *runs* the pipeline (that's auto-detected each run).
 2. **Confirm a supported host is present** (informational — `delegation.host`/`mode` stay `auto`
    and are re-detected on every run, not pinned here): Claude Code if `${CLAUDE_PLUGIN_ROOT}` is
    set or a `.claude/` dir exists; Codex if a `.codex/` dir or the `codex` CLI is present.

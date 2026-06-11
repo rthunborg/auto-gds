@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **CLI-routed delegates no longer fail to launch under zsh.** The orchestrator must serialize the
+  helper's `argv` as literal tokens or a zsh array — never a `$OC` scalar, which zsh leaves unsplit.
+  (delegation-runtime.md)
+
 ## [0.20.0] - 2026-06-11
 
 ### Added

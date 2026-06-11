@@ -117,7 +117,11 @@ claude/codex; for **opencode** append it as the **final positional `argv` elemen
 does NOT read stdin). Run in the **same repo dir** (`cwd`) — no HOME/Docker isolation; the child
 edits the real working tree you then commit. codex (`-C <cwd>`) and opencode (`--dir <cwd>`) pin
 their working root in the argv; the **claude** argv has no equivalent, so a `claude` route MUST
-`cd "$cwd"` before the call. **Every routed invocation runs in the background — never foreground:**
+`cd "$cwd"` before the call. **Serialize the helper's `argv` as literal shell tokens** — or a zsh
+array (`OC=(opencode run … ); "${OC[@]}" "$prompt"`); **never** assign it to a scalar and run `$OC`:
+zsh leaves an unquoted scalar **unsplit** (`SH_WORD_SPLIT` is off by default, unlike bash), so the
+whole string is exec'd as a single filename (`no such file or directory`). **Every routed invocation
+runs in the background — never foreground:**
 host shell tools cap foreground commands far below real delegate runtimes (Claude Code: 2-min
 default, 10-min max; a routed step — `dev_story`, a review lens — routinely needs 20+ min). Launch
 it detached, stdout redirected to `capture_log`, and monitor to process exit; if the background

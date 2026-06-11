@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   block (where retunes and custom profiles live), falling back to the shipped asset only when the
   config lacks the strings. (delegation-runtime.md)
 
+### Fixed
+
+- **opencode CLI routes no longer hard-stop on commands-based BMAD installs.** The `cli_phases`
+  preflight now also recognizes BMAD slash-command files (`.opencode/command(s)/bmad-*.md`, project
+  or user-global), not just `skills/` dirs.
+
 ## [0.18.0] - 2026-06-11
 
 ### Added

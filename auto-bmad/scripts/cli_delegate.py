@@ -489,10 +489,16 @@ def _skills_dirs(tool: str, project_root: Path) -> list[Path]:
     if tool == "opencode":
         # opencode loads skills (Anthropic SKILL.md standard) from `skills/*/SKILL.md` under the
         # project's `.opencode/` or the user-global config dir (note: plural `skills`, unlike the
-        # singular `agent/` dir).
+        # singular `agent/` dir). Some BMAD opencode installs instead expose the skills as
+        # slash-command files (`command*/bmad-*.md`) — a working route, so accept that layout too
+        # (docs use singular `command/`; real installs have been seen with plural `commands/`).
         return [
             project_root / ".opencode" / "skills",
             Path.home() / ".config" / "opencode" / "skills",
+            project_root / ".opencode" / "command",
+            project_root / ".opencode" / "commands",
+            Path.home() / ".config" / "opencode" / "command",
+            Path.home() / ".config" / "opencode" / "commands",
         ]
     # codex skills can live in either project layout, or the user-global dir.
     return [
@@ -824,6 +830,17 @@ def _run_self_test() -> int:
         assert v_oc["validation"]["skills_present"] is True, v_oc
         assert v_oc["validation"]["auth"] == "skipped (host tool)", v_oc
         assert any(str(d).endswith(".opencode/skills") for d in v_oc["validation"]["skills_dirs_checked"]), v_oc
+
+        # opencode commands-based BMAD install (no skills dir): `command(s)/bmad-*.md` files
+        # also count as present — a miss here would hard-stop a working route.
+        with tempfile.TemporaryDirectory() as td3:
+            cmd_dir = Path(td3) / ".opencode" / "commands"
+            cmd_dir.mkdir(parents=True)
+            (cmd_dir / "bmad-review-adversarial-general.md").write_text("# cmd", encoding="utf-8")
+            plan_cmd = resolve("tea_triage", cfg, td3, story_key="k")
+            v_cmd = validate(plan_cmd, td3, host="opencode", run_auth_probe=False)
+            assert v_cmd["validation"]["skills_present"] is True, v_cmd
+            assert any(str(d).endswith(".opencode/commands") for d in v_cmd["validation"]["skills_dirs_found"]), v_cmd
 
     print("SELF-TEST PASSED (all assertions)")
     return 0

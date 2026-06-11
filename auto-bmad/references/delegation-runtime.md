@@ -95,7 +95,9 @@ optional — `null` ⇒ inherit the user's opencode defaults**, never a hard-sto
 (prompt-less), `prompt_via`, `cwd`, the OS-temp `capture_log`, and `result_source`. It also runs
 the **preflight `validation`**: binary on PATH; that tool's BMAD skills present — looked up in the
 tool's own skills dirs (claude: `.claude/skills`; codex: `.agents/skills`, `.codex/skills`,
-`~/.codex/skills`; opencode: `.opencode/skills`, `~/.config/opencode/skills` — project paths
+`~/.codex/skills`; opencode: `.opencode/skills`, `~/.config/opencode/skills`, plus the
+`command`/`commands` siblings of both — some BMAD opencode installs expose the skills as
+slash-command files `bmad-*.md` there, which works at runtime — project paths
 relative to the project root), **not** `target_tools` (the CLI path consumes no rendered agent files;
 don't "fix" that); and `auth` for the **non-host** tool only (lenient for opencode — see notes
 below). **`ok:false` ⇒ hard-stop** with its `errors`; never silently degrade to an agent. Echo the

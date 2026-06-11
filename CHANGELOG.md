@@ -15,35 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **The Phase 7 halt can now run another review iteration.** A new option extends the loop past
-  the cap, one full-roster pass at a time: a converged extension clears the unverified-draft
-  verdict and auto-continues; an unconverged one re-opens the halt. Also offered at the
-  post-external-review re-ask, where it acts as the in-pipeline fix loop. (pipeline.md,
-  state-and-resume.md)
-- **The Phase 7 re-ask can now ship the PR as ready instead of draft.** A "Continue (ship as
-  ready)" option continues with the findings open like "Continue (ship as draft)", but sets the
-  `no_pr_draft` override so Phase 9 opens a non-draft PR; the run stays caveated. (pipeline.md,
-  overrides.md)
+- **The Phase 7 halt can now run another review iteration.** Extends the loop past the cap one
+  full-roster pass at a time; also offered at the re-ask as the in-pipeline fix loop. (pipeline.md)
+- **The Phase 7 re-ask can now ship the PR as ready instead of draft.** Sets the `no_pr_draft`
+  override so Phase 9 opens a non-draft PR; the run stays caveated. (pipeline.md, overrides.md)
 
 ### Changed
 
-- **CLI-routed review lenses now run in parallel on every host.** A routed reviewer slot's three
-  lens invocations launch as concurrent background processes (across routed reviewers too); the
-  triage still waits for all of them. (delegation-runtime.md, pipeline.md)
-- **In-tool review lenses now fan out in parallel on every host.** Codex spawns subagents
-  concurrently when several are named in one request (GA March 2026, on by default), and opencode's
-  parallel fan-out is confirmed — the sequential-lens fallback is gone. (delegation-runtime.md,
-  pipeline.md)
+- **CLI-routed review lenses now run in parallel on every host.** Each routed reviewer's three
+  lenses launch as concurrent background processes; the triage waits for all. (delegation-runtime.md)
+- **In-tool review lenses now fan out in parallel on every host.** Codex and opencode parallel
+  subagent fan-out is confirmed — the sequential-lens fallback is gone. (delegation-runtime.md)
 
 ### Fixed
 
-- **Findings grouped under subheadings no longer escape the Phase 7 gate.** The `### Review
-  Findings` section now ends only at a heading of its own level or shallower — deeper headings
-  (e.g. `#### Patches`) are internal grouping — and the heading is matched at any level `#`–`####`;
-  the deferred-work ledger parsers follow the same rule. (review_findings.py, deferred_ledger.py)
-- **CLI-routed delegates no longer time out mid-run.** Every `cli_phases` invocation now runs in
-  the background with a ≥30-minute allowance — host foreground shell caps (2–10 min on Claude
-  Code) are far below real delegate runtimes. (delegation-runtime.md)
+- **Findings grouped under subheadings no longer escape the Phase 7 gate.** Deeper headings inside
+  `### Review Findings` are internal grouping, not a section end; the deferred-work ledger parsers
+  follow the same rule. (review_findings.py, deferred_ledger.py)
+- **CLI-routed delegates no longer time out mid-run.** `cli_phases` invocations run in the
+  background with a ≥30-minute allowance, beyond host foreground shell caps. (delegation-runtime.md)
 
 ## [0.19.0] - 2026-06-11
 

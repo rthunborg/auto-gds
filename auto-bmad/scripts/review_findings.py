@@ -17,6 +17,10 @@ around the tag, a trailing `[Med]` severity) is owned by the upstream
 ``bmad-code-review`` skill and produced by a non-deterministic LLM, so the parser
 keys only on the semantic ``[Review][Type]`` tag and treats everything around it
 as optional. A finding with no checkbox counts as ``open`` (the safe default).
+The section heading is matched at any level ``#``–``####``, and the section ends
+only at a heading of the SAME level or shallower — a deeper heading (e.g.
+``#### Patches`` grouping bullets under a ``###`` section) is internal structure
+and its findings keep counting.
 
 The parser also reads the optional **severity tag** directly after the type —
 ``[Review][Patch][High]`` (the auto-bmad triage contract) or the upstream
@@ -72,10 +76,20 @@ import os
 import re
 import sys
 
-# `### Review Findings` (tolerant of trailing text/whitespace, case-insensitive).
-HEADING_RE = re.compile(r"^#{2,4}\s+review\s+findings\b", re.IGNORECASE)
-# Any ATX heading at level 1-4 — used to find where the section ends.
+# `### Review Findings` at any level 1-4 (tolerant of trailing text/whitespace,
+# case-insensitive). The captured hashes give the section's level: the section
+# ends only at a heading of the SAME level or shallower — a DEEPER heading is
+# internal structure (the triage LLM sometimes groups bullets under e.g.
+# `#### Patches`) and must not truncate the count.
+HEADING_RE = re.compile(r"^(?P<level>#{1,4})\s+review\s+findings\b", re.IGNORECASE)
+# Any ATX heading at level 1-4 — a section-end candidate (level-aware: see
+# _heading_level; only same-or-shallower headings actually close a section).
 ANY_HEADING_RE = re.compile(r"^#{1,4}\s+\S")
+
+
+def _heading_level(line):
+    """Number of leading ``#`` on a line ``ANY_HEADING_RE`` matched."""
+    return len(line) - len(line.lstrip("#"))
 # A triage bullet. The semantic signal is the `[Review][Type]` tag; the rendering
 # around it is owned by the upstream `bmad-code-review` skill and produced by a
 # non-deterministic LLM, so match flexibly. All of these count as one finding:
@@ -152,6 +166,7 @@ def parse_deferred_work(text: str, story_key=None):
     present = False
     count = 0
     counting = False
+    block_level = 0  # level of the current `## Deferred from:` heading
     fence = None
     for raw in text.splitlines():
         if fence is not None:
@@ -162,9 +177,14 @@ def parse_deferred_work(text: str, story_key=None):
         if DEFER_HEADING_RE.match(raw):
             present = True
             counting = story_key is None or story_key.lower() in raw.lower()
+            block_level = _heading_level(raw)
             continue
         if ANY_HEADING_RE.match(raw):
-            # Any other heading closes the current deferral block.
+            # A heading at the block's level or shallower closes it; a DEEPER
+            # heading is internal structure and the block stays open (the same
+            # rule as deferred_ledger.py's parse_document — one entry grammar).
+            if counting and _heading_level(raw) > block_level:
+                continue
             counting = False
             continue
         if LEDGER_BULLET_RE.match(raw):
@@ -193,6 +213,7 @@ def parse_section(text: str):
     by_type = _empty_counts()
     open_severity = _empty_severity()
     in_section = False
+    section_level = 0  # set when the section heading is found
     section_present = False
     fence = None
     for raw in lines:
@@ -208,13 +229,16 @@ def parse_section(text: str):
             fence = opened
             continue
         if not in_section:
-            if HEADING_RE.match(raw):
+            m = HEADING_RE.match(raw)
+            if m:
                 in_section = True
                 section_present = True
+                section_level = len(m.group("level"))
             continue
-        # Inside the section: a new heading at level 1-4 ends it (the findings
-        # heading itself was already consumed above).
-        if ANY_HEADING_RE.match(raw):
+        # Inside the section: a heading at the section's own level or
+        # shallower ends it; a DEEPER heading (`#### Patches` under a `###`
+        # section) is internal grouping and its bullets keep counting.
+        if ANY_HEADING_RE.match(raw) and _heading_level(raw) <= section_level:
             break
         m = BULLET_RE.match(raw)
         if not m:
@@ -467,6 +491,40 @@ def _run_self_test():
           rf["open_nondeferred"] == 2)
     os.unlink(pfence)
 
+    # Heading levels: the section heading is accepted at any level 1-4, and a
+    # DEEPER heading inside the section (`#### Patches` under `###`) is internal
+    # grouping — its bullets keep counting; only a same-or-shallower heading
+    # (`## Dev Notes`) ends the section.
+    psub = write(
+        "# Story 1-6\n\n"
+        "### Review Findings\n\n"
+        "- [ ] [Review][Patch][High] before any subheading\n\n"
+        "#### Patches\n\n"
+        "- [ ] [Review][Patch] [Low] grouped under a subheading\n\n"
+        "#### Decisions\n\n"
+        "- [ ] [Review][Decision] also grouped\n"
+        "- [x] [Review][Defer] grouped defer\n\n"
+        "## Dev Notes\n\n"
+        "- [ ] [Review][Patch] after the section ended — not a finding\n"
+    )
+    rs = build_result(psub, None)
+    check("subheadings: grouped findings all counted", rs["total"] == 4)
+    check("subheadings: severities reach the gate",
+          rs["open_crit_high"] == 1 and rs["open_severity"]["low"] == 1)
+    check("subheadings: shallower heading still ends the section",
+          rs["open_patch"] == 2 and rs["by_type"]["defer"]["checked"] == 1)
+    os.unlink(psub)
+    ph1 = write("# Review Findings\n\n- [ ] [Review][Patch] H1-rendered section\n")
+    rh1 = build_result(ph1, None)
+    check("H1 section heading detected", rh1["section_present"] is True and rh1["total"] == 1)
+    os.unlink(ph1)
+    ph4 = write(
+        "#### Review Findings\n\n- [ ] [Review][Patch] inside\n\n"
+        "#### Next section\n\n- [ ] [Review][Patch] outside\n"
+    )
+    check("same-level heading ends a #### section", build_result(ph4, None)["total"] == 1)
+    os.unlink(ph4)
+
     # Ledger side: fenced bullets under a `## Deferred from:` heading are
     # content, not entries — they must not inflate deferred_work_logged (the
     # defer-reached-the-ledger gate would pass vacuously); nested bullets are
@@ -499,6 +557,26 @@ def _run_self_test():
     check("lockstep: fence-close rule equals deferred_ledger.py's",
           all(_fence_closes(s, c, n) == _dl._fence_closes(s, c, n)
               for s, c, n in _close_probe))
+
+    # Ledger side of the same rule: a deeper heading inside a `## Deferred
+    # from:` block is internal structure — entries after it still count; a
+    # same-level heading closes the block. Pinned against deferred_ledger.py's
+    # parse_document so the Phase 7 and Phase 8 counts stay one grammar.
+    _led_sub_text = (
+        "# Deferred Work\n\n"
+        "## Deferred from: code review of story-1-2 (2026-03-18)\n\n"
+        "- entry before the subheading\n\n"
+        "### context\n\n"
+        "- entry after the subheading\n\n"
+        "## Notes\n\n"
+        "- not an entry (same-level heading closed the block)\n"
+    )
+    led_sub = write(_led_sub_text)
+    check("ledger subheading: entries on both sides counted",
+          build_result(p1, None, led_sub, "story-1-2")["deferred_work_logged"] == 2)
+    check("lockstep: subheading entry count equals deferred_ledger.py's",
+          len(_dl.parse_document(_led_sub_text)[1]) == 2)
+    os.unlink(led_sub)
 
     # Bold-prose / no-checkbox rendering (real BMAD output) must count the same.
     pb = write(_WITH_BOLD_FINDINGS)

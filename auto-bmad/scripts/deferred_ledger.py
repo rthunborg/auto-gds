@@ -15,7 +15,9 @@ An **entry** is one top-level bullet — plus its continuation lines and nested
 bullets — under a ``## Deferred from: <source> (<date>)`` heading (the format
 the code-review delegate appends; see delegation.md). Bullets in the title/
 intro or under any other heading are never entries; they are preserved
-verbatim. Fenced code blocks (``` or ~~~, CommonMark-style) are tracked:
+verbatim. A section ends at the next heading at its own level or shallower;
+a DEEPER heading (``### context`` under a ``##`` section) is section-internal
+structure and the bullets after it are still entries. Fenced code blocks (``` or ~~~, CommonMark-style) are tracked:
 ``## …`` / ``- …`` lines inside a fence are literal content, never a section
 or entry boundary, and an unclosed fence runs to end of file as content of
 the current entry/section.
@@ -76,8 +78,17 @@ import tempfile
 
 # A ledger section heading: `## Deferred from: code review of story-3.3 (2026-03-18)`.
 DEFER_HEADING_RE = re.compile(r"^#{1,4}\s+deferred\s+from:", re.IGNORECASE)
-# Any ATX heading at level 1-4 — closes the current deferral section.
+# Any ATX heading at level 1-4 — a section-end candidate. Level-aware: only a
+# heading at the section's own level or shallower closes it; a DEEPER heading
+# (`### context` under a `## Deferred from:`) is section-internal structure and
+# the entries after it still belong to the section (the same rule as
+# review_findings.py's parse_deferred_work — one entry grammar for this file).
 ANY_HEADING_RE = re.compile(r"^#{1,4}\s+\S")
+
+
+def _heading_level(line):
+    """Number of leading ``#`` on a line ``ANY_HEADING_RE`` matched."""
+    return len(line) - len(line.lstrip("#"))
 # A top-level bullet (column 0) — starts a new entry inside a deferral section.
 TOP_BULLET_RE = re.compile(r"^[-*+]\s+\S")
 # An indented, non-blank line — a continuation / nested bullet of the entry.
@@ -151,6 +162,7 @@ def parse_document(text: str):
     segments = []
     entries = []
     section = None
+    section_level = 0  # level of the current section's `## Deferred from:` heading
     cur_heading = None
     next_section = 0
     n = len(lines)
@@ -177,11 +189,20 @@ def parse_document(text: str):
             section = next_section
             next_section += 1
             cur_heading = line.strip()
+            section_level = _heading_level(line)
             segments.append({"kind": "heading", "section": section, "line": line})
             i += 1
             continue
         if ANY_HEADING_RE.match(line):
-            # Any other heading closes the current deferral section.
+            if section is not None and _heading_level(line) > section_level:
+                # Deeper than the section heading: internal structure, not a
+                # boundary — the section stays open and later bullets are
+                # still entries. The heading travels as section text (so it
+                # vanishes with an emptied section, like any section prose).
+                add_text([line])
+                i += 1
+                continue
+            # A heading at the section's level or shallower closes it.
             section = None
             cur_heading = None
             add_text([line])
@@ -791,6 +812,35 @@ def _run_self_test():
         )
         check("inline code span: not a fence, sibling survives",
               len(ents) == 2 and "Sibling entry" in ents[1]["text"])
+
+        # ---- a DEEPER heading inside a section is structure, not a boundary - #
+        _segs, ents, _ = parse_document(
+            _HF + "\n\n"
+            "- Entry before the subheading\n\n"
+            "### context subheading\n\n"
+            "- Entry after the subheading\n\n"
+            "## Notes\n\n"
+            "- not an entry (same-level heading closed the section)\n"
+        )
+        check("subheading: entries on both sides counted", len(ents) == 2)
+        check("subheading: both attach to the deferral heading",
+              all(e["heading"] == _HF for e in ents))
+        lsub = os.path.join(td, "ledger-subheading.md")
+        with open(lsub, "w", encoding="utf-8") as fh:
+            fh.write(
+                "# Deferred Work\n\n" + _HF + "\n\n"
+                "- ✅ Resolved entry before the subheading\n\n"
+                "### context subheading\n\n"
+                "- Open entry after the subheading\n"
+            )
+        psub = build_plan(lsub)
+        res, code = do_archive(lsub, os.path.join(td, "resolved-sub.md"), [0],
+                               psub["ledger_sha256"])
+        led_sub = read(lsub)
+        check("subheading archive: open entry and subheading survive",
+              code == 0 and "### context subheading" in led_sub
+              and "Open entry after" in led_sub
+              and "Resolved entry" not in led_sub)
 
         # ---- F2: crash-recovery re-run dedupes the archive ----------------- #
         lf3 = fresh("ledger-f2.md")

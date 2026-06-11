@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Findings grouped under subheadings no longer escape the Phase 7 gate.** The `### Review
+  Findings` section now ends only at a heading of its own level or shallower — deeper headings
+  (e.g. `#### Patches`) are internal grouping — and the heading is matched at any level `#`–`####`;
+  the deferred-work ledger parsers follow the same rule. (review_findings.py, deferred_ledger.py)
 - **CLI-routed delegates no longer time out mid-run.** Every `cli_phases` invocation now runs in
   the background with a ≥30-minute allowance — host foreground shell caps (2–10 min on Claude
   Code) are far below real delegate runtimes. (delegation-runtime.md)

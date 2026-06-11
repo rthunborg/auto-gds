@@ -185,8 +185,9 @@ conflict; a delegated step returns `blocked`/`needs-human` (missing secret/crede
 external service, or manual action). Never push past a hard-stop — report and let the human act.
 
 (Note: three pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
-the code-review loop's end-of-loop HITL halt (Phase 7 — continue, optionally after
-an external review, or stop; re-asked once — continue as draft, or stop — if that review's changes
+the code-review loop's end-of-loop HITL halt (Phase 7 — run one more review iteration, continue
+(optionally after an external review), or stop; re-asked once — another iteration, continue as
+draft, or stop — if that review's changes
 re-review as meaningful; always skipped when the
 loop converged cleanly); a `FAIL` epic trace gate (Phase 8 — remediate & re-gate / waive /
 stop); and the end-of-pipeline merge prompt on a clean-completion PR (Phase 9 — merge commit

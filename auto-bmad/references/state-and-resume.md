@@ -166,11 +166,11 @@ tea_rationale: "touches auth -> High risk"
 epic_story_count: 12             # stories under epic {e} (from sprint-status); gates the long-epic trace advisory
 stories_after_in_epic: 7         # epic stories ordered after this one (0=last); with epic_story_count, drives the trace-advisory distance gate (skip the last skip_last_stories)
 completed_phases: [0, 1, 2, 3, 4, 5, 6] # phase numbers from pipeline.md; gate-false no-op phases land here too (override-window skips do NOT); Phase 2 only once BOTH its sub-step gates resolved (ran, or gate false)
-code_review_iterations: 1      # the review-loop iteration currently in progress (1-based); a mid-iteration resume re-runs this iteration from step 1 (one redundant review pass is the cost of a rare crash — there is no mid-iteration capsule)
-code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (convergence_unverified=false, a clean convergence), in which case proceed to the Phase 7 tail without re-opening
-hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached)
+code_review_iterations: 1      # the review-loop iteration currently in progress (1-based); a mid-iteration resume re-runs this iteration from step 1 (one redundant review pass is the cost of a rare crash — there is no mid-iteration capsule). A value ABOVE code_review.max_iterations is a user-granted extension from the step-4 halt — gate it as the final iteration (--max-iterations {code_review_iterations}, pipeline.md step 3)
+code_review_loop_done: false   # set true when the review loop exits (converged or capped); flipped back to false when the user extends the loop at the step-4 halt; on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (convergence_unverified=false, a clean convergence), in which case proceed to the Phase 7 tail without re-opening
+hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached; also reset to null when the user extends the loop at the halt — it resolves at the next exit)
 external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue (single-shot — at most one per run; resumes can accumulate more); 0 if none
-convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings and the user chose to continue with them open, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft
+convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings and the user chose to continue with them open, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft. CLEARED when the user extends the loop at the step-4 halt — the extended pass re-verifies it and the gate re-decides
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
@@ -241,7 +241,9 @@ python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad
 ```
 - `resume: true` (file exists, `status != done`) → **resume**: skip phases already in
   `completed_phases`; if Phase 7 is in progress (`code_review_loop_done` false), re-run iteration
-  `code_review_iterations` in full from step 1 — a fresh review pass; never reconstruct a
+  `code_review_iterations` in full from step 1 — a fresh review pass (an iteration above
+  `code_review.max_iterations` is a user-granted extension from the step-4 halt: gate it as the
+  final iteration, pipeline.md step 3); never reconstruct a
   half-finished iteration from the story file (post-fix check-offs would fake a clean pass; one
   redundant pass is the cost of a rare mid-iteration crash). If `code_review_loop_done` is
   already `true`, re-open the Phase 7

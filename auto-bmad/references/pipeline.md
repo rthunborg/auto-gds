@@ -160,7 +160,7 @@ were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this o
 - Delegate the **`testarch-automate`** entry with `<story_file>`.
 - Commit: `test(story-{e}-{s}): expand automated coverage`.
 
-## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean or the cap is 1)
+## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean or the cap is 1; the step-4 halt can extend the loop one iteration at a time)
 The loop runs **at least two review passes — unless the first pass is perfectly clean** (0
 non-deferred findings, every lens ran) **or `max_iterations: 1` caps it at one** (the cap is
 explicit consent to a single-pass review — the lone pass is judged by the same convergence rules
@@ -287,7 +287,10 @@ For iteration `i` (1-based):
    `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
    --max-iterations {cap} --lenses-failed {failed-layer count from step 1b} --lenses-total {3×R}`
    (add `--convergence-unverified true` when state already
-   holds the sticky flag) and **OBEY its `action` and `convergence_unverified`**: `continue`
+   holds the sticky flag). `{cap}` is `code_review.max_iterations` — except on a **user-extended
+   iteration** (granted at the step-4 halt, recognizable as `i >` the config cap), where `{cap} =
+   {i}`: each extension grants exactly one more, always-final, iteration, judged by the
+   final-iteration rows 6/7/9. **OBEY the gate's `action` and `convergence_unverified`**: `continue`
    → run iteration `i+1` (same roster); `exit-clean`/`exit-unconverged` → exit the loop,
    persist `convergence_unverified` to state (`true` ⇒ Phase 9 ships a **draft** — `git-and-pr.md`
    draft predicate), and enter step 4 (whose skip gate reads that same flag);
@@ -321,8 +324,9 @@ For iteration `i` (1-based):
    the halt**: do **not** open `AskUserQuestion`. `log` one line ("review converged cleanly — Phase 7
    HITL halt skipped"), record `hitl_halt: skipped (clean convergence)` in state + the
    report's Code-review line, and proceed as the **Continue** path **with no external-change check**
-   (there was no human pause, so there are no external changes to detect) — straight to the Phase 7
-   tail. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged or
+   (no human pause since the last review pass — an extension commits any pause changes before
+   re-entering, and otherwise there was no pause at all — so there is nothing to detect) — straight
+   to the Phase 7 tail. The gate **never** fires when `convergence_unverified` is `true` (capped-unconverged or
    incomplete-lens — those always halt). There is no config knob — a clean convergence always
    auto-continues (a stale `code_review.skip_hitl_on_clean_convergence` key in a config is ignored).
 
@@ -333,7 +337,20 @@ For iteration `i` (1-based):
    (`convergence_unverified`). **Recommend an external review while the pipeline is paused** — a
    human, another model/AI, or a separate tool, reviewing the branch's changes — because even a
    converged exit's final fix pass is itself unverified. Then ask (`AskUserQuestion`):
-   - **Continue** *(recommended)* — resume the pipeline. **First check (git only — the orchestrator
+   - **Run another review iteration** *(recommended when the last pass was unconverged)* — extend
+     the loop past the cap by exactly one full iteration, same roster. First run the same git-only
+     new-changes check as **Continue** below and commit anything found (`fix(story-{e}-{s}):
+     external review changes`) — the extended pass reviews those commits as part of the branch
+     diff, so no single-shot re-review runs here (and none is consumed). Then set
+     `code_review_loop_done: false`, reset `hitl_halt: null`, **clear `convergence_unverified` to
+     `false` in state** — the loop exit set it, and this pass IS its re-verification, so it must
+     not feed back in as the gate's sticky input — and re-enter the loop at iteration `i+1`,
+     gating with `--max-iterations {i+1}` (step 3's extended `{cap}`; the extended pass is always
+     final). A converged full-lens extension exits clean — the skip gate then auto-continues and
+     Phase 9 ships a normal PR; an unconverged or lens-incomplete one re-opens this halt, where
+     the user may extend again (one iteration per ask) or continue. Note every extension in the
+     report's Code-review line (`+N user-extended iteration(s)`).
+   - **Continue** *(recommended otherwise)* — resume the pipeline. **First check (git only — the orchestrator
      never reads the code) for new changes since the halt**: new commits and/or a dirty working tree
      from the external review. **If nothing changed, just continue.** If there are changes, commit
      them `fix(story-{e}-{s}): external review changes`, then run the **single-shot re-review**
@@ -353,12 +370,18 @@ For iteration `i` (1-based):
      - **Meaningful → re-ask ONCE.** Commit the persisted findings
        `chore(story-{e}-{s}): re-review external changes`, then **ask again** (`AskUserQuestion`),
        summarizing the new findings (verdict + `Critical N / High N / Medium N / Low N` + the
-       non-deferred count). Two options only — there is no fix loop here:
+       non-deferred count). Three options — there is no inline fix loop here, but the loop itself
+       can be re-entered:
+       - **Run another review iteration** *(recommended for fixing in-pipeline)* — the same
+         extension as the option above: re-enter the loop one (final) iteration. Its fix step
+         addresses the open findings the re-review just persisted (the loop reads open items from
+         `<story_file>`), and clearing convergence still takes a subsequent converged pass — so
+         expect one further extension if this pass fixes anything.
        - **Continue (ship as draft)** — proceed with the findings unaddressed: they stay open in
          `<story_file>`, surface in the report + PR `Needs attention` checklist, and set
          `convergence_unverified: true` so Phase 9 ships a **draft**. Any changes made during this
          second pause are committed (git-only) but NOT re-reviewed.
-       - **Stop now** *(recommended for fixing)* — as the **Stop the pipeline now** option below;
+       - **Stop now** *(recommended for fixing outside the pipeline)* — as the **Stop the pipeline now** option below;
          report the open findings as `needs-human`. To get fixes re-reviewed, address the findings
          and re-run `/auto-bmad`: the resume re-opens this halt and its change check runs the
          single-shot re-review on what changed.

@@ -79,6 +79,11 @@ Four modes, each emitting ONE JSON object on stdout:
   - The decision IS the result: exit 0 whatever the action (2 only on
     usage/bad JSON). Defensive: an iteration OVERSHOOTING ``--max-iterations``
     still counts as capped (the loop exits; it can never spin past the cap).
+  - The step-4 halt may grant a ONE-iteration user extension: the orchestrator
+    re-enters with ``--iteration i+1 --max-iterations i+1`` and a cleared
+    sticky flag (the exit's ``true`` is what the extension re-verifies), so
+    the extended pass is always judged as a final iteration (rows 6/7/9).
+    Nothing changes in this script — the extension is pure inputs.
 
 * ``converged`` (pure): the convergence rule ALONE, for the Phase 7
   external-change re-review at the HITL halt: the external changes are

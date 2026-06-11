@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The Phase 7 halt can now run another review iteration.** A new option extends the loop past
+  the cap, one full-roster pass at a time: a converged extension clears the unverified-draft
+  verdict and auto-continues; an unconverged one re-opens the halt. Also offered at the
+  post-external-review re-ask, where it acts as the in-pipeline fix loop. (pipeline.md,
+  state-and-resume.md)
+
 ### Changed
 
 - **CLI-routed review lenses now run in parallel on every host.** A routed reviewer slot's three

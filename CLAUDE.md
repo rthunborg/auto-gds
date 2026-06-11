@@ -8,9 +8,7 @@ This repo is a **BMAD standalone module** (one skill + a Claude `marketplace.jso
 The orchestrator **delegates BMAD work and reports** — it must never implement story work or run
 `/bmad-*` skills directly. Every BMAD step (create-story, dev-story, code-review, TEA, retro,
 project-context bootstrap/refresh) runs in a delegated `ab-*` sub-agent — code-review as a **fan-out**
-of delegates the orchestrator drives (three review lenses per configured reviewer model — up to
-three models in parallel — plus one triage), since its skill can't spawn
-its own subagents from inside a delegate (see the owns-directly list). **Preserve this separation
+of delegates the orchestrator drives (see the owns-directly list). **Preserve this separation
 when editing.**
 
 The orchestrator owns a small set of actions **directly** (never delegated) — all git/finalize
@@ -27,15 +25,15 @@ bookkeeping it already holds full pipeline context for. Don't "fix" these into d
   which a delegate can't (no nested subagents). So the orchestrator hoists the fan-out: it builds the
   diff (git) and spawns the review lenses (three per configured reviewer model, 3–9 in total) + the
   triage as delegates. **The lenses and triage are
-  all delegated; the orchestrator only routes the diff and findings by path and never reads either** —
-  so "no code inspection at any tier" still holds. Because auto-bmad here mirrors the upstream skill's
+  all delegated; the orchestrator only routes the diff and findings by path and never reads
+  either.** Because auto-bmad here mirrors the upstream skill's
   *internal* structure (lens roster, the inline Acceptance Auditor prompt, the triage rubric), an
   upstream `bmad-code-review` change can drift silently — keep the replica in lockstep.
 - **Phase 7 external-change handling** — at the end-of-loop human halt, the orchestrator detects any
   external-review changes with a **git-only check** (never a code read), commits them, and re-opens
   the halt. The **re-review of those changes is delegated** like every other review (the same
-  fan-out, full reviewer roster) and its findings gate the re-halt — it is emphatically **not** an
-  inline read. The orchestrator no longer inspects code at any tier; keep it that way.
+  fan-out, full reviewer roster) and its findings gate the re-halt — not an inline read. **The
+  orchestrator never inspects code at any tier — keep it that way.**
 
 The mechanics of these live in the reference docs — **don't restate them here**: `git-and-pr.md`
 (branching, push, PR, merge prompt), `pipeline.md` (Phase 0 probe, Phase 7 code-review fan-out, Phase 7
@@ -85,8 +83,8 @@ schema, first-run).
   - `state-and-resume.md` — config/state schema, first-run, profiles.
   - `overrides.md` — invocation-override vocabulary.
 - `auto-bmad/assets/agents/profiles.yaml` — the single per-profile source (model/effort + persona
-  strings). `claude/agent.md.tmpl` + `codex/agent.toml.tmpl` — one shared body template per tool the
-  renderer fills in, so the `ab-*` personas can't drift between tools. The renderer renders **every**
+  strings). `claude/agent.md.tmpl`, `codex/agent.toml.tmpl` + `opencode/agent.md.tmpl` — one shared
+  body template per tool the renderer fills in, so the `ab-*` personas can't drift between tools. The renderer renders **every**
   `ab-*` profile in its source — the shipped four plus any user-added custom profiles in the runtime
   config (non-`ab-` names are skipped with a warning; custom profiles are first-class in
   config_plan.py too: the heal ignores them, a whole-block reset prunes them).
@@ -197,7 +195,7 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
   `--self-test`.
 - Don't land a user-facing change without a `CHANGELOG.md` note under `## [Unreleased]` (right
   Keep-a-Changelog heading) in the same commit/PR. Never bump the version files by hand — use
-  `scripts/bump-version.py` so all three stay in sync (see "Releasing").
+  `scripts/bump-version.py` so all four stay in sync (see "Releasing").
 - **Changelog entries are written to be skimmed.** A reader must grasp a release from the **bold
   lead lines alone**, in seconds. Enforce:
   - **One change = one bullet** under one heading. Never bundle (if you're writing "three
@@ -207,6 +205,8 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
   - **At most ~2 sentences of detail** after the headline — the one fact a reader needs. No
     "Previously…/the gap was…/chicken-and-egg" debugging narrative; the *how* lives in the reference
     docs and the commit body.
+  - **Hard cap: 2 wrapped lines per bullet (3 only for a major item)** — headline, detail, and
+    trailing parenthetical all included. Over the cap? Cut detail, never the wrap width.
   - **No inline file-touch lists** — git history records touched files. If a pointer genuinely
     helps, one terse trailing parenthetical (`(pipeline.md, git-and-pr.md)`), never woven into
     sentences.

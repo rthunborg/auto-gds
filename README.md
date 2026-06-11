@@ -10,7 +10,7 @@ The orchestrator **only delegates and reports** — every BMAD step runs inside 
 
 > Requires the BMAD skills it orchestrates (`bmm`, plus `tea` for the test phases) and a `_bmad/` config in your project — the installer below can add these in the same run. auto-bmad drives those skills; it does not replace them.
 
-> **Compatibility:** tested against the **[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) v6 skill line**, currently up to **6.8.0** (and the **6.8.1-next.6** prerelease).
+> **Compatibility:** tested against the **[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) v6 skill line**, currently up to **6.8.0** (and the **6.8.1-next.8** prerelease).
 
 > ⚠️ **It can't save you from bad inputs.** auto-bmad automates the *workflow*, not judgment — vague epics, thin acceptance criteria, or a shaky architecture produce vague, untrustworthy code, just faster. The code-review loop and human-in-the-loop stops below are guardrails, not guarantees; the real leverage is clear stories and sound design *before* you press go.
 

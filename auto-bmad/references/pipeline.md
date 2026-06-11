@@ -195,10 +195,10 @@ For iteration `i` (1-based):
    b. **Fan out the 3×R lenses** — for EACH roster profile, the **`code-review-blind`**,
       **`code-review-edge`**, and **`code-review-auditor`** entries at that profile, each writing to
       its own slot's temp file (the primary's lenses → the `primary` paths, and so on).
-      On **Claude Code** and **Codex** spawn them **all in parallel** (across reviewers too; Codex
-      spawns named subagents concurrently and consolidates — `delegation-runtime.md`); on
-      **opencode** run in-tool lenses **sequentially** (parallel fan-out is unverified).
-      **CLI-routed lenses (`cli_phases`) run in parallel on every host** — they are background OS
+      Spawn them **all in parallel** on every host (across reviewers too): Claude Code via
+      parallel Agent calls, Codex by naming all the agents in one request (it spawns concurrently
+      and consolidates), opencode via concurrent task delegations — `delegation-runtime.md`.
+      **CLI-routed lenses (`cli_phases`) run in parallel too** — background OS
       processes, not in-tool subagents (`delegation-runtime.md`). Collect each lens's reported path + count; note any
       empty/failed layer — the failed-lens count spans ALL reviewers.
    c. **Capture the persistence baseline, then triage + persist.** First run

@@ -147,9 +147,8 @@ reviewer's three lens delegates** through the CLI — plus, for `code_review_rev
 distinct `--label` per delegate (e.g. `blind-hunter-primary`, `edge-case-secondary`, `triage`) so
 `capture_log` / `-o` paths don't collide. **Launch the lens invocations in parallel** — across
 CLI-routed reviewers too — as concurrent background processes (the spawn rule above), and wait for
-all of them to exit before the triage, which consumes their outputs. This holds on **every** host:
-CLI delegates are plain OS child processes, not in-tool subagents, so opencode's
-unverified-parallel-fan-out caveat doesn't apply; and the lenses only
+all of them to exit before the triage, which consumes their outputs. This holds on **every** host
+— CLI delegates are plain OS child processes with per-`--label` capture paths, and the lenses only
 write their own reserved lens-output files, never the tree, so concurrent runs can't collide.
 Routing a slot whose `phase_profiles` value is blank is a
 config error (`cli_delegate.py` reports "no phase_profiles mapping").
@@ -180,7 +179,8 @@ Full fidelity: the delegate runs in an isolated context at the profile's tuned m
   returned structured block exactly as on Claude Code.
 - **opencode:** spawns a subagent on request, identified by name — delegate via its Task tool or an
   `@ab-deep` mention (phrased as unambiguously as the Codex example), resolving to the
-  project-level `.opencode/agent/<name>.md` rendered at setup. **Fidelity caveat:** the delegate
+  project-level `.opencode/agent/<name>.md` rendered at setup. Parallel fan-out is supported —
+  spawn the Phase 7 lens delegations concurrently. **Fidelity caveat:** the delegate
   runs at the profile's `opencode.model` (blank — the shipped default — ⇒ **inherits your opencode
   default model**) with **no effort tuning** (no portable effort knob; reasoning is
   provider-specific — set it per-agent-name in `opencode.json` if wanted). So opencode is Tier-1

@@ -232,6 +232,7 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
   + optional `model: provider/model`, **no `name:` needed** (filename is the agent name) and **no
   portable per-agent effort knob** (reasoning is provider-shaped — `reasoningEffort`/`thinking` —
   set per-agent-name in `opencode.json`, NOT in our agent files; that's why opencode is model-only).
+  Parallel subagent fan-out works (user-confirmed) — in-tool lenses run concurrently here too.
   Multi-provider, so there's no shippable default ⇒ `opencode.model` ships BLANK (inherit). opencode
   injects **`OPENCODE_SESSION_ID`** into the shell env of commands it runs (host-detection signal).
   Headless: `opencode run` — prompt is a positional **arg** (NOT stdin), `-m provider/model`,

@@ -129,11 +129,13 @@ network/installs to `claude`/`opencode`, or leave them in-tool. opencode runs wi
 `--dangerously-skip-permissions` (headless auto-approve); its auth preflight is **lenient**
 (keyless/local/config providers ⇒ "0 credentials" never hard-stops), so it won't catch a missing
 cloud login — an unauthenticated `opencode run` on a cloud/Zen model **blocks indefinitely**: make
-sure opencode is logged in before routing to it. Routing `code_review_review` /
-`code_review_review_secondary` sends **all four** fan-out delegates (three lenses + triage) through
-the CLI — one invocation each, still sequential — with a distinct `--label` per delegate (e.g.
-`blind-hunter`, `edge-case`, `acceptance-auditor`, `triage`) so `capture_log` / `-o` paths don't
-collide.
+sure opencode is logged in before routing to it. Routing a reviewer-slot phase
+(`code_review_review`, `code_review_review_secondary`, `code_review_review_tertiary`) sends **that
+reviewer's three lens delegates** through the CLI — plus, for `code_review_review` only, the
+**triage** (it always runs at the primary profile) — one invocation each, still sequential — with a
+distinct `--label` per delegate (e.g. `blind-hunter-primary`, `edge-case-secondary`, `triage`) so
+`capture_log` / `-o` paths don't collide. Routing a slot whose `phase_profiles` value is blank is a
+config error (`cli_delegate.py` reports "no phase_profiles mapping").
 
 ## Tier 1 — `custom-subagents` (Claude Code, Codex & opencode)
 

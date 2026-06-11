@@ -162,7 +162,7 @@ were false, Phase 2 is a no-op, recorded as skipped. Sub-steps execute in this o
 
 ## Phase 7 — Code-review loop  (1–`code_review.max_iterations` reviews, default 2; ≥ 2 unless the first pass is perfectly clean or the cap is 1)
 The loop runs **at least two review passes — unless the first pass is perfectly clean** (0
-non-deferred findings, all three lenses ran) **or `max_iterations: 1` caps it at one** (the cap is
+non-deferred findings, every lens ran) **or `max_iterations: 1` caps it at one** (the cap is
 explicit consent to a single-pass review — the lone pass is judged by the same convergence rules
 as any final iteration), and **ends at a human-in-the-loop halt** (step 4)
 unless step 4's skip gate applies. Convergence is defined in step 3. Every continue/exit/halt rule
@@ -171,39 +171,43 @@ re-derive the rules. Track `code_review_iterations` and `code_review_loop_done` 
 continues mid-loop, or re-opens the halt once the loop is done).
 
 For iteration `i` (1-based):
-1. **Reviewer profile** — **always start with the primary reviewer.** When
-   `code_review.alternate_models` is true: odd `i` → `code_review_review` (primary), even `i` →
-   `code_review_review_secondary` — so iter 1 = primary, iter 2 = secondary (and, if the cap is
-   raised, iter 3 = primary again, alternating by parity).
-   When alternation is off, every iteration is `code_review_review`. **This iteration's reviewer
-   profile drives all four code-review delegates below.**
+1. **Reviewer roster — every iteration runs the same parallel roster.** Build it from
+   `phase_profiles`: `code_review_review` (primary — always), plus `code_review_review_secondary`
+   and `code_review_review_tertiary` when each maps to a non-blank profile (a blank/absent value
+   disables that slot). With `R` = roster size (1–3), each iteration fans out the three lenses
+   once **per roster profile** — 3, 6, or 9 lens delegates — and `3×R` feeds the gate's
+   `--lenses-total`. The single triage delegate always runs at the **primary** profile.
 
-   **Run the code-review fan-out (four delegates, not one skill call).** A delegate can't spawn
-   `/bmad-code-review`'s three internal review subagents (no nested subagents), so the orchestrator
-   hoists the fan-out (`delegation.md` → `code-review (fan-out)`). It passes the diff and findings
-   **by path, never by content**, so it inspects no code:
+   **Run the code-review fan-out (3×R lens delegates + one triage, not one skill call).** A
+   delegate can't spawn `/bmad-code-review`'s three internal review subagents (no nested
+   subagents), so the orchestrator hoists the fan-out (`delegation.md` → `code-review (fan-out)`).
+   It passes the diff and findings **by path, never by content**, so it inspects no code:
    a. **Build the diff (orchestrator, tool call).** Run `python3 {skill-root}/scripts/review_loop.py
       prep-diff --project-root <project_root> --base {git.base_branch}` — it writes the branch diff
       (exclude pathspecs baked into the script) to `diff_file` inside a throwaway `review_tmp`
-      (outside the work tree, never committed) and reserves the three lens-output paths
-      (`blind_out` / `edge_out` / `auditor_out`). Hand the returned paths to the lenses and triage
+      (outside the work tree, never committed) and reserves the per-reviewer lens-output paths
+      (`lens_paths.{primary|secondary|tertiary}.{blind|edge|auditor}` — use only the roster's
+      slots). Hand the returned paths to the lenses and triage
       below. If `diff_empty` is true there is nothing to review — delete `review_tmp` and treat it
       as a 0-finding pass through step 3 (for the gate's `--findings-json`, run
-      `review_findings.py --story-file <story_file> --expect-min 0`; gate with `--lenses-failed 0`
-      — with no failed lenses it is a genuine clean pass, table row 2).
-   b. **Fan out the three lenses** at this iteration's reviewer profile, each writing to its own temp
-      file: the **`code-review-blind`**, **`code-review-edge`**, and **`code-review-auditor`** entries.
-      On **Claude Code** spawn them **in parallel**; on **Codex** and **opencode** run them
-      **sequentially** (Codex's no-fan-out rule — `delegation-runtime.md`; opencode parallel
-      fan-out is unverified). Collect each lens's reported path + count; note any empty/failed
-      layer.
+      `review_findings.py --story-file <story_file> --expect-min 0`; gate with `--lenses-failed 0
+      --lenses-total {3×R}` — with no failed lenses it is a genuine clean pass, table row 2).
+   b. **Fan out the 3×R lenses** — for EACH roster profile, the **`code-review-blind`**,
+      **`code-review-edge`**, and **`code-review-auditor`** entries at that profile, each writing to
+      its own slot's temp file (the primary's lenses → the `primary` paths, and so on).
+      On **Claude Code** spawn them **all in parallel** (across reviewers too); on **Codex** and
+      **opencode** run them **sequentially** (Codex's no-fan-out rule — `delegation-runtime.md`;
+      opencode parallel fan-out is unverified). Collect each lens's reported path + count; note any
+      empty/failed layer — the failed-lens count spans ALL reviewers.
    c. **Capture the persistence baseline, then triage + persist.** First run
       `python3 {skill-root}/scripts/review_findings.py --story-file <story_file>` and note its
       `total` as `{B}` — the section's bullet count BEFORE this pass (0 on a fresh story; on
       iteration ≥ 2 it holds the earlier passes' bullets). The reconciliation gate below subtracts
       it, so a prior pass's bullets can never vacuously satisfy this pass's persistence claim.
-      Then delegate the **`code-review-triage`** entry (same profile), handed the three lens
-      paths + `<diff_file>` + `<story_file>` + the failed-layer list. It dedupes, classifies, and writes
+      Then delegate the **`code-review-triage`** entry (always the primary profile), handed ALL the
+      roster's lens paths (3×R files, grouped by reviewer) + `<diff_file>` + `<story_file>` + the
+      failed-layer list. It dedupes (across reviewers too — parallel models overlap heavily),
+      classifies, and writes
       the `### Review Findings` section (`[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]`)
       plus the deferral ledger, then returns the verdict + counts. It is the **only** code-review
       delegate that writes findings.
@@ -250,8 +254,9 @@ For iteration `i` (1-based):
    Critical/High no longer counts as open. (If step 2 didn't run — no open Decision items — step
    1's reconciliation JSON is identical; reuse it.) Fold the capture into state right away —
    `state_update.py set` with `review_gate: {iteration: {i}, lenses_failed: {count from step 1b},
-   open_patch, open_decision, open_nondeferred, open_crit_high, untagged:
-   <open_severity.untagged>, fix_done: false}` — so a mid-iteration crash can replay this gate
+   lenses_total: {3×R}, open_patch, open_decision, open_nondeferred, open_crit_high, medium:
+   <open_severity.medium>, untagged: <open_severity.untagged>, fix_done: false}` — so a
+   mid-iteration crash can replay this gate
    from state instead of from a story-file re-read (`state-and-resume.md` → resume); flip
    `review_gate.fix_done` to `true` once post-fix verification below passes (or immediately when
    the pass has no fixable work). Read the verdict (Approve / Changes Requested /
@@ -273,37 +278,40 @@ For iteration `i` (1-based):
    Now classify the pass by its **non-deferred findings** — every finding it raised that was NOT
    routed to `[Review][Defer]` (the `[Review][Patch]` items plus the `[Review][Decision]` items the
    user chose to fix; use **the file's** counts and severities from the gate-time capture above,
-   not the chat report). The pass **converged** iff it found-and-fixed **≤ 3 non-deferred findings AND none were
-   Critical or High** — file-derived: `open_crit_high == 0` AND `open_severity.untagged == 0` at
-   gate time (a *deferred* Critical/High is a logged human decision and does not block convergence).
+   not the chat report). The pass **converged** iff none were Critical or High — file-derived:
+   `open_crit_high == 0` AND `open_severity.untagged == 0` at gate time — AND it found-and-fixed
+   **either ≤ 3 non-deferred findings, or only Low-severity ones** (`open_severity.medium == 0`;
+   no count cap on a Low-only pass). A *deferred* Critical/High is a logged human decision and
+   does not block convergence.
 
    **Drive the loop — tool call, not prose.** Pipe the gate-time `review_findings.py` JSON — the
    post-decision, PRE-fix capture from the top of this step, never the post-fix re-run — to
    `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
-   --max-iterations {cap} --alternate-models {cfg} --lenses-failed {failed-layer count from step 1b}
+   --max-iterations {cap} --lenses-failed {failed-layer count from step 1b} --lenses-total {3×R}
    --skip-hitl-on-clean-convergence {cfg}` (add `--convergence-unverified true` when state already
    holds the sticky flag) and **OBEY its `action`, `hitl`, and `convergence_unverified`**: `continue`
-   → run iteration `i+1` at `reviewer_next_iter`; `exit-clean`/`exit-unconverged` → exit the loop,
+   → run iteration `i+1` (same roster); `exit-clean`/`exit-unconverged` → exit the loop,
    persist `convergence_unverified` to state (`true` ⇒ Phase 9 ships a **draft** — `git-and-pr.md`
    draft predicate), and enter step 4 with `hitl` (`halt` → the ask runs; `skip-halt` → step 4's
-   skip gate fires); `needs-human` → stop and report `needs-human` ("code review incomplete — 0/3
+   skip gate fires); `needs-human` → stop and report `needs-human` ("code review incomplete — 0/M
    lenses produced findings"), keeping `<review_tmp>` for debugging. Carry the gate's `reason` (it
-   includes any "incomplete review (only N/3 lenses ran)" caveat) into the report and the step-4
+   includes any "incomplete review (only N/M lenses ran)" caveat) into the report and the step-4
    halt summary. **The normative contract is `review_loop.py`** — its docstring carries the
    decision table and its `--self-test` pins every row; the copy below is a courtesy reference
-   only. On any discrepancy the script's JSON wins — obey it, never re-derive from this table:
+   only (`M` = `--lenses-total`). On any discrepancy the script's JSON wins — obey it, never
+   re-derive from this table:
 
    | # | i | lenses-failed | findings | cap (i==max)? | action | convergence_unverified | hitl |
    |---|---|---|---|---|---|---|---|
-   | 1 | any | 3 | — | — | needs-human ("0/3 lenses produced findings") | input value (unchanged) | null |
+   | 1 | any | M (all) | — | — | needs-human ("0/M lenses produced findings") | input value (unchanged) | null |
    | 2 | 1 | 0 | clean | — | exit-clean (only first-pass early exit) | false (or input true) | skip-halt if cfg else halt |
-   | 3 | 1 | 0 | not clean | no | continue (second opinion mandatory) | false/input | null |
-   | 4 | 1 | 1–2 | any (even 0 findings — untrustworthy) | no | continue | false/input | null |
-   | 5 | 1 | any≤2 | any | yes (max==1) | → rows 6/7/9 (the capped first pass follows the final-iteration rules — converged + all lenses exits clean) | per row | per row |
+   | 3 | 1 | 0 | not clean | no | continue (second opinion mandatory — a Low-only first pass included) | false/input | null |
+   | 4 | 1 | 1..M-1 | any (even 0 findings — untrustworthy) | no | continue | false/input | null |
+   | 5 | 1 | any<M | any | yes (max==1) | → rows 6/7/9 (the capped first pass follows the final-iteration rules — converged + all lenses exits clean) | per row | per row |
    | 6 | ≥2 | 0 | converged | — | exit-clean | false/input | skip-halt if cfg else halt |
-   | 7 | ≥2 | 1–2 | converged | — | exit-unconverged (reason notes "incomplete review N/3 lenses") | true | halt |
-   | 8 | ≥2 | ≤2 | not converged | no | continue | false/input | null |
-   | 9 | ≥2 | ≤2 | not converged | yes | exit-unconverged | true | halt |
+   | 7 | ≥2 | 1..M-1 | converged | — | exit-unconverged (reason notes "incomplete review N/M lenses") | true | halt |
+   | 8 | ≥2 | <M | not converged | no | continue | false/input | null |
+   | 9 | ≥2 | <M | not converged | yes | exit-unconverged | true | halt |
 
    On any exit, set `code_review_loop_done: true`, then go to step 4.
 4. **HITL halt — ASK the user on every loop exit (unless configured to skip a clean convergence).**
@@ -333,10 +341,9 @@ For iteration `i` (1-based):
      them `fix(story-{e}-{s}): external review changes`, then **delegate a fresh whole-story
      re-review**:
      - **Re-review (delegated, not an inline read).** Run the **code-review fan-out** (`delegation.md`
-       → `code-review (fan-out)`) at the `code_review_review_secondary` profile (deliberately the
-       secondary profile even when `code_review.alternate_models` is off — independence, not
-       rotation) — exactly like a loop pass (build the
-       diff, the three lenses, then `code-review-triage`). Apply the **same reconciliation gate** as
+       → `code-review (fan-out)`) exactly like a loop pass — the same full reviewer roster: build
+       the diff, the 3×R lenses, then `code-review-triage` at the primary profile. Apply the
+       **same reconciliation gate** as
        step 1 (`review_findings.py`; one `code-review-triage` re-run on non-persist, else
        `needs-human`). Increment `external_review_iterations`.
      - **Gate on the FILE, not the chat — tool call, not prose.** Pipe this re-review's

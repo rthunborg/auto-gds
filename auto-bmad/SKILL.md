@@ -44,7 +44,7 @@ to edit code, write a test, or run a `/bmad-*` skill directly? Don't — delegat
 carve-out: `inline` delegation mode — see `references/delegation-runtime.md` — where you run
 every step yourself under the same phase contract and structured-result discipline. Even
 inline, the Phase 7 HITL halt reads no code: on **Continue** you detect external-review changes
-with a git-only check and **delegate** their re-review to the alternate reviewer — never an
+with a git-only check and **delegate** their re-review via the code-review fan-out — never an
 inline read.)
 
 `{skill-root}` is this skill's own folder — resolve it to wherever this skill is installed

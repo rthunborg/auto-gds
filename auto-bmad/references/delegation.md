@@ -32,8 +32,10 @@ already carry the full form, so the short version is enough.
 - `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
 - `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
 - `<review_tmp>` — the throwaway dir `review_loop.py prep-diff` creates **outside the work tree** for
-  the code-review fan-out, holding `<diff_file>` (the branch diff) and the three lens outputs
-  `<blind_out>` / `<edge_out>` / `<auditor_out>`. Never under `<impl>` or the repo — it must not be
+  the code-review fan-out, holding `<diff_file>` (the branch diff) and one set of three lens-output
+  paths per reviewer slot (`lens_paths.{primary|secondary|tertiary}.{blind|edge|auditor}`). In the
+  lens prompts below, `<blind_out>` / `<edge_out>` / `<auditor_out>` mean *the running reviewer
+  slot's* reserved paths. Never under `<impl>` or the repo — it must not be
   committable. Deleted (`rm -rf`) once the iteration's reconciliation gate passes; on a
   `needs-human` exit it is kept and its path surfaced for debugging.
 
@@ -95,14 +97,16 @@ key, schema, CLI flag, or required migration step). The orchestrator records the
 body (and a `BREAKING CHANGE:` footer).
 ```
 
-### code-review  (fan-out — four delegates, not one skill call)
+### code-review  (fan-out — 3×R lens delegates + one triage, not one skill call)
 Code-review is **not** delegated as a single `/bmad-code-review` call — that skill internally fans
 out to three review subagents, which a delegate cannot do (a sub-agent can't spawn sub-agents). So
 the **orchestrator hoists the fan-out** (`pipeline.md` Phase 7 step 1): it builds the diff, runs the
-four entries below — three review lenses, then one triage — and gates persistence. It passes the
-diff and each lens's findings **by path, never by content** — it never reads either, so "no code
-inspection at any tier" holds. All four entries in iteration `i` run at that iteration's reviewer
-profile (`code_review_review` on odd `i`, `code_review_review_secondary` on even — see `pipeline.md`).
+three lens entries below **once per roster reviewer** — `code_review_review` (primary, always)
+plus `code_review_review_secondary` / `code_review_review_tertiary` when mapped to a non-blank
+profile, each lens at its reviewer's profile, writing to that reviewer slot's reserved paths — then
+one `code-review-triage` at the **primary** profile over all the lens files, and gates persistence.
+It passes the diff and each lens's findings **by path, never by content** — it never reads either,
+so "no code inspection at any tier" holds.
 
 **Keep that invariant real for the three lenses:** when you append the shared autonomy directive to a
 lens prompt, bind its structured result so finding content stays out of chat — the lens's `Outcome` is
@@ -147,18 +151,19 @@ finding count — NOT the findings text.
 
 #### code-review-triage  (triage + persist — the only code-review delegate that writes findings)
 ```
-Triage a code review of story {key}. Three independent review lenses already ran; their raw findings
-are in these files (any may be empty or absent — note each such case as a failed/empty layer):
-- Blind Hunter (adversarial markdown list): <blind_out>
-- Edge Case Hunter (JSON array — location / trigger_condition / guard_snippet / potential_consequence): <edge_out>
-- Acceptance Auditor (markdown list — title / AC-or-constraint / evidence): <auditor_out>
+Triage a code review of story {key}. The same three review lenses ran independently under each of
+{R} reviewer model(s); their raw findings are in these files (any may be empty or absent — note
+each such case as a failed/empty layer):
+{lens_files}
 The diff under review is at <diff_file>; the spec/story file is <story_file>. Do NOT re-review — work
-from the three files.
+from those files.
 
 TRIAGE:
-1. Normalize all findings to a common shape (title, detail, file:line if present, source lens).
+1. Normalize all findings to a common shape (title, detail, file:line if present, source lens+reviewer).
 2. Deduplicate: merge findings describing the same issue — prefer the one with a concrete file:line,
-   fold in the others' detail, mark the merged source (e.g. blind+edge).
+   fold in the others' detail, mark the merged source (e.g. blind@primary+edge@secondary). Expect
+   heavy overlap ACROSS reviewers (independent models reviewing the same diff): same-issue findings
+   from different reviewers are duplicates to merge, never separate bullets.
 3. Classify each into exactly one bucket:
    - Decision — an ambiguous choice that needs a human call; the code can't be correctly patched
      without knowing intent.
@@ -187,6 +192,13 @@ you wrote to <story_file>; `Deferrals logged: <W>` = bullets you added under thi
 `## Deferred from:` heading in <impl>/deferred-work.md; `Failed layers: <list or none>`. Do NOT change
 the story's Status field, sync sprint-status.yaml, or halt for input — the orchestrator owns those.
 ```
+(The orchestrator fills `{R}` with the roster size and `{lens_files}` with one block per roster
+reviewer, from `prep-diff`'s `lens_paths`:
+- Reviewer `primary`:
+  - Blind Hunter (adversarial markdown list): `<lens_paths.primary.blind>`
+  - Edge Case Hunter (JSON array — location / trigger_condition / guard_snippet / potential_consequence): `<lens_paths.primary.edge>`
+  - Acceptance Auditor (markdown list — title / AC-or-constraint / evidence): `<lens_paths.primary.auditor>`
+repeated for `secondary` / `tertiary` when on the roster — list only active slots.)
 
 ### code-review fix
 ```

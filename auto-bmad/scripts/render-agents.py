@@ -378,7 +378,7 @@ def _run_self_test() -> int:
     # Descriptions carry the profile-distinctive signal — sanity-check the labels.
     assert "highest-stakes, deep-reasoning" in profiles["ab-deep"]["description"]
     assert "test- and context-infrastructure" in profiles["ab-standard"]["description"]
-    assert "alternate-model secondary code-review" in profiles["ab-alt-deep"]["description"]
+    assert "parallel second-opinion code review" in profiles["ab-alt-deep"]["description"]
     assert "lighter-weight" in profiles["ab-alt-standard"]["description"]
 
     # Inline-flow-map parsing.

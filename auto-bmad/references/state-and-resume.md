@@ -36,7 +36,6 @@ git:
   ci_wait_minutes: 30      # max wait for in-progress CI before deciding (used only when offer_merge is on)
 code_review:
   max_iterations: 2
-  alternate_models: true   # odd iters use code_review_review, even iters code_review_review_secondary
   skip_hitl_on_clean_convergence: true    # (default) skip the Phase 7 HITL halt when the loop converged cleanly (convergence_unverified=false); the halt still fires otherwise. Set false to halt on every loop exit
 # profiles + phase_profiles complete the file — single source: assets/agents/profiles.yaml
 # (first run copies it in verbatim; edit it or this copy, then `/auto-bmad reprovision`;
@@ -48,6 +47,8 @@ profiles: {…}              # ab-deep | ab-standard | ab-alt-deep | ab-alt-stan
                            #    opencode: {model, variant}} — opencode is model-only + ships model
                            #   BLANK (inherit your opencode default); variant is cli_phases-only
 phase_profiles: {…}        # create_story, dev_story, code_review_review, code_review_review_secondary,
+                           #   code_review_review_tertiary (the two extra reviewer slots are OPTIONAL —
+                           #   blank "" => disabled; secondary ships on, tertiary ships blank),
                            #   code_review_fix, tea_triage, tea_per_story, tea_epic, tea_epic_audit,
                            #   retrospective, project_context (git/PR work runs in the orchestrator
                            #   directly — no delegate profile)
@@ -76,7 +77,7 @@ The single interactive episode in normal operation. Always confirm `target_tools
    now (delegate to `ab-standard`) or `skip` — heavy, infra-choosing setup, never auto-run unasked.
 4. **Full only — extra prefs** (each prefilled with the default shown): `git.mode`
    (auto | remote | local; default auto), `git.branch_prefix` (default `story/`),
-   `code_review.max_iterations` (default 2), `code_review.alternate_models` (default true).
+   `code_review.max_iterations` (default 2).
    `git.base_branch` is auto-detected, never asked.
 5. Write `config.yaml` with the seeded delegation/profiles, the confirmed `target_tools`, the
    answers, and detected `git`/`base_branch` values (Quick fills the step-4 fields with the defaults
@@ -164,14 +165,14 @@ stories_after_in_epic: 7         # epic stories ordered after this one (0=last);
 completed_phases: [0, 1, 2, 3, 4, 5, 6] # phase numbers from pipeline.md; gate-false no-op phases land here too (override-window skips do NOT); Phase 2 only once BOTH its sub-step gates resolved (ran, or gate false)
 code_review_iterations: 1      # the review-loop iteration currently in progress (1-based); a mid-iteration resume replays the iteration from the review_gate capsule below
 review_gate: {}                # mid-iteration resume capsule, folded in at step 3's gate-time capture (post-decision,
-                               #   PRE-fix): {iteration, lenses_failed, open_patch, open_decision, open_nondeferred,
-                               #   open_crit_high, untagged, fix_done}. fix_done flips true once post-fix verification
-                               #   passes (or the pass had no fixable work). Stale once the loop exits — consult it
-                               #   only while code_review_loop_done is false
+                               #   PRE-fix): {iteration, lenses_failed, lenses_total, open_patch, open_decision,
+                               #   open_nondeferred, open_crit_high, medium, untagged, fix_done}. fix_done flips true
+                               #   once post-fix verification passes (or the pass had no fixable work). Stale once the
+                               #   loop exits — consult it only while code_review_loop_done is false
 code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (code_review.skip_hitl_on_clean_convergence=true AND convergence_unverified=false), in which case proceed to the Phase 7 tail without re-opening
 hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached)
 external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue; capped by code_review.max_iterations; 0 if none
-convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (>3 non-deferred findings, or >=1 non-deferred Critical/High) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings the user chose to Ignore & continue, or its Fix & re-review rounds hit the cap, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft
+convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings the user chose to Ignore & continue, or its Fix & re-review rounds hit the cap, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
@@ -246,10 +247,11 @@ python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad
   iteration ⇒ re-run the full iteration from step 1; else, if `fix_done` is false and the
   capture had fixable work (`open_patch > 0`, or decisions the user resolved to fix), re-enter
   step 3 at the fix delegate first; then re-run the gate with the capsule's counts +
-  `lenses_failed` — rebuild its findings JSON from the capsule, **never** from a fresh
-  story-file read (post-fix check-offs would fake a clean pass). The capsule is FLAT while the
-  gate wants the `review_findings.py` shape: map `untagged` → `open_severity: {"untagged": …}`
-  and pass `open_nondeferred`/`open_crit_high` through (the other `open_severity` buckets aren't
+  `lenses_failed`/`lenses_total` — rebuild its findings JSON from the capsule, **never** from a
+  fresh story-file read (post-fix check-offs would fake a clean pass). The capsule is FLAT while
+  the gate wants the `review_findings.py` shape: map `untagged`/`medium` → `open_severity:
+  {"untagged": …, "medium": …}` and pass `open_nondeferred`/`open_crit_high` through (the other
+  `open_severity` buckets aren't
   consumed; the gate errors by name on a missing key if the mapping is skipped). Obey its
   `action` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
   HITL halt rather than re-iterating — the re-opened halt re-runs its git-only change check, so a

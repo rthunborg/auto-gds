@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Optional third review model: `code_review_review_tertiary`.** Map the new `phase_profiles` slot
+  to a profile to add a third independent reviewer to every review pass; ships blank (disabled).
+
+### Changed
+
+- **All configured review models now review every pass in parallel.** Each Phase 7 iteration fans
+  the three review lenses out once per configured reviewer (3, 6, or 9 lens delegates) and a single
+  triage — always at the primary profile — dedupes across all of them. The post-halt external-change
+  re-review runs the same full roster.
+- **The secondary review model is now optional.** Blank out `code_review_review_secondary` in
+  `phase_profiles` for a single-model review; it still ships enabled (`ab-alt-deep`).
+- **A review pass with only Low-severity findings now converges, whatever the count.** The
+  ≤3-findings cap still applies when any finding is Medium or above; a first pass with findings
+  still pulls the mandatory second review iteration.
+
+### Removed
+
+- **`code_review.alternate_models` is gone.** Review models no longer alternate by iteration — every
+  configured reviewer runs on every pass. A stale key left in an existing config is ignored.
+
 ## [0.17.3] - 2026-06-11
 
 ### Changed

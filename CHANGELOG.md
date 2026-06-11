@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A review pass with only Low-severity findings now converges, whatever the count.** The
   ≤3-findings cap still applies when any finding is Medium or above; a first pass with findings
   still pulls the mandatory second review iteration.
+- **The post-halt re-review of external changes is now single-shot.** Changes added during the
+  Phase 7 halt still get committed and re-reviewed by the full roster; meaningful findings now
+  re-ask once — continue (PR ships as a draft with the findings open) or stop — instead of the
+  fix / fix-and-re-review / ignore rounds. Stop, fix, and re-run `/auto-bmad` to re-review fixes.
+- **A crash mid review iteration now resumes by re-running the iteration.** The `review_gate`
+  mid-iteration resume capsule is gone from the state schema; a stale field in an existing state
+  file is preserved untouched and ignored.
 
 ### Removed
 

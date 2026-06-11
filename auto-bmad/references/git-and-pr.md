@@ -112,8 +112,8 @@ shell. The rules below are the normative definition the script implements:
   1. a blocker was recorded;
   2. `convergence_unverified` is `true` (Phase 7: the review loop hit `max_iterations` while the
      last pass still had not converged — > 3 non-deferred findings or ≥ 1 non-deferred Critical/High;
-     **or** a post-halt re-review of external changes surfaced meaningful findings the user chose to
-     **Ignore & continue**, or its Fix & re-review rounds hit the cap — see `pipeline.md` Phase 7 step 4;
+     **or** a post-halt re-review of external changes surfaced meaningful findings and the user chose
+     to **continue** with them open — see `pipeline.md` Phase 7 step 4;
      **or** Phase 7 was skipped outright by the `skip code-review` override — zero review passes,
      see `overrides.md`);
   3. `gate_decision` is `WAIVED` (Phase 8: the epic trace gate did not pass and the user — or the

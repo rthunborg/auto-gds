@@ -252,14 +252,10 @@ For iteration `i` (1-based):
    (same flags as step 1's gate) now that step 2's resolutions are recorded in `<story_file>` —
    this post-decision, PRE-fix JSON drives the counts below and the loop gate, so a user-deferred
    Critical/High no longer counts as open. (If step 2 didn't run — no open Decision items — step
-   1's reconciliation JSON is identical; reuse it.) Fold the capture into state right away —
-   `state_update.py set` with `review_gate: {iteration: {i}, lenses_failed: {count from step 1b},
-   lenses_total: {3×R}, open_patch, open_decision, open_nondeferred, open_crit_high, medium:
-   <open_severity.medium>, untagged: <open_severity.untagged>, fix_done: false}` — so a
-   mid-iteration crash can replay this gate
-   from state instead of from a story-file re-read (`state-and-resume.md` → resume); flip
-   `review_gate.fix_done` to `true` once post-fix verification below passes (or immediately when
-   the pass has no fixable work). Read the verdict (Approve / Changes Requested /
+   1's reconciliation JSON is identical; reuse it.) There is no mid-iteration state capsule — a
+   crash anywhere inside an iteration resumes by re-running the whole iteration from step 1
+   (`state-and-resume.md` → resume; one redundant review pass is the cost of a rare crash).
+   Read the verdict (Approve / Changes Requested /
    Blocked) from the triage report; the Critical/High/Med/Low counts come from **the file** (this
    capture's `open_severity` / `open_crit_high`), never the chat counts. When there is fixable work — `[Review][Patch]` items, or
    `[Review][Decision]` items the user just resolved to fix — delegate the fix via the
@@ -338,8 +334,8 @@ For iteration `i` (1-based):
    - **Continue** *(recommended)* — resume the pipeline. **First check (git only — the orchestrator
      never reads the code) for new changes since the halt**: new commits and/or a dirty working tree
      from the external review. **If nothing changed, just continue.** If there are changes, commit
-     them `fix(story-{e}-{s}): external review changes`, then **delegate a fresh whole-story
-     re-review**:
+     them `fix(story-{e}-{s}): external review changes`, then run the **single-shot re-review**
+     (at most one per run):
      - **Re-review (delegated, not an inline read).** Run the **code-review fan-out** (`delegation.md`
        → `code-review (fan-out)`) exactly like a loop pass — the same full reviewer roster: build
        the diff, the 3×R lenses, then `code-review-triage` at the primary profile. Apply the
@@ -352,30 +348,25 @@ For iteration `i` (1-based):
        (= NOT converged — the same convergence rule as the loop gate; the threshold lives only in
        the script, never re-derive it here). `meaningful: false` → commit the checkpoint
        `chore(story-{e}-{s}): re-review external changes` and continue, no re-halt.
-     - **Meaningful → re-open this same halt.** Commit the persisted findings
+     - **Meaningful → re-ask ONCE.** Commit the persisted findings
        `chore(story-{e}-{s}): re-review external changes`, then **ask again** (`AskUserQuestion`),
        summarizing the new findings (verdict + `Critical N / High N / Medium N / Low N` + the
-       non-deferred count). For any fixing option, resolve open `[Review][Decision]` items first
-       (step 2). Offer:
-       - **Fix & re-review** *(recommended)* — delegate the **`code-review fix`** entry (profile
-         `code_review_fix`) on the new findings, commit `fix(story-{e}-{s}): address external-change
-         review`, then **loop back to Re-review** so the fix is itself verified and the user lands at
-         the halt again. Cap the rounds at `code_review.max_iterations`; on the cap, drop this option
-         and re-ask with the rest, setting `convergence_unverified: true`.
-       - **Fix only** — delegate the same fix and commit, then continue without re-reviewing (the fix
-         stays unverified, like a converged exit's final fix pass).
-       - **Ignore & continue** — proceed with the findings unaddressed: they stay open in
+       non-deferred count). Two options only — there is no fix loop here:
+       - **Continue (ship as draft)** — proceed with the findings unaddressed: they stay open in
          `<story_file>`, surface in the report + PR `Needs attention` checklist, and set
-         `convergence_unverified: true` so Phase 9 ships a **draft**.
-       - **Stop now** — as the **Stop the pipeline now** option below; report the open findings as
-         `needs-human`.
+         `convergence_unverified: true` so Phase 9 ships a **draft**. Any changes made during this
+         second pause are committed (git-only) but NOT re-reviewed.
+       - **Stop now** *(recommended for fixing)* — as the **Stop the pipeline now** option below;
+         report the open findings as `needs-human`. To get fixes re-reviewed, address the findings
+         and re-run `/auto-bmad`: the resume re-opens this halt and its change check runs the
+         single-shot re-review on what changed.
    - **Stop the pipeline now** — skip the remaining phases, go straight to the report (Step 3);
      commits stay on the branch, nothing is pushed and no PR is opened. If the loop exited
      unconverged, report its last pass's findings as `needs-human`.
-   Record the choice, the external-change re-review outcome (if it ran — `external_review_iterations`,
-   each round's verdict + counts, and the user's fix/ignore decision), and any extra commits in state +
+   Record the choice, the external-change re-review outcome (if it ran — verdict + counts and the
+   user's continue/stop decision), and any extra commits in state +
    the report. **Bracket every prompt here with `state_update.py timing-pause`/`timing-start`** — the
-   original ask and any re-opened halt — so the external-review waits land on human/idle, not
+   original ask and the re-ask — so the external-review waits land on human/idle, not
    `active_seconds` (see top of this file). Phase 7 enters `completed_phases` only after this halt
    resolves — or after the skip gate above fires (a skipped halt counts as resolved) — and the tail
    below, when selected.

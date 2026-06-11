@@ -97,7 +97,7 @@ SCHEMA_ORDER = (
     "git_mode", "base_branch",
     "tea_risk", "tea_selected", "tea_rationale", "epic_story_count", "stories_after_in_epic",
     "completed_phases",
-    "code_review_iterations", "review_gate", "code_review_loop_done", "hitl_halt",
+    "code_review_iterations", "code_review_loop_done", "hitl_halt",
     "external_review_iterations", "convergence_unverified", "story_trace",
     "commits", "phase8_steps",
     "gate_decision", "gate_iterations", "deferred_work_archived",
@@ -114,7 +114,7 @@ BOOL_FIELDS = {"is_first_in_epic", "is_last_in_epic", "needs_project_context_boo
 FLOW_LIST_FIELDS = {"tea_selected", "completed_phases", "commits"}   # short tokens: emit [a, b]
 BLOCK_LIST_FIELDS = {"open_questions", "deferred_work", "blockers", "constraints"}  # free text
 LIST_FIELDS = FLOW_LIST_FIELDS | BLOCK_LIST_FIELDS
-MAP_FIELDS = {"story_trace", "overrides", "phase8_steps", "review_gate"}
+MAP_FIELDS = {"story_trace", "overrides", "phase8_steps"}
 _MAP_KEY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")   # what load_state's map reader can parse back
 _PHASE8_MARKERS = (None, "done")                      # closed vocabulary (pipeline.md Phase 8) …
 _PHASE8_TRACE_GATE_EXTRA = ("waived", "failed")       # … which trace_gate alone extends
@@ -134,7 +134,6 @@ def default_state() -> dict:
     d["ci_status"] = "unknown"
     d["story_trace"] = None                     # null until the trace advisory runs
     d["overrides"] = {}
-    d["review_gate"] = {}                       # Phase 7 mid-iteration resume capsule
     d["phase8_steps"] = {k: None for k in PHASE8_KEYS}
     return d
 

@@ -162,16 +162,11 @@ tea_rationale: "touches auth -> High risk"
 epic_story_count: 12             # stories under epic {e} (from sprint-status); gates the long-epic trace advisory
 stories_after_in_epic: 7         # epic stories ordered after this one (0=last); with epic_story_count, drives the trace-advisory distance gate (skip the last skip_last_stories)
 completed_phases: [0, 1, 2, 3, 4, 5, 6] # phase numbers from pipeline.md; gate-false no-op phases land here too (override-window skips do NOT); Phase 2 only once BOTH its sub-step gates resolved (ran, or gate false)
-code_review_iterations: 1      # the review-loop iteration currently in progress (1-based); a mid-iteration resume replays the iteration from the review_gate capsule below
-review_gate: {}                # mid-iteration resume capsule, folded in at step 3's gate-time capture (post-decision,
-                               #   PRE-fix): {iteration, lenses_failed, lenses_total, open_patch, open_decision,
-                               #   open_nondeferred, open_crit_high, medium, untagged, fix_done}. fix_done flips true
-                               #   once post-fix verification passes (or the pass had no fixable work). Stale once the
-                               #   loop exits — consult it only while code_review_loop_done is false
+code_review_iterations: 1      # the review-loop iteration currently in progress (1-based); a mid-iteration resume re-runs this iteration from step 1 (one redundant review pass is the cost of a rare crash — there is no mid-iteration capsule)
 code_review_loop_done: false   # set true when the review loop exits (converged or capped); on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (convergence_unverified=false, a clean convergence), in which case proceed to the Phase 7 tail without re-opening
 hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached)
-external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue; capped by code_review.max_iterations; 0 if none
-convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings the user chose to Ignore & continue, or its Fix & re-review rounds hit the cap, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft
+external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue (single-shot — at most one per run; resumes can accumulate more); 0 if none
+convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings and the user chose to continue with them open, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
@@ -241,22 +236,15 @@ lookup, never a glob:
 python3 {skill-root}/scripts/state_plan.py --state-dir {output_folder}/auto-bmad/state --story-key {key}
 ```
 - `resume: true` (file exists, `status != done`) → **resume**: skip phases already in
-  `completed_phases`; if Phase 7 is in progress, continue the review loop from
-  `code_review_iterations` via the `review_gate` capsule — empty, or holding an earlier
-  iteration ⇒ re-run the full iteration from step 1; else, if `fix_done` is false and the
-  capture had fixable work (`open_patch > 0`, or decisions the user resolved to fix), re-enter
-  step 3 at the fix delegate first; then re-run the gate with the capsule's counts +
-  `lenses_failed`/`lenses_total` — rebuild its findings JSON from the capsule, **never** from a
-  fresh story-file read (post-fix check-offs would fake a clean pass). The capsule is FLAT while
-  the gate wants the `review_findings.py` shape: map `untagged`/`medium` → `open_severity:
-  {"untagged": …, "medium": …}` and pass `open_nondeferred`/`open_crit_high` through (the other
-  `open_severity` buckets aren't
-  consumed; the gate errors by name on a missing key if the mapping is skipped). Obey its
-  `action` (or, if `code_review_loop_done` is already `true`, re-open the Phase 7
-  HITL halt rather than re-iterating — the re-opened halt re-runs its git-only change check, so a
-  post-halt external-change re-review resumes naturally from `external_review_iterations`; but if
+  `completed_phases`; if Phase 7 is in progress (`code_review_loop_done` false), re-run iteration
+  `code_review_iterations` in full from step 1 — a fresh review pass; never reconstruct a
+  half-finished iteration from the story file (post-fix check-offs would fake a clean pass; one
+  redundant pass is the cost of a rare mid-iteration crash). If `code_review_loop_done` is
+  already `true`, re-open the Phase 7
+  HITL halt rather than re-iterating — the re-opened halt re-runs its git-only change check, so
+  external changes made between runs get their single-shot re-review; but if
   the step-4 skip gate applies — `convergence_unverified` false, a clean
-  convergence — proceed to the Phase 7 tail without re-opening). Re-detect git
+  convergence — proceed to the Phase 7 tail without re-opening. Re-detect git
   mode/branch (cheap) rather than trusting stale values if the branch is missing.
 - `exists: false` → start fresh (state file init in Phase 1) — **after the status-mismatch
   guard:** check the story's BMAD status from the `story_plan.py` read (`current_status` /
@@ -354,7 +342,7 @@ line appended under it), `planning_drift`, `needs_human` (list — the ⚠️ he
 
 **TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story; for the per-story trace advisory, its verdict + any uncovered ACs (advisory, non-blocking)>.
 
-**Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; then the end-of-loop HITL-halt outcome (continued / stopped / skipped (clean convergence)); and, if external-review changes triggered a post-halt re-review, its rounds + verdict/counts and the user's fix / fix-and-re-review / ignore decision; "skipped" if no review>.
+**Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; then the end-of-loop HITL-halt outcome (continued / stopped / skipped (clean convergence)); and, if external-review changes triggered a post-halt re-review, its verdict/counts and the user's continue / stop decision; "skipped" if no review>.
 
 **Open questions:** <numbered list, one per line — questions surfaced by any step; "(none)" if empty — keep the heading>.
 

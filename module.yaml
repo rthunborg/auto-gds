@@ -1,0 +1,46 @@
+# Installer-resolution mirror of auto-gds/assets/module.yaml.
+#
+# Why this file exists: the BMad installer's post-install steps
+# (collectAgentsFromModuleYaml / writeCentralConfig in manifest-generator.js)
+# locate a module's module.yaml only at conventional paths — skills/, src/,
+# <*-setup>/assets/, or the repo root. Our real module.yaml lives at
+# auto-gds/assets/module.yaml (shipped inside the installed skill), which the
+# installer cannot find, producing benign-but-noisy warnings:
+#   [warn] collectAgentsFromModuleYaml: could not locate module.yaml for 'agds'.
+#   [warn] writeCentralConfig: could not locate module.yaml for 'agds'.
+# This root mirror satisfies that lookup so install answers get correct
+# team/user scoping and any future `agents:` declarations are honored.
+#
+# Rules:
+# - Keep `code` and the install-time variable definitions in sync with
+#   auto-gds/assets/module.yaml (that file is the source of truth; this mirror
+#   deliberately omits module_version so release version-lockstep stays at the
+#   four tracked files).
+# - NEVER add a module-help.csv next to this file: the plugin resolver's
+#   Strategy 1 ("root module files at the skills' common parent") fires when
+#   BOTH files exist at the repo root and would re-root the installable module
+#   to the whole repository instead of auto-gds/.
+
+code: agds
+name: "Auto-GDS Orchestrator"
+description: "Drive the GDS/BMGD story workflow end-to-end for one story at a time, delegating each step to model- and effort-tuned subagents on Claude Code or Codex."
+default_selected: false
+
+# --- Install-time variables (recorded by the BMad installer under [modules.agds]
+#     in _bmad/config.toml / _bmad/config.user.toml) ---
+
+target_tools:
+  prompt: >
+    Which AI tools should auto-gds provision delegate agents for? This defaults to the AIs your
+    BMAD install already targets (detected from where the auto-gds skill is installed —
+    .claude/skills for Claude Code, .agents/skills for Codex); confirm or adjust. Select more than
+    one to run this project in either tool without reconfiguring — the running tool is
+    auto-detected each run. This only controls which agent files get generated.
+  multi-select:
+    - value: claude-code
+      label: "Claude Code  (.claude/agents — model + thinking effort)"
+    - value: codex
+      label: "Codex  (.codex/agents — model + reasoning effort)"
+  default:
+    - claude-code
+    - codex

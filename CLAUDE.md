@@ -94,13 +94,19 @@ agents on bump (`/auto-gds reprovision` is a runtime concern, not a release arti
   into a tool's skills dir (`.claude/skills/`, `.agents/skills/`, `.codex/skills/`). Hence the
   tiered design.
 - **BMAD update of a custom-source module (`agds`):** `--action quick-update` only re-pulls
-  modules cached under `~/.bmad/cache/` and **skips custom-source re-cloning entirely**. And the
-  installer never searches the project tree for a custom module's `module.yaml`, so installs can
-  emit benign `could not locate module.yaml for 'agds'` warnings. Fix: re-supply the source —
-  `npx bmad-method install --action update --custom-source <repo-url> --yes` (re-clones, rewrites
-  the manifest source). The README "Updating" section must recommend `--action update
-  --custom-source …`, **never** bare `quick-update`. The installer also silently ignores an
-  **absolute** `--custom-source` path — use a relative path or URL.
+  modules cached under `~/.bmad/cache/` and **skips custom-source re-cloning entirely**. Fix:
+  re-supply the source — `npx bmad-method install --action update --custom-source <repo-url>
+  --yes` (re-clones, rewrites the manifest source). The README "Updating" section must recommend
+  `--action update --custom-source …`, **never** bare `quick-update`. The installer also silently
+  ignores an **absolute** `--custom-source` path — use a relative path or URL.
+- **Installer module.yaml resolution:** install-time discovery is marketplace.json-driven
+  (plugin-resolver Strategy 3 finds `auto-gds/assets/module.yaml`), but the post-install
+  manifest/central-config steps search only conventional paths (`skills/`, `src/`,
+  `<*-setup>/assets/`, repo root). Hence the tracked repo-root `module.yaml` **mirror** (keep its
+  variable definitions in sync with `auto-gds/assets/module.yaml`; it intentionally omits
+  `module_version`). **Never add a `module-help.csv` at the repo root** — plugin-resolver
+  Strategy 1 fires when both root files exist and would re-root the installable module to the
+  whole repository.
 - **Shell globs:** the orchestrator's probe commands run under whatever shell the host uses (zsh,
   fish, bash). An unmatched glob is fatal in zsh/fish (`nomatch` ⇒ exit 1), and `for f in *.glob`
   isn't portable to fish — probes must not iterate raw globs. Use `find … -name '<pat>'`

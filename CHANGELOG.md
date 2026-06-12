@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Silenced the installer's `could not locate module.yaml for 'agds'` warnings.** The BMad
+  installer's post-install manifest/central-config steps only search conventional paths
+  (`skills/`, `src/`, `<*-setup>/assets/`, repo root) — never the marketplace-resolved plugin
+  folder — so a repo-root `module.yaml` mirror of `auto-gds/assets/module.yaml` now satisfies
+  that lookup. Install answers get proper team/user scoping and future `agents:` declarations
+  will be honored. (Deliberately no root `module-help.csv`: that would trigger the resolver's
+  root-module-files strategy and re-root the installable module to the whole repository.)
 - **Codex-only installs now get Codex delegate agents.** Setup previously trusted the
   installer-recorded `[modules.agds].target_tools` (a static `module.yaml` default the installer
   cannot detect the host for) and rendered only `.claude/agents/agds-*.md` on a Codex project.

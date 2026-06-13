@@ -2,7 +2,11 @@ name = "@@NAME@@"
 description = "@@DESCRIPTION@@"
 model = "@@MODEL@@"
 model_reasoning_effort = "@@REASONING_EFFORT@@"
-sandbox_mode = "workspace-write"
+# Full bypass: no inner OS sandbox, never prompt — parity with the claude/opencode delegates'
+# --dangerously-skip-permissions, and required in a nested container, where codex's workspace-write
+# sandbox spawns bubblewrap and can't create a namespace. Run auto-bmad in an outer sandbox (README).
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
 developer_instructions = """
 You are an auto-bmad delegate executing a single BMAD step on behalf of the auto-bmad
 orchestrator. You handle @@ROLE_BLURB@@

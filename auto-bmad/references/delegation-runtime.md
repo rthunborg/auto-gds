@@ -139,8 +139,10 @@ empty/absent `-o` file; opencode → `extract_opencode_result` returns no messag
 real output: claude `2.1.169`, codex `0.138.0`, opencode `1.16.2`.) `capture_log` is **debug-grade,
 outside the repo** — surface its path **only when a delegation fails**.
 
-Notes: codex runs under its `-s workspace-write` sandbox (network-restricted) — route phases needing
-network/installs to `claude`/`opencode`, or leave them in-tool. opencode runs with
+Notes: codex runs with `--dangerously-bypass-approvals-and-sandbox` (full access, no inner OS
+sandbox) — parity with claude/opencode's `--dangerously-skip-permissions`, and required because its
+bubblewrap sandbox can't create a namespace inside a nested container (run auto-bmad in an outer
+sandbox; see README). opencode runs with
 `--dangerously-skip-permissions` (headless auto-approve); its auth preflight is **lenient**
 (keyless/local/config providers ⇒ "0 credentials" never hard-stops), so it won't catch a missing
 cloud login — an unauthenticated `opencode run` on a cloud/Zen model **blocks indefinitely**: make

@@ -41,7 +41,7 @@ This script does two things and prints ONE JSON object on stdout:
 
 Command shapes are spike-confirmed (see the plan / delegation-runtime.md):
   claude:   claude -p --model M --effort E --output-format json --dangerously-skip-permissions
-  codex:    codex exec -m M -c model_reasoning_effort=E -s workspace-write -C ROOT -o LASTMSG --ephemeral
+  codex:    codex exec -m M -c model_reasoning_effort=E --dangerously-bypass-approvals-and-sandbox -C ROOT -o LASTMSG --ephemeral
   opencode: opencode run [-m M] [--variant V] --format json --dir ROOT --dangerously-skip-permissions <prompt-arg>
 
 Usage:
@@ -357,7 +357,10 @@ def resolve(
             "codex", "exec",
             "-m", model,
             "-c", f"model_reasoning_effort={effort}",
-            "-s", "workspace-write",
+            # Full bypass: no inner OS sandbox, no approval prompts — parity with the claude/opencode
+            # delegates' --dangerously-skip-permissions, and REQUIRED in a nested container, where
+            # codex's workspace-write sandbox spawns bubblewrap and can't create a namespace.
+            "--dangerously-bypass-approvals-and-sandbox",
             "-C", root,
             "-o", last_msg,
             "--ephemeral",
@@ -674,7 +677,10 @@ def _run_self_test() -> int:
     # codex effort is set via `-c model_reasoning_effort=`, NEVER `--effort`.
     assert "-c" in a and "model_reasoning_effort=xhigh" in a, a
     assert "--effort" not in a, a
-    assert "-s" in a and a[a.index("-s") + 1] == "workspace-write", a
+    # codex bypasses approvals AND its OS sandbox (no `-s` mode): workspace-write/read-only spawn
+    # bubblewrap, which can't create a namespace inside a nested container.
+    assert "--dangerously-bypass-approvals-and-sandbox" in a, a
+    assert "-s" not in a, a
     assert "-C" in a and a[a.index("-C") + 1] == "/proj", a
     assert "-o" in a and "--ephemeral" in a, a
     assert cx["result_source"].endswith(".lastmsg") and cx["result_format"] == "text", cx

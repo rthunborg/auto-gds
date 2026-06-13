@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex delegates no longer fail inside nested containers/sandboxes.** They now run with full
+  bypass-permissions (no inner OS sandbox) in every environment, matching the Claude/opencode delegates;
+  run auto-bmad in an outer sandbox.
+
 ## [0.20.1] - 2026-06-11
 
 ### Fixed

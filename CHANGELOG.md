@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Clarified what version a custom-source install resolves.** A bare `--custom-source` URL tracks
+  `main` HEAD; pin a release with an `@<tag>` suffix (BMAD's `--channel` flags don't apply to
+  custom-source URLs). (README)
+
 ### Fixed
 
 - **Codex delegates no longer fail inside nested containers/sandboxes.** They now run with full

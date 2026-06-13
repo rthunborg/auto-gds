@@ -241,6 +241,18 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
   `--dangerously-skip-permissions`. Skills load from `.opencode/skills/` or `~/.config/opencode/skills/`.
 - **BMAD** has no portable abstraction for delegation or model/effort; modules are skills copied
   into a tool's skills dir (`.claude/skills/`, `.codex/skills/`, `.opencode/skills/`). Hence the tiered design.
+- **BMAD install channels (since 6.8.0, #2305) — and why they DON'T govern `abm`:** for
+  *registered/official* modules the installer resolves each to a git ref by *channel* — `stable`
+  (highest semver release **tag**, the default), `next` (default-branch **HEAD**, i.e. `main`), or
+  `pinned` (exact ref); flags `--channel`, `--all-stable`/`--all-next`, `--next=<code>`,
+  `--pin <code>=<tag>`. **An ad-hoc `--custom-source <url>` (how `abm` installs) bypasses all of that**
+  — *confirmed by live isolated install*: a bare URL clones the **default branch (`main` HEAD)** and
+  records `channel:"next"`, and `--channel stable`/`--all-next` are **ignored** for it (marker stays
+  `next`/`main`). The **only** version selector for a custom-source URL is an `@<tag-or-branch>` suffix
+  (`…/auto-bmad@v0.20.1` ⇒ `channel:"pinned"`; raw SHAs unsupported), parsed by
+  `custom-module-manager.js parseSource`. So the README's bare install/update commands track `main`
+  HEAD — pin with `@<tag>` for a release; the `bmad-method@next` *installer* can't change a
+  custom-source ref either.
 - **BMAD update of a custom-source module (`abm`):** `--action quick-update` only re-pulls modules
   cached under `~/.bmad/cache/` and **skips custom-source re-cloning entirely** (`installer.js
   quickUpdate` adds a custom module only if `findModuleSourceByCode` hits a cached repo). And

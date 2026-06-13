@@ -45,6 +45,8 @@ npx bmad-method install \
 
 Use `--tools codex` for Codex (`npx bmad-method install --list-tools` lists every target). Re-run `npx bmad-method install` anytime to update.
 
+Both the interactive and `--custom-source` forms install auto-bmad's latest **`main`** commit; to pin a specific release instead, append the tag to the URL (`…/auto-bmad@v0.20.1`) — see [Updating](#updating).
+
 Then provision the delegate agents once with `/auto-bmad setup` — though auto-bmad also self-registers on the first normal `/auto-bmad` run if you skip it.
 
 <details>
@@ -69,7 +71,9 @@ npx bmad-method install \
   --yes
 ```
 
-This re-clones the repo into BMAD's module cache and rewrites the install manifest with auto-bmad's source, so the update applies and future `bmad update` runs resolve it cleanly. To track development versions ahead of a tagged release, add the prerelease installer channel: `npx bmad-method@next install --action update --custom-source https://github.com/stefanoginella/auto-bmad --yes`.
+This re-clones the repo into BMAD's module cache and rewrites the install manifest with auto-bmad's source, so the update applies and future `bmad update` runs resolve it cleanly.
+
+**Choosing a version.** The bare `--custom-source` URL above tracks auto-bmad's **`main` HEAD** — the latest commit, so each update pulls the newest `main`. To pin an exact release instead, append the tag to the source: `--custom-source https://github.com/stefanoginella/auto-bmad@v0.20.1`. For a custom-source URL the `@<ref>` suffix is the only version selector — BMAD's `--channel`/`--all-next` flags govern *registered* modules, not custom-source URLs, so they won't move auto-bmad onto a release tag.
 
 > ⚠️ **Don't update with `--action quick-update`** (the interactive default for an existing install). It skips custom-source re-cloning entirely, so auto-bmad is **silently skipped** and you keep seeing `[warn] … could not locate module.yaml for 'abm'` on the next `bmad update`. Always re-supply `--custom-source` as above (interactively: choose **"Modify BMAD Installation"** and re-enter the custom source — don't accept the quick-update default).
 

@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-06-13
+
 ### Changed
 
 - **Clarified what version a custom-source install resolves.** A bare `--custom-source` URL tracks
@@ -740,7 +742,8 @@ First tagged release — the matching `v0.1.1` git tag for the module already pu
 - **Distribution** via the BMAD installer (custom Git source) and a Claude plugin `marketplace.json`,
   plus a README "Updating" section, `CHANGELOG.md`, and the `scripts/bump-version.py` release helper.
 
-[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/stefanoginella/auto-bmad/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/stefanoginella/auto-bmad/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/stefanoginella/auto-bmad/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/stefanoginella/auto-bmad/compare/v0.18.0...v0.19.0

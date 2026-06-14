@@ -136,8 +136,12 @@ schema, first-run).
   - `cli_delegate.py` — resolves the opt-in external-CLI delegation for a phase (`delegation.cli_phases`):
     builds the `claude -p` / `codex exec` argv + model/effort from the phase's profile, and preflight-
     validates binary/skills/auth. Pure `resolve()` + live `validate()`.
-  - `merge-config.py` + `merge-help-csv.py` — config/CSV merge (BMAD template; PyYAML via the
-    installer's environment).
+  - `merge-help-csv.py` — the live self-registration: merges abm's help rows into the shared
+    `_bmad/module-help.csv` (anti-zombie; PyYAML via the installer's environment).
+  - `merge-config.py` — **retained only to satisfy the standalone-module validator**
+    (`validate-module.py` requires the file to exist); auto-bmad **does not invoke it**. abm never
+    writes the installer-owned central BMAD config (see the TOML-layout fact below) — its real
+    config is the runtime `{output_folder}/auto-bmad/config.yaml`. Don't reintroduce a call to it.
 - **Repo-root tooling, NOT shipped in the skill:** `CHANGELOG.md` (hand-maintained),
   `scripts/bump-version.py` (release helper — see "Releasing"), `skills/reports/` (tracked
   module-validation snapshots), `docs/` (placeholder).
@@ -273,6 +277,19 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
   source — `npx bmad-method install --action update --custom-source <repo-url> --yes` (re-clones,
   rewrites the manifest source). So the README "Updating" section must recommend `--action update
   --custom-source …`, **never** bare `quick-update`.
+- **BMAD central config went TOML (6.8.x; verified against 6.8.1-next.9) — and `abm` must not touch
+  it.** The installer now owns a **four-layer TOML** config resolved by `src/scripts/resolve_config.py`
+  (highest-last): `_bmad/config.toml` (team) → `_bmad/config.user.toml` (user) → `_bmad/custom/config.toml`
+  → `_bmad/custom/config.user.toml` (the `custom/` pair is **never** touched by the installer). Tables
+  deep-merge; arrays-of-tables merge by `code`/`id`. The unified `_bmad/config.yaml` is **dead** — 0
+  shipped skills read it (the BMAD module-builder scaffold still *writes* it for self-registered
+  modules, so it's a tolerated-but-inert marker). The installer **still writes** per-module
+  `_bmad/{code}/config.yaml` (legacy compat — that's why Step 0.2's `_bmad/bmm/config.yaml` read is
+  safe; latent fragility if BMAD ever drops it). A `--custom-source` install of `abm` registers
+  `[modules.abm]` in `config.toml` **and** a per-module `_bmad/abm/config.yaml` — leave both alone.
+  **Net for auto-bmad:** self-register via `_bmad/module-help.csv` + the runtime config only; the
+  On-activation gate keys off the runtime config's existence, never an `abm` section in any central
+  config. (`resolve_config.py` needs Python **3.11+** for stdlib `tomllib`; don't make abm depend on it.)
 - `/bmad-create-story` has no `validate` mode; it self-validates against its checklist.
 - **Shell globs:** the orchestrator's probe commands run under whatever shell the host uses (zsh,
   fish, bash). An unmatched glob is fatal in zsh/fish (`nomatch` ⇒ exit 1), and the `for f in

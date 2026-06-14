@@ -25,11 +25,20 @@ interactive questions, blockers, and the final report.
 ## On activation — register & provision first
 
 Before the procedure, handle module registration and delegate provisioning:
-- If invoked with `setup`, `configure`, `install`, or `reprovision`, **or** if
-  `{project-root}/_bmad/config.yaml` has no `abm` section → load
-  `{skill-root}/assets/module-setup.md` and complete it first (registration, config write,
-  delegate-agent rendering for the selected `target_tools`). `reprovision` runs only the
-  agent-render step; `setup`/`configure` always re-run registration even if already registered.
+- If invoked with `setup`, `configure`, `install`, or `reprovision`, **or** if auto-bmad is not yet
+  provisioned for this project — its runtime config `{output_folder}/auto-bmad/config.yaml` is
+  absent **and** no delegate agents are rendered (no `ab-*` files under `.claude/agents/`,
+  `.codex/agents/`, or `.opencode/agent/`; resolve `{output_folder}` from `_bmad/bmm/config.yaml`,
+  default `{project-root}/_bmad-output`) → load `{skill-root}/assets/module-setup.md` and complete
+  it first (help-registration + delegate-agent rendering for the selected `target_tools`).
+  `reprovision` runs only the agent-render step; `setup`/`configure` always re-run registration
+  even if already set up. **Both halves of the marker are required (a conjunction), on purpose:** an
+  explicit `setup` renders agents but stops *before* the first-run flow writes the runtime config —
+  keying off the config alone would needlessly re-run setup on the next invocation. **And the marker
+  is layout-independent on purpose:** auto-bmad self-registers via `_bmad/module-help.csv` + its own
+  runtime config and never reads/writes the installer-owned central BMAD config (TOML
+  `_bmad/config.toml` + `_bmad/custom/` on BMAD 6.8.x+; unified `_bmad/config.yaml` on older
+  installs), so the gate must not key off it.
 - If invoked with `reset-defaults [scope]`, run the **restore-shipped-defaults** flow in
   `references/state-and-resume.md` → "reset-defaults". It is **config-only**: report what
   changed, then **stop** — never start a pipeline.

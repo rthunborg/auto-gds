@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Setup no longer breaks on BMAD 6.8.x's TOML config layout.** auto-bmad self-registers via the
+  shared help CSV + its own runtime config instead of writing the now-installer-owned central
+  config, so first-run completes and delegate agents render on TOML-layout installs.
+
 ## [0.22.0] - 2026-06-14
 
 ### Added

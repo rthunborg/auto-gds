@@ -2,25 +2,26 @@
 
 Standalone module self-registration. This file is loaded when:
 - The user passes `setup`, `configure`, or `install` as an argument
-- The module is not yet registered in `{project-root}/_bmad/config.yaml`
+- The module is not yet provisioned for this project (its runtime config `{output_folder}/auto-bmad/config.yaml` is absent **and** no `ab-*` delegate agents are rendered)
 - The skill's first-run init flow detects this is a fresh installation (e.g., agent memory doesn't exist yet)
 
 ## Overview
 
-Registers this standalone module into a project. Module identity (name, code, version) comes from `./assets/module.yaml` (sibling to this file). Collects user preferences and writes them to three files:
+Registers this standalone module into a project. Module identity (name, code, version) comes from `./assets/module.yaml` (sibling to this file). Setup collects user preferences, then registers the module and provisions delegate agents:
 
-- **`{project-root}/_bmad/config.yaml`** — shared project config: core settings at root (e.g. `output_folder`, `document_output_language`) plus a section per module with metadata and module-specific values. User-only keys (`user_name`, `communication_language`) are **never** written here.
-- **`{project-root}/_bmad/config.user.yaml`** — personal settings intended to be gitignored: `user_name`, `communication_language`, and any module variable marked `user_setting: true` in `./assets/module.yaml`. These values live exclusively here.
-- **`{project-root}/_bmad/module-help.csv`** — registers module capabilities for the help system.
+- **`{project-root}/_bmad/module-help.csv`** — registers module capabilities for the help system (anti-zombie: existing `abm` rows are replaced before fresh ones are written, so stale values never persist).
+- **Delegate agent files** (`.claude/agents/ab-*.md`, `.codex/agents/ab-*.toml`, `.opencode/agent/ab-*.md`) — rendered for the selected `target_tools` (see "Provision Delegate Agents" below).
 
-Both config scripts use an anti-zombie pattern — existing entries for this module are removed before writing fresh ones, so stale values never persist.
+auto-bmad's install answer (`target_tools`) and **all** runtime settings live exclusively in auto-bmad's own config, `{output_folder}/auto-bmad/config.yaml`, written by the skill's **first-run flow** (`references/state-and-resume.md`) — **not** by this setup file.
+
+**auto-bmad never writes the central BMAD config.** That file is installer-owned: on BMAD 6.8.x+ it is TOML (`_bmad/config.toml` plus the never-installer-touched `_bmad/custom/`, resolved via `resolve_config.py`); on older installs it is the unified `_bmad/config.yaml`. auto-bmad neither reads nor writes an `abm` section in it — registering there would be inert (BMAD ignores it) and, on a TOML install, confusingly shadow the installer's own `[modules.abm]`.
 
 `{project-root}` is a **literal token** in config values — never substitute it with an actual path. It signals to the consuming LLM that the value is relative to the project root, not the skill root.
 
 ## Check Existing Config
 
 1. Read `./assets/module.yaml` for module metadata and variable definitions (the `code` field is the module identifier)
-2. Check if `{project-root}/_bmad/config.yaml` exists — if a section matching the module's code is already present, inform the user this is an update (reconfiguration)
+2. Check whether auto-bmad is already set up here — its runtime config `{output_folder}/auto-bmad/config.yaml` exists, or `ab-*` delegate agents are already rendered. If so, inform the user this is an update (reconfiguration). (Don't key this off an `abm` row in `_bmad/module-help.csv` — the BMAD `--custom-source` installer pre-merges that row, so it would false-positive on a fresh auto-bmad setup.)
 
 If the user provides arguments (e.g. `accept all defaults`, `--headless`, or inline values like `user name is BMAD, I speak Swahili`), map any provided values to config keys, use defaults for the rest, and skip interactive prompting. Still display the full confirmation summary at the end.
 
@@ -32,11 +33,7 @@ Ask the user for values. Show defaults in brackets. Present all values together 
 
 ### Core Config
 
-Only collect if no core keys exist yet in `config.yaml` or `config.user.yaml`:
-
-- `user_name` (default: BMAD) — written exclusively to `config.user.yaml`
-- `communication_language` and `document_output_language` (default: English — ask as a single language question, both keys get the same answer) — `communication_language` written exclusively to `config.user.yaml`
-- `output_folder` (default: `{project-root}/_bmad-output`) — written to `config.yaml` at root, shared across all modules
+**Don't collect or write core settings.** auto-bmad runs on top of an existing BMAD install (Step 0 requires `_bmad/bmm/config.yaml`), so `user_name`, `communication_language`, `document_output_language`, and `output_folder` are already set by the installer in the central BMAD config. auto-bmad reads `output_folder` (and the BMM artifact paths) from there at runtime and never re-writes them.
 
 ### Module Config
 
@@ -47,26 +44,29 @@ Read each variable in `./assets/module.yaml` that has a `prompt` field. The modu
 - **Multi-select**: Has a `multi-select` array — present as checkboxes, default is an array
 - **Confirm**: `default` is a boolean — present as Yes/No
 
-Ask using the prompt with its default value. Apply `result` templates when storing (e.g. `{project-root}/{value}`). Fields with `user_setting: true` go exclusively to `config.user.yaml`.
+Ask using the prompt with its default value. Apply `result` templates when storing (e.g. `{project-root}/{value}`). auto-bmad's only such variable is `target_tools` — it drives delegate-agent provisioning below and is persisted to the runtime config `{output_folder}/auto-bmad/config.yaml` by the first-run flow (not written here).
 
 ## Write Files
 
-Write a temp JSON file with the collected answers structured as `{"core": {...}, "module": {...}}` (omit `core` if it already exists). Then run both scripts — they can run in parallel since they write to different files:
+Register auto-bmad's help entries into the shared help CSV:
 
 ```bash
-python3 ./scripts/merge-config.py --config-path "{project-root}/_bmad/config.yaml" --user-config-path "{project-root}/_bmad/config.user.yaml" --module-yaml ./assets/module.yaml --answers {temp-file}
 python3 ./scripts/merge-help-csv.py --target "{project-root}/_bmad/module-help.csv" --source ./assets/module-help.csv --module-code {module-code}
 ```
 
-Both scripts output JSON to stdout with results. If either exits non-zero, surface the error and stop.
+It outputs JSON to stdout (anti-zombie: existing `abm` rows are replaced). If it exits non-zero, surface the error and stop. Run `./scripts/merge-help-csv.py --help` for full usage.
 
-Run `./scripts/merge-config.py --help` or `./scripts/merge-help-csv.py --help` for full usage.
+**Do not write the central BMAD config — there is no config write here.** This is deliberate, not an omission:
+
+- auto-bmad's install answer (`target_tools`) and runtime settings are persisted to `{output_folder}/auto-bmad/config.yaml` by the **first-run flow**, which runs right after this file returns (see `references/state-and-resume.md`). Don't pre-write it here.
+- The central `_bmad/config.*` is **installer-owned**. On BMAD 6.8.x+ it is TOML (`_bmad/config.toml` + the never-touched `_bmad/custom/`); writing a unified `_bmad/config.yaml` there is inert (BMAD's `resolve_config.py` never reads it) and shadows the installer's layout. On older installs it is the unified `_bmad/config.yaml`; auto-bmad's `abm` section there was only ever an inert marker. Either way, **skip it.**
+- If auto-bmad was installed through BMAD's `--custom-source` installer, that installer has **already** registered `[modules.abm]` in `_bmad/config.toml` (and a per-module `_bmad/abm/config.yaml`). Leave those untouched — do not duplicate or rewrite them.
+
+(`./scripts/merge-config.py` ships only to satisfy the standalone-module validator; auto-bmad does **not** invoke it. Don't reintroduce a call to it.)
 
 ## Create Output Directories
 
-After writing config, create any output directories that were configured. For filesystem operations only (such as creating directories), resolve the `{project-root}` token to the actual project root and create each path-type value from `config.yaml` that does not yet exist — this includes `output_folder` and any module variable whose value starts with `{project-root}/`. The paths stored in the config files must continue to use the literal `{project-root}` token; only the directories on disk should use the resolved paths. Use `mkdir -p` or equivalent to create the full path.
-
-If `./assets/module.yaml` contains a `directories` array, also create each listed directory (resolving any `{field_name}` variables from the collected config values).
+auto-bmad defines **no** path-type install variables and no `directories` array in `./assets/module.yaml`, so there is nothing to create here. `output_folder` already exists from the BMAD install, and the first-run flow plus the state writers create `{output_folder}/auto-bmad/` (config, state, reports, retro-notes) on demand. Skip this step.
 
 ## Provision Delegate Agents (auto-bmad)
 
@@ -124,7 +124,7 @@ agents become invokable only after a full tool restart; see `references/delegati
 
 ## Confirm
 
-Use the script JSON output to display what was written — config values set (written to `config.yaml` at root for core, module section for module values), user settings written to `config.user.yaml` (`user_keys` in result), help entries added, fresh install vs update.
+Use the script JSON output to display what was registered — help entries added (`module-help.csv`), the delegate agents rendered for the selected `target_tools`, and fresh install vs update. Note that `target_tools` and runtime settings are persisted to `{output_folder}/auto-bmad/config.yaml` by the first-run flow that follows.
 
 If `./assets/module.yaml` contains `post-install-notes`, display them (if conditional, show only the notes matching the user's selected config values).
 
@@ -132,4 +132,4 @@ Then display the `module_greeting` from `./assets/module.yaml` to the user.
 
 ## Return to Skill
 
-Setup is complete. Resume the main skill's normal activation flow — load config from the freshly written files. If this was a `setup`/`configure`/`reprovision`-only invocation, stop here (already reported). If it was a run-intent invocation that triggered setup only because the module wasn't registered, continue into the Procedure to finish the first-run flow, then **stop for a fresh session** per the first-run stop in `references/state-and-resume.md` — the pipeline must not run on the same context that just did configuration.
+Setup is complete (help registered, agents rendered). Resume the main skill's normal activation flow. If this was a `setup`/`configure`/`reprovision`-only invocation, stop here (already reported). If it was a run-intent invocation that triggered setup only because the module wasn't set up yet, continue into the Procedure — the first-run flow there writes the runtime config `{output_folder}/auto-bmad/config.yaml` — then **stop for a fresh session** per the first-run stop in `references/state-and-resume.md` — the pipeline must not run on the same context that just did configuration.

@@ -12,7 +12,9 @@ module_greeting: >
   Retune delegate model/effort in `{output_folder}/auto-bmad/config.yaml`, then run
   `/auto-bmad reprovision` to regenerate the tool-native agent files.
 
-# --- Install-time variables (written to the `abm` section of _bmad/config.yaml) ---
+# --- Install-time variables (captured at setup; persisted to auto-bmad's own runtime config
+#     {output_folder}/auto-bmad/config.yaml by the first-run flow — NOT the installer-owned
+#     central BMAD config, which auto-bmad never reads or writes) ---
 
 target_tools:
   prompt: >

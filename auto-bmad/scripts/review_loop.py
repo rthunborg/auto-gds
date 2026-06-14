@@ -177,7 +177,7 @@ def _default_runner(argv, cwd):
     return proc.returncode, proc.stdout, proc.stderr.decode("utf-8", "replace")
 
 
-def prep_diff(project_root: str, base: str, runner=_default_runner, mkdtemp=tempfile.mkdtemp):
+def prep_diff(project_root: str, base: str, runner=_default_runner, mkdtemp=tempfile.mkdtemp) -> dict:
     """Build the review diff in a fresh temp dir OUTSIDE the work tree.
 
     Returns the success dict (the prep-diff JSON contract) or
@@ -209,6 +209,12 @@ def prep_diff(project_root: str, base: str, runner=_default_runner, mkdtemp=temp
                    for lens, ext in LENSES}
             for slot in REVIEWER_SLOTS
         },
+        # The dedicated per-story security review (auto-bmad-local) is single-instance — one
+        # delegate per iteration, NOT per reviewer — so it gets ONE reserved path, outside the
+        # 3xR lens_paths grid. Its findings flow into triage on the severity channel (they gate
+        # convergence via open_crit_high), so it is NOT counted in --lenses-total. Reserved only;
+        # the security delegate writes it.
+        "security_path": os.path.join(review_tmp, "security.md"),
     }
     result["diff_empty"] = not diff_out.strip()
     result["base"] = base
@@ -428,7 +434,7 @@ def _f(nondef=0, crit_high=0, untagged=0, low=0):
 
 
 _GATE_KEYS = {"action", "convergence_unverified", "clean", "converged", "reason"}
-_PREP_KEYS = {"review_tmp", "diff_file", "lens_paths", "diff_empty", "base", "head_sha"}
+_PREP_KEYS = {"review_tmp", "diff_file", "lens_paths", "security_path", "diff_empty", "base", "head_sha"}
 _POST_FIX_KEYS = {"action", "open_patch", "open_decision", "reason"}
 
 
@@ -492,6 +498,12 @@ def _run_self_test():
             check(f"prep: {lens}-{slot} NOT created", not os.path.exists(path))
     check("prep: all 9 lens paths distinct",
           len({p for s in res["lens_paths"].values() for p in s.values()}) == 9)
+    # The single-instance security review path: one reserved file, outside the lens grid, not created.
+    check("prep: security_path reserved inside review_tmp",
+          res["security_path"] == os.path.join(res["review_tmp"], "security.md"))
+    check("prep: security_path NOT created", not os.path.exists(res["security_path"]))
+    check("prep: security_path distinct from every lens path",
+          res["security_path"] not in {p for s in res["lens_paths"].values() for p in s.values()})
     shutil.rmtree(res["review_tmp"])
 
     # Empty diff: file still written (empty), diff_empty true.
@@ -583,6 +595,9 @@ def _run_self_test():
             check("live: tmp outside the work tree", not live["review_tmp"].startswith(repo))
             check("live: lens paths not created",
                   not any(os.path.exists(p) for s in live["lens_paths"].values() for p in s.values()))
+            check("live: security_path reserved, not created",
+                  live["security_path"] == os.path.join(live["review_tmp"], "security.md")
+                  and not os.path.exists(live["security_path"]))
             shutil.rmtree(live["review_tmp"])
 
         empty = prep_diff(repo, "feature")  # feature...HEAD == nothing

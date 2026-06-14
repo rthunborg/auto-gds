@@ -36,6 +36,7 @@ git:
   ci_wait_minutes: 30      # max wait for in-progress CI before deciding (used only when offer_merge is on)
 code_review:
   max_iterations: 2
+  security_review: true    # run the dedicated per-story security review inside the Phase 7 loop (auto-bmad-local; ab-security delegate). false => skip it. Absent => orchestrator defaults to true
 # profiles + phase_profiles complete the file — single source: assets/agents/profiles.yaml
 # (first run copies it in verbatim; edit it or this copy, then `/auto-bmad reprovision`;
 # `/auto-bmad reset-defaults` re-seeds — see below). Codex model names ship as real defaults —
@@ -51,6 +52,7 @@ profiles: {…}              # ab-deep | ab-standard | ab-alt-deep | ab-alt-stan
 phase_profiles: {…}        # create_story, dev_story, code_review_review, code_review_review_secondary,
                            #   code_review_review_tertiary (the two extra reviewer slots are OPTIONAL —
                            #   blank "" => disabled; secondary ships on, tertiary ships blank),
+                           #   code_review_security (dedicated security review; blank "" => primary profile),
                            #   code_review_fix, tea_triage, tea_per_story, tea_epic, tea_epic_audit,
                            #   retrospective, project_context (git/PR work runs in the orchestrator
                            #   directly — no delegate profile). Values may name ANY profile in the

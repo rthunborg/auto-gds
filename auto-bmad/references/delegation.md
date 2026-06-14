@@ -32,10 +32,12 @@ already carry the full form, so the short version is enough.
 - `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
 - `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
 - `<review_tmp>` — the throwaway dir `review_loop.py prep-diff` creates **outside the work tree** for
-  the code-review fan-out, holding `<diff_file>` (the branch diff) and one set of three lens-output
-  paths per reviewer slot (`lens_paths.{primary|secondary|tertiary}.{blind|edge|auditor}`). In the
+  the code-review fan-out, holding `<diff_file>` (the branch diff), one set of three lens-output
+  paths per reviewer slot (`lens_paths.{primary|secondary|tertiary}.{blind|edge|auditor}`), and the
+  single `security_path` (the dedicated security review's output). In the
   lens prompts below, `<blind_out>` / `<edge_out>` / `<auditor_out>` mean *the running reviewer
-  slot's* reserved paths. Never under `<impl>` or the repo — it must not be
+  slot's* reserved paths, and `<security_out>` is the `security_path`. Never under `<impl>` or the
+  repo — it must not be
   committable. Deleted (`rm -rf`) once the iteration's reconciliation gate passes; on a
   `needs-human` exit it is kept and its path surfaced for debugging.
 
@@ -108,6 +110,17 @@ one `code-review-triage` at the **primary** profile over all the lens files, and
 It passes the diff and each lens's findings **by path, never by content** — it never reads either,
 so "no code inspection at any tier" holds.
 
+<!-- auto-bmad-local: NOT from upstream bmad-code-review (which has no security lens); do not
+     reconcile away on a compat-check. -->
+**Plus a dedicated security review (auto-bmad-local).** When `code_review.security_review` is true
+(default), each iteration ALSO fans out one `code-review-security` delegate — **single-instance**
+(one per iteration at the `code_review_security` profile, NOT per reviewer), writing to
+`<security_out>`. Its findings feed the SAME `code-review-triage` and gate convergence through the
+findings-severity channel (a security Critical/High lands in `open_crit_high`), so it is **not**
+counted in the gate's `3×R` `--lenses-total`. A blank `code_review_security` profile falls back to
+the `code_review_review` (primary) profile. Handling its run/failure (a successful 0-finding pass is
+clean; only a genuine delegate failure forces a draft) is `pipeline.md` Phase 7 step 1.
+
 **Keep that invariant real for the three lenses:** when you append the shared autonomy directive to a
 lens prompt, bind its structured result so finding content stays out of chat — the lens's `Outcome` is
 just its output-file path + finding count, and its `Deferred work` / `Retro notes` are `none`. Only
@@ -149,12 +162,40 @@ finding count — NOT the findings text.
 (The first paragraph is the Acceptance Auditor prompt **verbatim** from the `bmad-code-review` skill's
 `step-02-review.md`; keep it in lockstep with upstream.)
 
+#### code-review-security  (Security Reviewer — diff + project read; auto-bmad-local, NOT upstream)
+<!-- auto-bmad-local: no upstream bmad-code-review counterpart; methodology ported from Anthropic's
+     open-source claude-code-security-review. Do not reconcile away on a compat-check. -->
+```
+You are a Security Reviewer. Review this diff for exploitable security vulnerabilities introduced or
+exposed by the change. Examine: input validation (SQL/command/template/NoSQL injection, XXE, path
+traversal, SSRF); authentication & authorization (bypass, privilege escalation, session/JWT flaws);
+crypto & secrets (HARDCODED credentials/keys/tokens — always report these; weak algorithms; improper
+key/cert handling); injection & code execution (deserialization RCE, eval, XSS); sensitive-data
+exposure (logging, PII, debug leakage).
+
+For each finding give: a one-line title; file:line; severity HIGH (directly exploitable) / MEDIUM
+(exploitable under conditions) / LOW (defense-in-depth); a concrete exploit scenario; and a fix.
+
+DO NOT REPORT (noise): denial-of-service / resource exhaustion; memory or CPU exhaustion; absence of
+rate limiting; lack of input validation on non-security-critical fields with no proven problem; any
+finding you are <70% confident is a real, reachable issue. "Exploitable only under conditions" is
+MEDIUM — report it, do not drop it.
+
+The diff is at <diff_file>; you may read project files the diff references for reachability. Write
+findings as a Markdown list to <security_out>. Report ONLY the path you wrote and your finding count
+(by severity) — NOT the findings text.
+```
+(Bind the structured result like the three lenses: the `Outcome` is the output path + per-severity
+count, and `Deferred work` / `Retro notes` are `none` — finding content stays out of chat; only
+`code-review-triage` reads `<security_out>`.)
+
 #### code-review-triage  (triage + persist — the only code-review delegate that writes findings)
 ```
 Triage a code review of story {key}. The same three review lenses ran independently under each of
 {R} reviewer model(s); their raw findings are in these files (any may be empty or absent — note
 each such case as a failed/empty layer):
 {lens_files}
+{security_file_hint}
 The diff under review is at <diff_file>; the spec/story file is <story_file>. Do NOT re-review — work
 from those files.
 
@@ -162,8 +203,10 @@ TRIAGE:
 1. Normalize all findings to a common shape (title, detail, file:line if present, source lens+reviewer).
 2. Deduplicate: merge findings describing the same issue — prefer the one with a concrete file:line,
    fold in the others' detail, mark the merged source (e.g. blind@primary+edge@secondary). Expect
-   heavy overlap ACROSS reviewers (independent models reviewing the same diff): same-issue findings
-   from different reviewers are duplicates to merge, never separate bullets.
+   heavy overlap ACROSS reviewers AND with the security review (independent models on the same diff):
+   same-issue findings are duplicates to merge, never separate bullets. On merge, the merged severity
+   is the MAXIMUM across the merged findings — a non-security lens can never lower a severity the
+   security review assigned.
 3. Classify each into exactly one bucket:
    - Decision — an ambiguous choice that needs a human call; the code can't be correctly patched
      without knowing intent.
@@ -172,6 +215,21 @@ TRIAGE:
    - Dismiss — noise / false positive / handled elsewhere. ALSO dismiss any finding whose only locus
      is an obvious non-code file (lockfile, generated, vendored, build artifact).
    Drop every Dismiss finding (keep the dismissed count for the report).
+4. (auto-bmad-local — NOT upstream bmad-code-review) Security mapping + Low selectivity:
+   - Severity map for security-review findings (<security_out>): HIGH -> Critical/High, MEDIUM -> Med,
+     LOW -> Low. A MEDIUM means "exploitable under conditions" — that is NOT a reason to dismiss.
+   - A security-sourced Critical/High may ONLY be Patch or Decision — NEVER Defer or Dismiss (a
+     pre-existing exploitable flaw still ships if deferred; force a human call instead). Medium/Low
+     security findings follow the normal rules.
+   - Dismiss a security finding ONLY via its exclusion list (DoS, rate-limiting, resource/CPU
+     exhaustion, validation of non-security-critical fields with no proven problem, <70% confidence).
+     NEVER dismiss it merely for needing attacker-controlled conditions.
+   - Low selectivity (Low severity ONLY — Critical/High/Med are ALWAYS kept): keep a Low only if it
+     names a concrete DEFECT (a specific wrong behaviour, not a preference) AND a realistic trigger.
+     Dismiss cosmetic/style/preference nits, hypotheticals with no realistic trigger, and
+     defense-in-depth where the value is already guarded (count them as noise). Do NOT apply this
+     "realistic trigger" test to security findings — use their exclusion list above. A genuine-but-
+     minor Low goes to Defer; a noise Low is dismissed.
 
 PERSIST (this is the deliverable the orchestrator gates on):
 - In <story_file>, add/append a `### Review Findings` section with one bullet per surviving finding,
@@ -189,7 +247,9 @@ REPORT (chat — the orchestrator reads this, then independently gates the file)
 Changes Requested / Blocked); Critical/High/Med/Low counts; the count of open `[Review][Decision]`
 items (a human call — `pipeline.md` Phase 7); `Findings persisted: <N>` = total `[Review][*]` bullets
 you wrote to <story_file>; `Deferrals logged: <W>` = bullets you added under this story's
-`## Deferred from:` heading in <impl>/deferred-work.md; `Failed layers: <list or none>`. Do NOT change
+`## Deferred from:` heading in <impl>/deferred-work.md; `Failed layers: <list or none>`;
+`Dismissed (noise): <D>` = Low/noise findings you dropped, with a one-line category each (cosmetic /
+hypothetical / already-guarded) so the human can pull any back. Do NOT change
 the story's Status field, sync sprint-status.yaml, or halt for input — the orchestrator owns those.
 ```
 (The orchestrator fills `{R}` with the roster size and `{lens_files}` with one block per roster
@@ -198,7 +258,11 @@ reviewer, from `prep-diff`'s `lens_paths`:
   - Blind Hunter (adversarial markdown list): `<lens_paths.primary.blind>`
   - Edge Case Hunter (JSON array — location / trigger_condition / guard_snippet / potential_consequence): `<lens_paths.primary.edge>`
   - Acceptance Auditor (markdown list — title / AC-or-constraint / evidence): `<lens_paths.primary.auditor>`
-repeated for `secondary` / `tertiary` when on the roster — list only active slots.)
+repeated for `secondary` / `tertiary` when on the roster — list only active slots.
+The orchestrator fills `{security_file_hint}` only when `code_review.security_review` is true: `A
+dedicated security review also ran (auto-bmad-local); its findings (severity HIGH/MEDIUM/LOW per the
+prompt) are at <security_out> — may be empty or absent.` When security is off, `{security_file_hint}`
+is empty.)
 
 ### code-review fix
 ```

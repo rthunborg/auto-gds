@@ -15,9 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Code review now runs a dedicated security review each story.** A high-signal security pass
+  (Anthropic-style exclusions) hunts exploitable vulnerabilities every Phase 7 iteration; a
+  Critical/High gates the loop. On by default (`code_review.security_review`).
 - **README now records TEA (test-architecture) module compatibility.** A second compat badge and
   blockquote clause track the separately versioned `bmad-method-test-architecture-enterprise` skill
   line (currently 1.19.x), which ships the `testarch` skills auto-bmad runs. (README)
+
+### Changed
+
+- **Code-review triage no longer floods stories with low-severity noise.** Cosmetic, hypothetical,
+  and already-guarded Low findings are now dismissed (and counted in the report); genuine Lows are
+  still kept or deferred.
 
 ## [0.20.2] - 2026-06-13
 

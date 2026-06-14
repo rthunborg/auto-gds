@@ -834,7 +834,7 @@ def _run_self_test() -> int:
     for k in ("create_story", "dev_story", "tea_triage", "tea_per_story", "tea_epic", "project_context", "retrospective"):
         assert k in a_pp, f"asset phase_profiles missing {k}: {sorted(a_pp)}"
     a_prof = parse_profiles_blocks(asset_text.splitlines(keepends=True), find_block(asset_text.splitlines(keepends=True), "profiles"))
-    for name in ("ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard"):
+    for name in ("ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard", "ab-security"):
         assert name in a_prof, f"asset profiles missing {name}"
         assert "claude:model" in a_prof[name]["keys"], a_prof[name]["keys"]
         assert "codex:reasoning_effort" in a_prof[name]["keys"], a_prof[name]["keys"]
@@ -890,8 +890,8 @@ def _run_self_test() -> int:
     pub = _public(info)
     assert "tea_triage" in pub["missing_phase_profiles"], pub["missing_phase_profiles"]
     assert pub["missing_phase_profiles"]["tea_triage"] == "ab-alt-standard", pub
-    # ab-alt-deep / ab-alt-standard absent from the stale config => flagged as whole missing profiles.
-    assert set(pub["missing_profiles"]) == {"ab-alt-deep", "ab-alt-standard"}, pub["missing_profiles"]
+    # ab-alt-deep / ab-alt-standard / ab-security absent from the stale config => flagged as whole missing profiles.
+    assert set(pub["missing_profiles"]) == {"ab-alt-deep", "ab-alt-standard", "ab-security"}, pub["missing_profiles"]
     assert pub["needs_reseed"] is True, pub
     assert pub["version"]["drift"] is True and pub["version"]["config_older"] is True, pub
 
@@ -907,7 +907,7 @@ def _run_self_test() -> int:
         assert h_pp.get(k) == v, f"phase_profiles not healed for {k}: got {h_pp.get(k)}"
     # User retune preserved: ab-deep.claude.model stays haiku, NOT reset to the asset's opus.
     h_prof = parse_profiles_blocks(h_lines, find_block(h_lines, "profiles"))
-    assert set(("ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard")).issubset(set(h_prof)), sorted(h_prof)
+    assert set(("ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard", "ab-security")).issubset(set(h_prof)), sorted(h_prof)
     assert "model: haiku" in healed and "effort: low" in healed, "user retune clobbered"
     # The healed asset profiles carry their real descriptions (verbatim copy).
     assert "lighter-weight" in healed, "ab-alt-standard block not copied verbatim"
@@ -1107,7 +1107,7 @@ def _run_self_test() -> int:
     r_lines = rt.splitlines(keepends=True)
     rp = parse_profiles_blocks(r_lines, find_block(r_lines, "profiles"))
     assert "ab-custom" not in rp and "ab-custom" not in rt, "config-only profile not pruned by 'profiles' reset"
-    assert set(rp) == {"ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard"}, sorted(rp)
+    assert set(rp) == {"ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard", "ab-security"}, sorted(rp)
     assert _profile_leaf_values(r_lines, rp["ab-deep"]["start"], rp["ab-deep"]["end"])["claude:model"] == "opus", "ab-deep not reset"
     assert parse_phase_profiles(r_lines, find_block(r_lines, "phase_profiles")) == {"create_story": "ab-deep"}, "phase_profiles touched by 'profiles' scope"
     # A single <profile-name> reset leaves the user-added profile intact (no prune on a scoped reset).
@@ -1133,7 +1133,7 @@ def _run_self_test() -> int:
     assert "zz-old-" not in mig["new_text"], "orphan old-named blocks survived the migration reset"
     mig_lines = mig["new_text"].splitlines(keepends=True)
     mig_prof = parse_profiles_blocks(mig_lines, find_block(mig_lines, "profiles"))
-    assert set(mig_prof) == {"ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard"}, sorted(mig_prof)
+    assert set(mig_prof) == {"ab-deep", "ab-standard", "ab-alt-deep", "ab-alt-standard", "ab-security"}, sorted(mig_prof)
     assert parse_phase_profiles(mig_lines, find_block(mig_lines, "phase_profiles")) == a_pp, "phase_profiles not reset in migration"
 
     # A config missing an entire asset block has it recreated — plan and write agree.
@@ -1192,6 +1192,7 @@ def _run_self_test() -> int:
     sta = s_nodes["tea"]["children"].get("story_trace_advisory")
     assert sta and {"enabled", "min_epic_stories", "skip_last_stories"}.issubset(set(sta["children"])), "asset story_trace_advisory shape"
     assert "max_iterations" in s_nodes["code_review"]["children"], "asset missing code_review.max_iterations"
+    assert "security_review" in s_nodes["code_review"]["children"], "asset missing code_review.security_review"
     # Removed keys must never be re-healed into configs (a stale copy in a user
     # config is harmless — the orchestrator just stops reading it).
     assert "alternate_models" not in s_nodes["code_review"]["children"], \
@@ -1212,7 +1213,8 @@ def _run_self_test() -> int:
     # pin that their values still match the state-and-resume.md schema + orchestrator fallbacks
     # (the lockstep the asset header warns about). Cheap guard against a silent value edit.
     for kv in ("offer_merge: true", "ci_wait_minutes: 30", "min_epic_stories: 6",
-               "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2"):
+               "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2",
+               "security_review: true"):
         assert kv in setup_text, f"asset default drifted from the documented schema: expected `{kv}`"
 
     def _heal(cfg: str) -> tuple:
@@ -1341,7 +1343,7 @@ def _run_self_test() -> int:
                'git:\n  branch_prefix: "story/"\n  ci_wait_minutes: 30\n'   # <- git.offer_merge missing
                # alternate_models + skip_hitl_on_clean_convergence are REMOVED keys
                # deliberately left stale here: the heal must ignore them, never flag or strip them.
-               'code_review:\n  max_iterations: 2\n  alternate_models: true\n'
+               'code_review:\n  max_iterations: 2\n  security_review: true\n  alternate_models: true\n'
                '  skip_hitl_on_clean_convergence: false\n')
         cfgp.write_text(cur, encoding="utf-8")
         chk = check_file(cfgp, asset, "0.9.0", setup_asset)

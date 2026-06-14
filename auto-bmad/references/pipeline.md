@@ -178,6 +178,13 @@ For iteration `i` (1-based):
    once **per roster profile** — 3, 6, or 9 lens delegates — and `3×R` feeds the gate's
    `--lenses-total`. The single triage delegate always runs at the **primary** profile.
 
+   **Dedicated security review (auto-bmad-local; only if `code_review.security_review`, default
+   `true` — absent ⇒ `true`).** Each iteration also fans out **one** `code-review-security` delegate
+   — **single-instance** (NOT per roster profile) at the `code_review_security` profile (blank ⇒ the
+   primary `code_review_review` profile). It is **off** the `3×R` `--lenses-total`: its findings reach
+   convergence through the findings-severity channel (a security Critical/High lands in
+   `open_crit_high`), so it needs no gate-math change. It is `delegation.md` → `code-review-security`.
+
    **Run the code-review fan-out (3×R lens delegates + one triage, not one skill call).** A
    delegate can't spawn `/bmad-code-review`'s three internal review subagents (no nested
    subagents), so the orchestrator hoists the fan-out (`delegation.md` → `code-review (fan-out)`).
@@ -201,14 +208,22 @@ For iteration `i` (1-based):
       **CLI-routed lenses (`cli_phases`) run in parallel too** — background OS
       processes, not in-tool subagents (`delegation-runtime.md`). Collect each lens's reported path + count; note any
       empty/failed layer — the failed-lens count spans ALL reviewers.
+      **Plus, if `code_review.security_review` (default true): spawn the single `code-review-security`
+      delegate in the same parallel batch**, writing to `<security_path>` (from prep-diff). Track its
+      run separately from the lens count: a successful pass that finds **0** issues is a clean
+      security pass (NOT a failure); only a genuine delegate failure (errored / no parseable output)
+      is a security-pass failure — it does **not** add to `--lenses-failed`, but feeds the
+      convergence-unverified clause in step 3.
    c. **Capture the persistence baseline, then triage + persist.** First run
       `python3 {skill-root}/scripts/review_findings.py --story-file <story_file>` and note its
       `total` as `{B}` — the section's bullet count BEFORE this pass (0 on a fresh story; on
       iteration ≥ 2 it holds the earlier passes' bullets). The reconciliation gate below subtracts
       it, so a prior pass's bullets can never vacuously satisfy this pass's persistence claim.
       Then delegate the **`code-review-triage`** entry (always the primary profile), handed ALL the
-      roster's lens paths (3×R files, grouped by reviewer) + `<diff_file>` + `<story_file>` + the
-      failed-layer list. It dedupes (across reviewers too — parallel models overlap heavily),
+      roster's lens paths (3×R files, grouped by reviewer) + (if security_review on) `<security_path>`
+      via `{security_file_hint}` + `<diff_file>` + `<story_file>` + the
+      failed-layer list. It dedupes (across reviewers and the security pass — parallel models overlap
+      heavily), maps security severities, applies the Low keep/drop test,
       classifies, and writes
       the `### Review Findings` section (`[Review][Patch]` / `[Review][Decision]` / `[Review][Defer]`)
       plus the deferral ledger, then returns the verdict + counts. It is the **only** code-review
@@ -287,7 +302,10 @@ For iteration `i` (1-based):
    `python3 {skill-root}/scripts/review_loop.py gate --findings-json - --iteration {i}
    --max-iterations {cap} --lenses-failed {failed-layer count from step 1b} --lenses-total {3×R}`
    (add `--convergence-unverified true` when state already
-   holds the sticky flag). `{cap}` is `code_review.max_iterations` — except on a **user-extended
+   holds the sticky flag, **or when THIS iteration's `code-review-security` delegate failed to run** —
+   a genuine failure, never a clean 0-finding pass. This is a per-iteration signal, so a transient
+   earlier security failure that recovered by the exit pass does not force a draft; only a failed
+   security pass on the exit-deciding iteration does). `{cap}` is `code_review.max_iterations` — except on a **user-extended
    iteration** (granted at the step-4 halt, recognizable as `i >` the config cap), where `{cap} =
    {i}`: each extension grants exactly one more, always-final, iteration, judged by the
    final-iteration rows 6/7/9. **OBEY the gate's `action` and `convergence_unverified`**: `continue`
@@ -357,7 +375,10 @@ For iteration `i` (1-based):
      (at most one per run):
      - **Re-review (delegated, not an inline read).** Run the **code-review fan-out** (`delegation.md`
        → `code-review (fan-out)`) exactly like a loop pass — the same full reviewer roster: build
-       the diff, the 3×R lenses, then `code-review-triage` at the primary profile. Apply the
+       the diff, the 3×R lenses **and (if `code_review.security_review`) the single
+       `code-review-security` delegate** (external-review changes are exactly where a human-pushed fix
+       can introduce a vuln — review them), then `code-review-triage` at the primary profile (fill
+       `{security_file_hint}` only when the security pass ran). Apply the
        **same reconciliation gate** as
        step 1 (`review_findings.py`; one `code-review-triage` re-run on non-persist, else
        `needs-human`). Increment `external_review_iterations`.
@@ -366,7 +387,10 @@ For iteration `i` (1-based):
        {skill-root}/scripts/review_loop.py converged --findings-json -` and read **`meaningful`**
        (= NOT converged — the same convergence rule as the loop gate; the threshold lives only in
        the script, never re-derive it here). `meaningful: false` → commit the checkpoint
-       `chore(story-{e}-{s}): re-review external changes` and continue, no re-halt.
+       `chore(story-{e}-{s}): re-review external changes` and continue, no re-halt. **Exception — a
+       genuine `code-review-security` failure on this pass** (not a clean 0-finding pass): `converged`
+       is findings-only and has no unverified input, so treat the changes as **meaningful** (re-ask)
+       regardless of its verdict — a security re-review that did not run is not trustworthy as clean.
      - **Meaningful → re-ask ONCE.** Commit the persisted findings
        `chore(story-{e}-{s}): re-review external changes`, then **ask again** (`AskUserQuestion`),
        summarizing the new findings (verdict + `Critical N / High N / Medium N / Low N` + the

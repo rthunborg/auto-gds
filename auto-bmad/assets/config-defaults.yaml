@@ -45,3 +45,5 @@ git:
   ci_wait_minutes: 30       # max wait for in-progress CI before deciding (only when offer_merge is on)
 code_review:
   max_iterations: 2
+  security_review: true     # run the dedicated per-story security review inside the Phase 7 loop
+                            # (auto-bmad-local; the ab-security delegate, gated here). false => skip it.

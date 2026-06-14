@@ -1,13 +1,21 @@
 ---
 name: auto-bmad
-description: "Run the FULL BMAD story implementation workflow end-to-end for one story at a time. Use when the user says 'auto-bmad', 'run auto-bmad', 'implement the next story', 'auto implement story X-Y', or wants the whole create-story -> dev-story -> code-review (+ TEA + epic-boundary) pipeline driven automatically on a branch with a PR at the end."
-argument-hint: "[--story <id> | setup | reprovision | reset-defaults | <overrides…>]"
+description: "Run the FULL BMAD story implementation workflow end-to-end — one story at a time, or an ENTIRE EPIC in one run with `epic`. Use when the user says 'auto-bmad', 'run auto-bmad', 'implement the next story', 'auto implement story X-Y', 'auto-bmad epic', 'implement the whole epic N', or wants the create-story -> dev-story -> code-review (+ TEA + epic-boundary) pipeline driven automatically on a branch with a PR at the end."
+argument-hint: "[epic [--epic <N>] | --story <id> | setup | reprovision | reset-defaults | <overrides…>]"
 ---
 
 # auto-bmad orchestrator
 
 You drive the **entire BMAD implementation workflow for ONE story**, then stop and report so
 the user manually triggers the next one.
+
+**Epic mode (`/auto-bmad epic [--epic <N>]`):** instead drive a **WHOLE epic** — every actionable
+story — in one run, then **one PR**, per `references/epic-pipeline.md`. The two modes share Step 0
+(paths/config), the On-activation gate, the delegation mechanics, and the final report; epic mode
+replaces Step 1's per-story target/preflight and Step 2's per-story Phases 1–9 with the epic pipeline's
+**E-steps** (the per-story phases become the epic's inner loop). It warns + hard-confirms up front
+(no per-story human halts — the single halt is the epic integration review). When `epic` is in the
+invocation, follow `epic-pipeline.md` from Step 1 onward; the per-story sub-steps below are the loop body.
 
 ## Output discipline
 Work quietly: don't pre-announce or narrate routine reads/detections — just do them. Surface
@@ -112,6 +120,16 @@ invocation carried any instructions — `references/overrides.md`, then:
       backlog → retrospective`) resumes BMAD-level unfinished work before fresh backlog.
    With a `--story <arg>`: pass `--story <arg>` to the script (overrides the above). Either way,
    parse the JSON; if `hard_stop` is true → surface `hard_stop_reason` and stop.
+   - **Epic mode** (`epic` in the invocation): resolve the target epic `{e}` — `--epic <N>` if given,
+     else run `story_plan.py` (no arg) and take the next actionable story's `epic_num`. Then follow
+     `epic-pipeline.md` from E0 (preflight + `story_plan.py --epic {e}` enumerate + adopt; an in-flight
+     epic anchor via `state_plan.py --scope epic` resumes first). The per-story sub-steps 3–4 and
+     Step 2's Phases 1–9 do **not** run — the E-steps replace them.
+   - **Per-story runs — epic-ownership guard:** after resolving the per-story target, run
+     `state_plan.py --state-dir <output_folder>/auto-bmad/state --scope epic`; if an in-flight epic
+     anchor's `epic_num` matches the target story's epic, **hard-stop, redirecting to `/auto-bmad epic
+     --epic {e}`** — finishing one story alone would split that epic's single PR
+     (`epic-pipeline.md` → Resume).
 3. **Resume check:** for the chosen `story_key`, run `state_plan.py` again with
    `--story-key {story_key}` (exact-path lookup, no glob). `resume: true` ⇒ resume from the first
    phase not in `completed_phases` (and continue the review loop from `code_review_iterations`);
@@ -130,6 +148,11 @@ invocation carried any instructions — `references/overrides.md`, then:
    triage.)
 
 ### Step 2 — Run the pipeline
+**Epic mode:** if `epic` is in the invocation, execute the **E-steps** in
+`references/epic-pipeline.md` (E0…E_final) **instead of** Phases 1–9 — same delegation mechanics,
+same checkpoint/commit + timing discipline, the single HITL halt at E_review — then go to Step 3.
+The per-story phase loop below is the epic's inner loop (E5). Otherwise (per-story run):
+
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases
 whose conditions don't apply (epic-start only if `is_first_in_epic`; TEA phases per triage and
 `tea.enabled`; epic-end only if `is_last_in_epic`). **Also honor this run's overrides
@@ -180,9 +203,11 @@ the file's `Pipeline status` line already carries; the disposition itself is not
 
 ## Hard-stop conditions (surface clearly, then report & exit)
 Not a BMAD project; missing required skill; no `sprint-status.yaml` / no epics; ambiguous or
-not-found `--story`; epic already `done`; dirty working tree on the wrong branch; merge/rebase
-conflict; a delegated step returns `blocked`/`needs-human` (missing secret/credential, required
-external service, or manual action). Never push past a hard-stop — report and let the human act.
+not-found `--story` or `--epic`; both `--story` and `epic` in one invocation (pick one); a bare
+per-story run whose target is owned by an in-flight epic anchor (redirect to `/auto-bmad epic --epic
+{e}`); epic already `done` or an epic with no stories; dirty working tree on the wrong branch;
+merge/rebase conflict; a delegated step returns `blocked`/`needs-human` (missing secret/credential,
+required external service, or manual action). Never push past a hard-stop — report and let the human act.
 
 (Note: three pipeline situations are NOT silent hard-stops — each **asks the user** what to do:
 the code-review loop's end-of-loop HITL halt (Phase 7 — run one more review iteration, continue

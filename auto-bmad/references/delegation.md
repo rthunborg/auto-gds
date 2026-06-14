@@ -133,6 +133,11 @@ three lens-output paths (three-dot diff; the `:(exclude)` pathspecs live in the 
 Phase 7 step 1a). Non-code files beyond those excludes are **not** a path rule — `code-review-triage`
 dismisses them (see its prompt). If `diff_empty`, there is nothing to review.
 
+**Epic mode (Tier B)** reuses this exact fan-out over the **whole-epic** diff (`prep-diff --base
+{base}`), swapping the auditor/triage/fix entries for their `(epic)` variants below and persisting to
+`<impl>/epic-{e}-review-findings.md`; security stays single-instance off-total exactly as here. The
+roster shape is identical (`3×R` = blind/edge/auditor per reviewer). Flow: `epic-pipeline.md` E_review.
+
 #### code-review-blind  (Blind Hunter — diff only, unanchored)
 ```
 Run `/bmad-review-adversarial-general` in <project_root> with the diff at <diff_file> as the content to
@@ -161,6 +166,18 @@ finding count — NOT the findings text.
 ```
 (The first paragraph is the Acceptance Auditor prompt **verbatim** from the `bmad-code-review` skill's
 `step-02-review.md`; keep it in lockstep with upstream.)
+
+#### code-review-auditor (epic)  (Acceptance Auditor — epic diff + epic planning; epic mode Tier B)
+<!-- VARIANT OF code-review-auditor: the upstream-verbatim first paragraph stays the single source —
+     do NOT re-paste it (keep the base in lockstep with bmad-code-review). Only the spec input + diff
+     scope change, below. -->
+Identical to **`code-review-auditor`** above, with these substitutions:
+- the diff `<diff_file>` is the **whole epic {e}** (all its stories), not one story's;
+- in place of the single `<story_file>` spec, load epic {e}'s **planning artifacts**
+  (`{epic_planning_files}` — the epics doc / epic PRD section resolved in E0) **and** the per-story
+  spec files (`{story_files}`); audit how the **assembled epic** meets the epic's intent + each
+  story's ACs, focusing on **cross-story / integration** gaps a per-story audit cannot see;
+- write to `<auditor_out>` (the epic roster's auditor slot). Report ONLY the path + finding count.
 
 #### code-review-security  (Security Reviewer — diff + project read; auto-bmad-local, NOT upstream)
 <!-- auto-bmad-local: no upstream bmad-code-review counterpart; methodology ported from Anthropic's
@@ -264,6 +281,26 @@ dedicated security review also ran (auto-bmad-local); its findings (severity HIG
 prompt) are at <security_out> — may be empty or absent.` When security is off, `{security_file_hint}`
 is empty.)
 
+### code-review-triage (epic)
+<!-- VARIANT OF code-review-triage: the TRIAGE 1–4 block (incl. the auto-bmad-local security map +
+     Low keep/drop test) and the REPORT contract stay the single source — do NOT re-paste them (keep
+     the base in lockstep with upstream). Only the framing + persistence target change, below. -->
+Identical to **`code-review-triage`** above (same TRIAGE steps 1–4 including the auto-bmad-local
+security severity map + Low selectivity, same REPORT contract), with these substitutions:
+- **Framing:** "Triage a code review of story {key}" becomes "Triage the INTEGRATION code review of
+  epic {e} (all {epic_story_count} stories landed)"; the diff is the **whole epic** at `<diff_file>`;
+  for acceptance context use the per-story spec files `{story_files}` (do NOT re-review them). The
+  lenses are the epic roster's (blind / edge / **`code-review-auditor (epic)`**) per reviewer.
+- **PERSIST target:** write the `### Review Findings` section to **`<impl>/epic-{e}-review-findings.md`**
+  (create if absent), NOT a story file — same bullet format + mandatory severity tags.
+- **Deferral ledger heading:** copy every `[Review][Defer]` to `<impl>/deferred-work.md` under
+  `## Deferred from: epic review of epic-{e} (<date>)`.
+- **REPORT** is unchanged except `Findings persisted` / `Deferrals logged` count against the epic
+  findings file + the `epic-{e}` heading.
+(`{lens_files}` / `{security_file_hint}` are filled exactly as the base entry, from the epic roster's
+`prep-diff` paths; `{R}` = the epic roster size. In the chunked large-diff path the orchestrator hands
+ONE triage call the lens files from every chunk — `epic-pipeline.md` E_review.)
+
 ### code-review fix
 ```
 Run `/bmad-dev-story <story_file>` in <project_root>, focused ONLY on the open code-review
@@ -277,6 +314,16 @@ Resolved decisions (implement exactly these): {decisions}
 ```
 (The orchestrator fills `{decisions}` from the Phase 7 AskUserQuestion answers, or omits the line
 when there are none.)
+
+### code-review fix (epic)
+<!-- VARIANT OF code-review fix: identical prompt; only the findings file + a one-line epic context
+     differ. -->
+Identical to **`code-review fix`** above, with these substitutions:
+- the findings live in **`<impl>/epic-{e}-review-findings.md`** — pass it to `/bmad-dev-story` in
+  place of `<story_file>`; resolve the open `[Review][Patch]` items (+ any human-resolved
+  `[Review][Decision]`) under that file's `### Review Findings` section;
+- add one context line: `These findings span epic {e}'s stories; implemented story files: {story_files}.`
+- `{decisions}` is filled from the E_review `AskUserQuestion` answers exactly as the base entry.
 
 ### testarch-test-design (epic level)
 ```

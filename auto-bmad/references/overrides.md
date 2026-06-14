@@ -7,8 +7,9 @@ The user can steer a single run by adding instructions to the invocation — nat
 
 Parse the invocation text into the **normalized override set** below, **echo the interpretation
 back to the user before running**, and record it in state (`overrides:`) and the report.
-Overrides apply to **this run only** — never write them to `config.yaml`. `--story` is not an
-override; it is the existing target selector.
+Overrides apply to **this run only** — never write them to `config.yaml`. Neither `--story` **nor
+`--epic`** is an override; both are **target selectors** (mutually exclusive — `--story` picks one
+story, `epic` / `--epic N` runs a whole epic; see "Epic mode" below).
 
 ## Phase map (names ↔ numbers)
 
@@ -71,6 +72,25 @@ override; it is the existing target selector.
   `ci_status` is recorded as `unknown` and the existing draft-predicate clauses 1–3 (no CI gate)
   decide draft vs non-draft. PR stays open for the human to merge on their own time.
 - **max_review_iterations / no_pr_draft:** adjust Phase 7 cap / Phase 9 draft decision.
+
+## Epic mode (`/auto-bmad epic`)
+
+`epic` / `--epic N` is a **target selector** (like `--story`), not an override: it runs a whole epic
+via `epic-pipeline.md`. `--story` and `epic` are **mutually exclusive** — hard-stop if both are given
+("`--story` picks one story; `epic` runs a whole epic — pick one").
+
+Overrides that **compose** with epic mode (echo + apply the same way): `dry_run` (prints the epic plan
++ the ordered story list + per-step profiles, then stops), `skip tea`, `skip merge-prompt`,
+`git_mode local`, `max_review_iterations` (caps the **E_review** loop), `no_pr_draft` (the epic PR
+opens non-draft; the epic still stays caveated), `skip git-commits`. `skip code-review` skips the
+**Tier-B** epic integration review (equivalent to `code_review.epic_review: false`) AND sets
+`convergence_unverified` — the per-story **Tier-A** thin review is then the only quality gate left,
+for **every** story, so flag it even more prominently than per story (it compounds across the epic).
+
+Overrides that **do NOT map** (reject in epic mode for v1, with a precise message): the per-story
+**phase window** (`start_phase` / `stop_before` / `stop_after`) and phase-number `skip`s — the phase
+map above is per-**story**-run; epic mode runs **E-steps** (`epic-pipeline.md`), a different axis.
+Resume an interrupted epic with `/auto-bmad epic --epic N` — the epic anchor drives where it picks up.
 
 ## Prerequisite validation for `start_phase`
 

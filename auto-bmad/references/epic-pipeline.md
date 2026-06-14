@@ -59,12 +59,17 @@ Runs during the SKILL procedure before any commit. Same probe discipline as Phas
    `hard_stop` true (unknown/empty epic, or epic already `done`) ⇒ surface and stop. (SKILL.md owns
    how `{e}` is resolved — `--epic N`, else the epic of the next actionable story.)
 3. **Adopt — reconcile each story** (`state-and-resume.md` → "Adopting a partially-started epic"; the
-   plan's full rules). For each enumerated story, decide using its `status` + whether a per-story
+   plan's full rules). **First, on a resume, skip every story already in the epic anchor's
+   `stories_landed`** — it was completed by THIS run, so it must NOT be re-entered even though it sits
+   at `review` with a complete per-story state file. `stories_landed` (not the `review` status) is the
+   authority for "done this run"; the status-based rules below are for stories finished *outside* this
+   run. Then, for each remaining enumerated story, decide using its `status` + whether a per-story
    `{state}/{key}.yaml` exists:
    - **`done`** → **skip** (no re-dev, no re-review); assumed already in `{base}`; NOT in the
      batch-flip set.
-   - **`review`/`in-progress` WITH a state file** → resume that story per-story in E5 (the existing
-     `state_plan.py --story-key {key}` path; continue from its first incomplete phase).
+   - **`review`/`in-progress` WITH a state file** (and NOT in `stories_landed`) → resume that story
+     per-story in E5 (the existing `state_plan.py --story-key {key}` path; continue from its first
+     incomplete phase).
    - **`review`/`in-progress` WITHOUT a state file** (bare BMAD / external) → apply the existing
      **status-mismatch guard** (`state-and-resume.md`): **ASK** — adopt as-is (leave at `review`,
      surface in the rollup) / run the thin Tier-A review on it in E5 / skip. Never blind-re-dev a
@@ -108,12 +113,15 @@ independently-gated sub-steps, exactly as Phase 2 — record each, mark E2 done 
 > epic test design.
 
 ## E5 — Story loop (sequential) + Tier A  *(per story)*
-For each non-skipped story `{key}` in `epic_stories` order, set `active_story: {key}` on the epic
-anchor, then run the per-story phases (delegated exactly as `pipeline.md`), with these epic deltas:
+For each story `{key}` in `epic_stories` order that is **not in the anchor's `stories_landed`** (already
+done by THIS run — see E0) and not E0-skipped, set `active_story: {key}` on the epic anchor and
+**capture `tier_a_base_sha = git rev-parse HEAD`** (the epic-branch tip *before* this story's first
+commit), then run the per-story phases (delegated exactly as `pipeline.md`), with these epic deltas:
 
 a. **Per-story state + triage.** Delegate `tea_triage` (only if `tea.enabled`) to pick this story's
    TEA set, then `state_update.py init` the **per-story** `{state}/{key}.yaml` carrying the triage +
-   `is_first/last_in_epic`. Commit `chore(story-{e}-{s}): start auto-bmad pipeline`.
+   `is_first/last_in_epic` + `tier_a_base_sha` (recorded here so a resume reuses it, never re-derives
+   it from a moved HEAD). Commit `chore(story-{e}-{s}): start auto-bmad pipeline`.
    *(Resume of an adopted in-flight story reuses its existing per-story state instead of init.)*
 b. **Create-story** (Phase 3) → **`create-story`**. Commit `docs(story-{e}-{s}): create story context file`.
 c. **Pre-dev TEA** (Phase 4, only if `atdd ∈ tea_selected`) → **`testarch-atdd`**. Commit `test(story-{e}-{s}): ATDD acceptance scaffolds (red)`.
@@ -123,8 +131,11 @@ d. **Dev-story** (Phase 5) → **`dev-story`** — the hard gate (runs tests, mo
 e. **Post-dev TEA** (Phase 6, only if `automate ∈ tea_selected`) → **`testarch-automate`**. Commit `test(story-{e}-{s}): expand automated coverage`.
 f. **Tier A — thin single review + fix (NO loop, NO convergence gate, NO halt).** This REPLACES the
    per-story Phase 7 loop:
-   - Build the **story-scoped** diff (`review_loop.py prep-diff --project-root <project_root>
-     --base <story-base>`, the story branch-point — same as a per-story run).
+   - Build the **story-scoped** diff: `review_loop.py prep-diff --project-root <project_root>
+     --base <tier_a_base_sha>` — the epic-branch tip captured at this story's entry, so the diff is
+     **only this story's commits**. (NOT `{base}`: in epic mode every story commits onto the one epic
+     branch, so `--base {base}` would make story N's review the cumulative 1..N diff — fattening every
+     story and breaking "thin". The whole-epic diff is Tier B's job.)
    - Fan out **only the `tier_a_lenses`** at the **primary** profile (`code_review_review`): the
      **`code-review-auditor`** (the per-story AC check) **+ `code-review-security`** (if
      `code_review.security_review`). NOT blind/edge — their payoff is the whole-epic diff in Tier B.
@@ -245,8 +256,9 @@ Epic resume reads the epic anchor via `state_plan.py --state-dir {state} --scope
 `epic-{e}.yaml` with `status != done` is the resume target. Enter at the **first unresolved E-step**
 in the anchor's `completed_phases`; for the story named by `active_story`, read its per-story
 `{state}/{key}.yaml` (`--story-key {key}`) to resume intra-story granularity — the anchor owns *which
-story / which E-step*, the per-story file owns *which phase within the story*. E_review resumes
-mid-loop (`code_review_iterations`) or re-opens the halt (`code_review_loop_done`), exactly as
-Phase 7. A bare `/auto-bmad` (no `epic`) whose resolved target story is owned by an in-flight epic
+story / which E-step*, the per-story file owns *which phase within the story*. **Stories already in
+`stories_landed` are skipped** (E0 adopt) — a resume never re-enters a story this run already landed,
+even though it sits at `review` with a complete state file. E_review resumes mid-loop
+(`code_review_iterations`) or re-opens the halt (`code_review_loop_done`), exactly as Phase 7. A bare `/auto-bmad` (no `epic`) whose resolved target story is owned by an in-flight epic
 anchor **hard-stops, redirecting to `/auto-bmad epic --epic {e}`** (SKILL.md) — finishing one story
 alone would split the epic's single PR.

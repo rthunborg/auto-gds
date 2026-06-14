@@ -2,9 +2,9 @@
 
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-0.21.0-blue.svg)](https://github.com/stefanoginella/auto-bmad) [![BMAD-METHOD](https://img.shields.io/badge/BMAD--METHOD-module-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Tested with BMAD 6.8.x](https://img.shields.io/badge/tested%20with%20BMAD-6.8.x-8A2BE2.svg)](https://github.com/bmad-code-org/BMAD-METHOD) [![Tested with TEA 1.19.x](https://img.shields.io/badge/tested%20with%20TEA-1.19.x-8A2BE2.svg)](https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise) [![Works best with: Claude Code | Codex | opencode](https://img.shields.io/badge/works%20best%20with-Claude%20Code%20%7C%20Codex%20%7C%20opencode-00A3A3.svg)](#install) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time**, on **Claude Code, Codex, or opencode**, with **[human-in-the-loop checkpoints](#human-in-the-loop-stops)** at the decisions that matter.
+A **BMAD module** that runs the **full [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) story implementation workflow end-to-end — one story at a time, or an [entire epic in one run](#run-a-whole-epic)**, on **Claude Code, Codex, or opencode**, with **[human-in-the-loop checkpoints](#human-in-the-loop-stops)** at the decisions that matter.
 
-`auto-bmad` chains the core BMM skills (`create-story` → `dev-story` → `code-review`) and the optional TEA (Test Architect) skills into a single resumable pipeline. It detects the next story from `sprint-status.yaml` (or takes one as an argument), runs every step in an isolated git branch with conventional-commit checkpoints, opens a PR, and finishes with a report of the PR link, open questions, deferred work, and anything that needs your attention — then stops so **you** decide when to start the next story.
+`auto-bmad` chains the core BMM skills (`create-story` → `dev-story` → `code-review`) and the optional TEA (Test Architect) skills into a single resumable pipeline. It detects the next story from `sprint-status.yaml` (or takes one as an argument), runs every step in an isolated git branch with conventional-commit checkpoints, opens a PR, and finishes with a report of the PR link, open questions, deferred work, and anything that needs your attention — then stops so **you** decide when to start the next story. Or run a **whole epic at once** with [`/auto-bmad epic`](#run-a-whole-epic) — the same pipeline looped over the epic's stories, trimmed for wall-clock and capped with one integration review + one PR.
 
 The orchestrator **only delegates and reports** — every BMAD step runs inside a sub-agent, with model and thinking effort matched to the stakes (Opus/max for high-stakes implementation, a faster model for low-stakes mechanics). On **Claude Code, Codex, and opencode** those are real, isolated subagents (`.claude/agents` / `.codex/agents` / `.opencode/agent`, generated from a configurable profiles block); elsewhere it falls back to generic subagents (untuned) or runs inline — same pipeline either way. **opencode** is multi-provider — point any phase (or the second-opinion reviewer) at any provider/model you've configured (Anthropic, DeepSeek, Qwen, local, …); it's model-tuned per phase but, since its reasoning knob is provider-specific, not effort-tuned in the agent files.
 
@@ -94,6 +94,8 @@ Run from the root of a BMAD-enabled project:
 /auto-bmad              # implement the next story from sprint-status.yaml
 /auto-bmad 1-3          # implement a specific story (epic 1, story 3)
 /auto-bmad 1-3-user-auth
+/auto-bmad epic         # implement an ENTIRE epic in one run (see "Run a whole epic")
+/auto-bmad epic --epic 2  # implement a specific epic
 /auto-bmad stop before code-review        # steer a single run (see Overrides)
 /auto-bmad --story 1-3 skip git commits
 /auto-bmad reprovision                    # re-render delegate agents after editing profiles
@@ -124,6 +126,17 @@ Run from the root of a BMAD-enabled project:
 | 9 | Push, open PR, wait for CI, mark story `done` (clean run), **ask whether to merge** (clean run, opt-in), final report | — | always |
 
 Each phase ends with a conventional commit, so progress survives interruptions and is easy to review.
+
+## Run a whole epic
+
+`/auto-bmad epic` (or `/auto-bmad epic --epic N`) drives an **entire epic** — every actionable story — in one run, then **one PR**. It exists for epics that are too slow story-by-story: it keeps the autonomous `create-story → dev-story` core (with tests) for each story but **trims the heavy per-story code-review loop to a single thin review + fix**, and **batches the heavy adversarial review into one epic-wide integration pass** at the end. The result is one `epic/N-slug` branch, per-story commits on it, one CI wait, and one merge prompt.
+
+- **It warns and asks you to confirm up front** — an epic runs with **no per-story human checkpoints**; the single stop is the epic integration review at the end (resolve any flagged decisions, optionally run an external review, then ship / continue / stop).
+- **Per-story safety stays:** every story must pass its own tests (the hard gate) and gets a quick review whose findings flow into the final integration review, so later stories don't build on unreviewed code.
+- **It completes a half-done epic:** stories already finished — by the normal per-story `/auto-bmad` flow or by hand — are skipped (assumed merged into your base branch); epic mode runs only what's left. If a finished story's work is on an un-merged branch, it asks before proceeding.
+- **One report, one status flip:** a single `reports/epic-N.md` rolls up every story; on a clean run all the epic's stories flip to `done` together. If anything is caveated (an open Critical/High, a waived gate, red CI), the whole epic stays at `review` — a single PR is either mergeable or not.
+
+Delegation, profiles, TEA, resume, and the overrides that still apply all work as in per-story mode; epic mode uses the highest-effort delegate profiles throughout, so expect it to be slower and pricier per run than a single story (it's doing the whole epic). Full mechanics: `references/epic-pipeline.md`.
 
 ## Human-in-the-loop stops
 

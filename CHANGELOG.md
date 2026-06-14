@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/auto-bmad epic` runs an entire epic in one run.** The autonomous create-story → dev-story loop
+  per story (each with a thin review+fix), then one epic-wide integration review (the single human
+  halt) on one `epic/N-slug` branch → one PR. Warns + confirms first; completes a half-done epic.
+
 ## [0.21.0] - 2026-06-14
 
 ### Added

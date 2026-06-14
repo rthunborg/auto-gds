@@ -1,12 +1,13 @@
 code: abm
 name: "Auto-BMAD Orchestrator"
-description: "Drive the full BMAD story workflow end-to-end for one story at a time, delegating each step to model- and effort-tuned subagents on Claude Code, Codex, or opencode."
+description: "Drive the full BMAD story workflow end-to-end — for one story at a time, or a whole epic in one run (`/auto-bmad epic`) — delegating each step to model- and effort-tuned subagents on Claude Code, Codex, or opencode."
 module_version: 0.21.0
 default_selected: false
 module_greeting: >
   auto-bmad is installed. Run `/auto-bmad` in a BMAD project to drive the next story
   end-to-end (create-story -> dev-story -> code-review plus risk-gated TEA and
-  epic-boundary work). You can pass override instructions, e.g.
+  epic-boundary work), or `/auto-bmad epic` to drive a WHOLE epic in one run (one branch,
+  one PR; it warns + confirms first). You can pass override instructions, e.g.
   `/auto-bmad stop before code-review` or `/auto-bmad --story 1-3 skip git commits`.
   Retune delegate model/effort in `{output_folder}/auto-bmad/config.yaml`, then run
   `/auto-bmad reprovision` to regenerate the tool-native agent files.

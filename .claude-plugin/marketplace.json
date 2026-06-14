@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "auto-bmad",
-  "description": "BMAD module that drives the full BMAD story workflow end-to-end, one story at a time, on Claude Code or Codex.",
+  "description": "BMAD module that drives the full BMAD story workflow end-to-end — one story at a time, or a whole epic in one run — on Claude Code, Codex, or opencode.",
   "owner": {
     "name": "Stefano Ginella",
     "email": "stefano@stefanoginella.com"
@@ -10,7 +10,7 @@
     {
       "name": "auto-bmad",
       "source": "./",
-      "description": "Drive the full BMAD story workflow (create-story -> dev-story -> code-review, plus risk-gated TEA + epic-boundary skills) for one story at a time: branch, commit per step, open a PR, and report. The orchestrator only delegates to model/effort-tuned subagents, with a graceful fallback to general subagents or inline execution on tools that lack them.",
+      "description": "Drive the full BMAD story workflow (create-story -> dev-story -> code-review, plus risk-gated TEA + epic-boundary skills) for one story at a time — or an ENTIRE epic in one run (`/auto-bmad epic`): one branch, commit per step, open a PR, and report. The orchestrator only delegates to model/effort-tuned subagents, with a graceful fallback to general subagents or inline execution on tools that lack them.",
       "version": "0.21.0",
       "author": {
         "name": "Stefano Ginella",
@@ -20,7 +20,7 @@
       "repository": "https://github.com/stefanoginella/auto-bmad",
       "license": "MIT",
       "category": "development",
-      "keywords": ["bmad", "module", "orchestrator", "workflow", "automation", "stories", "tea", "codex"],
+      "keywords": ["bmad", "module", "orchestrator", "workflow", "automation", "stories", "epic", "tea", "codex"],
       "skills": ["./auto-bmad"]
     }
   ]

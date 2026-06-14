@@ -9,7 +9,7 @@ conventions we follow. By participating you agree to our [Code of Conduct](./COD
 .claude-plugin/marketplace.json        # Claude distribution; lists the single ./auto-bmad skill
 auto-bmad/                             # the BMAD standalone module (one skill)
   SKILL.md                             # orchestrator entry point
-  references/                          # phase playbook, delegation, TEA policy, git, state
+  references/                          # phase + epic playbooks, delegation, TEA policy, git, state
   assets/                              # module identity, setup, and delegate templates
     agents/profiles.yaml               # source of truth: per-profile persona (description /
                                        # role_blurb / status_example) + per-tool model + effort
@@ -91,6 +91,10 @@ exist locally as a test sandbox; it is gitignored — never commit it.
   actions are the documented exceptions it owns directly (including the Phase 7 code-review **fan-out**,
   which the orchestrator drives because the review skill can't spawn its own sub-agents from inside a
   delegate) — see `CLAUDE.md` → "Core principle" for the canonical list.
+- **Epic-mode behavior** (`/auto-bmad epic`) lives in `auto-bmad/references/epic-pipeline.md`. It
+  reuses the per-story phases as the epic's inner loop, so a per-story phase change usually flows into
+  epic mode for free; the same delegate-only rule (and the epic code-review variants in
+  `delegation.md`, kept in lockstep with their base entries) applies.
 - **Per-skill delegation prompts** live in `auto-bmad/references/delegation.md`. New BMAD skills
   get a prompt template here, never inline ad-hoc text.
 - **Agent profiles** live in `auto-bmad/assets/agents/profiles.yaml` — the single source of truth

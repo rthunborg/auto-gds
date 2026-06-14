@@ -1,8 +1,9 @@
 # CLAUDE.md — working in the auto-bmad repo
 
 This repo is a **BMAD standalone module** (one skill + a Claude `marketplace.json`). The skill
-(`auto-bmad`) is an orchestrator that runs the full BMAD story workflow one story at a time, on
-**Claude Code, Codex, or opencode**. This file is guidance for working **on the module**, not for using it.
+(`auto-bmad`) is an orchestrator that runs the full BMAD story workflow one story at a time — or, with
+`/auto-bmad epic`, a whole epic in one run (`references/epic-pipeline.md`) — on **Claude Code, Codex,
+or opencode**. This file is guidance for working **on the module**, not for using it.
 
 ## Core principle (do not violate)
 The orchestrator **delegates BMAD work and reports** — it must never implement story work or run
@@ -81,7 +82,9 @@ schema, first-run).
 - `.claude-plugin/marketplace.json` — Claude distribution (lists the single `./auto-bmad` skill).
 - `auto-bmad/SKILL.md` — orchestrator entry point (On-activation gate + procedure). Keep it thin.
 - `auto-bmad/references/` — where the real detail lives; each file owns one area:
-  - `pipeline.md` — per-phase playbook.
+  - `pipeline.md` — per-phase (per-story) playbook.
+  - `epic-pipeline.md` — the `/auto-bmad epic` E-step flow (reuses the per-story phases as the epic's
+    inner loop; Tier-A thin per-story review + Tier-B epic integration review).
   - `delegation.md` — exact per-skill prompts (tool-agnostic).
   - `delegation-runtime.md` — host detection + the three spawn tiers.
   - `tea-policy.md` — TEA risk rubric / selection.

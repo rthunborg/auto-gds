@@ -91,7 +91,7 @@ class UsageError(Exception):
 # --------------------------------------------------------------------------- #
 # Schema (lockstep with references/state-and-resume.md -> "## state/{key}.yaml")
 # --------------------------------------------------------------------------- #
-PHASE8_KEYS = ("trace_gate", "nfr", "test_review", "project_context", "archive", "retro")
+PHASE8_KEYS = ("trace_gate", "nfr", "test_review", "project_context", "reconcile", "archive", "retro")
 
 SCHEMA_ORDER = (
     "story_key", "epic_num", "story_num", "branch", "status",

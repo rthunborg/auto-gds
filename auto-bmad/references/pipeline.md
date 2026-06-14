@@ -445,12 +445,13 @@ re-enters a converged Phase 7 with `story_trace == null` runs just this step.
 
 ## Phase 8 — Epic end  *(only if `is_last_in_epic`)*
 Run these in order. Each sub-step records its `phase8_steps.<key>` marker (`trace_gate`, `nfr`,
-`test_review`, `project_context`, `archive`, `retro`) in its folded state write — `done` when it
+`test_review`, `project_context`, `reconcile`, `archive`, `retro`) in its folded state write —
+`done` when it
 ran (trace_gate also `waived`/`failed`), and `done` too when its gate was false (e.g. TEA off) so
 a skip reads as resolved. On resume, enter Phase 8 at the **first null marker** instead of
-re-running completed delegations; Phase 8 joins `completed_phases` only once all six markers are
+re-running completed delegations; Phase 8 joins `completed_phases` only once all seven markers are
 resolved. Commit the epic-end docs once at the end: `docs(epic-{e}): gate, project context,
-deferred-work archive, retrospective`. (Trace-gate remediation, if any, commits separately as it
+deferred-work reconcile + archive, retrospective`. (Trace-gate remediation, if any, commits separately as it
 runs — step 1.)
 1. **TEA gates (only if `tea.enabled`; epic-level skills are always on here):** delegate, in order,
    the **`testarch-trace`** entry via `tea_epic` (the blocking gate — full depth), then the
@@ -485,11 +486,28 @@ runs — step 1.)
    profile. The Phase 8 refresh is fed the epic's accumulated retro notes (+ durable items from the
    deferred-work ledger) — the notes, not the retro doc (it doesn't exist until step 4), are the
    source. See `delegation.md` → `generate-project-context`.
-3. **Archive resolved deferred work** *(orchestrator-direct — connective bookkeeping, never
+3. **Reconcile missed completions** *(delegated — `deferred_reconcile`; runs BEFORE the archive):*
+   the archive (step 4) judges each ledger entry on its OWN text only, so a deferred item whose work
+   actually landed during the epic but whose entry was never updated stays open forever and
+   create-story keeps re-folding finished work. This pass closes that gap. Run
+   `python3 {skill-root}/scripts/deferred_ledger.py plan --ledger <impl>/deferred-work.md`; **skip
+   this step** (mark `reconcile: done`) if the ledger is absent/empty or **every** entry's
+   `marker_hint` is already `resolved` — there is nothing unmarked to reconcile. Otherwise delegate
+   the **`deferred-reconcile`** entry (profile `deferred_reconcile`). It reads the ledger, verifies
+   each not-yet-fully-resolved entry (`open` or `partial`) against its referenced files / the current
+   code, and — only on unambiguous evidence that ALL of an item's deferred work is done — writes a
+   recognized resolution marker into the entry (keep-on-doubt; the same asymmetry as step 4). The
+   orchestrator never reads the code or the ledger here — it routes the delegate and records its
+   result. Capture the count marked + each item's one-line evidence into the report's **Deferred
+   work** field (folded into `deferred_archived_note` alongside step 4's archive line). The delegate's
+   ledger edits are committed with this phase's `docs(epic-{e})` commit. See `delegation.md` →
+   `deferred-reconcile`.
+4. **Archive resolved deferred work** *(orchestrator-direct — connective bookkeeping, never
    delegated):* trim the active ledger `<impl>/deferred-work.md` so create-story stops re-folding
-   finished work into future stories. The mechanics are scripted — you own only the keep-vs-move
-   judgment:
-   1. Run `python3 {skill-root}/scripts/deferred_ledger.py plan --ledger <impl>/deferred-work.md`.
+   finished work into future stories — including any entry step 3 just marked. The mechanics are
+   scripted — you own only the keep-vs-move judgment:
+   1. Run `python3 {skill-root}/scripts/deferred_ledger.py plan --ledger <impl>/deferred-work.md`
+      (re-run it — step 3's marking changed the ledger, so its earlier sha is stale).
       It returns every entry (`id`, `heading`, `text`), the `ledger_sha256`, and a `marker_hint`
       (`resolved`/`partial`/`open`) — the hint is a heuristic aid that focuses your read; it never
       decides.
@@ -510,7 +528,7 @@ runs — step 1.)
    No-op if the ledger is absent or holds no resolved entry (skip `archive` when the move set is
    empty). Record the count moved (the result's `moved`) in state (`deferred_work_archived`) and the
    report's **Deferred work** field; the move lands in this phase's `docs(epic-{e})` commit.
-4. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
+5. **Retrospective:** delegate the **`retrospective`** entry via the `retrospective` profile, handing
    it the accumulated `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` as primary input. It runs autonomously and
    writes the retro doc + flips the retrospective status to `done`. **Planning-drift advisory:** if the
    delegate's `Planning drift` line is non-empty — the epic proved a planning assumption wrong (PRD /
@@ -531,7 +549,7 @@ runs — step 1.)
   sections) and derives the Story/Branch/Timing lines from state; you supply the prose snippets
   (`disposition_tag`, `pipeline_status`, `continues`, `phases_run`, `skipped`, `overrides`, `tea`,
   `code_review`, `next`, `head_sha`) plus the **list keys** `open_questions`, `deferred_work`,
-  `deferred_archived_note` (Phase 8's archive line), `planning_drift`, and `needs_human` in the
+  `deferred_archived_note` (Phase 8's reconcile + archive line), `planning_drift`, and `needs_human` in the
   JSON — these exact names: the script REJECTS an unknown key (a misspelled one would otherwise
   render its section `(none)` and silently drop content; the key↔heading map is pinned next to
   the Section template in `state-and-resume.md`). Tag it with this section's disposition —

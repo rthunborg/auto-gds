@@ -18,10 +18,13 @@ bookkeeping it already holds full pipeline context for. Don't "fix" these into d
 - **Phase 0 project-context probe** — an existence check that only decides whether Phase 2's
   bootstrap sub-step runs (the bootstrap itself is delegated like every other skill call).
 - **Phase 9 finalize writes** — BMAD-status flip to `done` + the pre-push pipeline-report commit.
-- **Phase 8 deferred-work archive** — at epic-end, after the project-context refresh, move
-  fully-resolved entries out of the active `<impl>/deferred-work.md` ledger into the sibling
-  `deferred-work-resolved.md` archive. No `/bmad-*` skill prunes the ledger, and the orchestrator
-  already writes this file directly at Phase 7 — so this is connective bookkeeping, not a delegate.
+- **Phase 8 deferred-work archive** — at epic-end, after the project-context refresh **and the
+  delegated deferred-work reconcile** (a `deferred_reconcile` delegate that marks any ledger item
+  whose deferred work actually landed but went unmarked — that judgment reads code, so it is
+  delegated, not direct), move fully-resolved entries out of the active `<impl>/deferred-work.md`
+  ledger into the sibling `deferred-work-resolved.md` archive. No `/bmad-*` skill prunes the ledger,
+  and the orchestrator already writes this file directly at Phase 7 — so the archive itself is
+  connective bookkeeping, not a delegate.
 - **Phase 7 code-review fan-out** — `/bmad-code-review` fans out to three review subagents internally,
   which a delegate can't (no nested subagents). So the orchestrator hoists the fan-out: it builds the
   diff (git) and spawns the review lenses (three per configured reviewer model, 3–9 in total) + the

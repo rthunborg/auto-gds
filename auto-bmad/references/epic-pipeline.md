@@ -222,13 +222,17 @@ So they capture the integration review's findings + fix commits (mirrors per-sto
 ordering). In order:
 1. **Project context** → delegate **`generate-project-context`** (refresh) via `project_context`, fed
    the epic's accumulated `retro-notes/epic-{e}.md` + the deferred-work ledger.
-2. **Archive resolved deferred work** *(orchestrator-direct — connective bookkeeping)*: trim
+2. **Reconcile missed completions** *(delegated — `deferred_reconcile`; runs BEFORE the archive)*:
+   delegate the **`deferred-reconcile`** entry to mark any `open`/`partial` ledger item whose deferred
+   work actually landed during the epic but went unmarked, so step 3 can archive it (same mechanics +
+   skip condition as Phase 8 step 3). Record the marked count + evidence in the report.
+3. **Archive resolved deferred work** *(orchestrator-direct — connective bookkeeping)*: trim
    `<impl>/deferred-work.md` via `deferred_ledger.py plan` → judge keep-vs-move → `deferred_ledger.py
-   archive` into `<impl>/deferred-work-resolved.md` (same mechanics as Phase 8 step 3). Record
+   archive` into `<impl>/deferred-work-resolved.md` (same mechanics as Phase 8 step 4). Record
    `deferred_work_archived`.
-3. **Retrospective** → delegate **`retrospective`** via `retrospective` for epic `{e}`, fed
+4. **Retrospective** → delegate **`retrospective`** via `retrospective` for epic `{e}`, fed
    `retro-notes/epic-{e}.md`. Record any `planning_drift` (non-blocking; surface in the report).
-Commit once: `docs(epic-{e}): gate, project context, deferred-work archive, retrospective`.
+Commit once: `docs(epic-{e}): gate, project context, deferred-work reconcile + archive, retrospective`.
 (Trace-gate remediation, if any in E8a, already committed separately.)
 
 ## E_final — Finalize  *(orchestrator, git)*

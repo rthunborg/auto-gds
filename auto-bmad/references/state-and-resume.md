@@ -183,8 +183,9 @@ commits: [a1b2c3d, e4f5g6h]
 phase8_steps:                # per-sub-step epic-end resume markers, recorded in each sub-step's folded state
   trace_gate: null           #   write: null (not yet run) | done; trace_gate may also be waived | failed.
   nfr: null                  #   A mid-Phase-8 crash resumes at the first null instead of re-running completed
-  test_review: null          #   delegations; Phase 8 joins completed_phases only once all six markers resolve
+  test_review: null          #   delegations; Phase 8 joins completed_phases only once all seven markers resolve
   project_context: null      #   (ran, or its gate was false).
+  reconcile: null            #   delegated pre-archive pass: mark ledger items whose deferred work fully landed but went unmarked
   archive: null
   retro: null
 gate_decision: null          # PASS|CONCERNS|FAIL|WAIVED (last story only)
@@ -363,8 +364,8 @@ keeps its heading with `(none)`. Timing-split semantics: the timing fields above
 **`--json` payload keys (exact names — the script REJECTS unknown keys, because a misspelled key
 would silently render its heading `(none)`):** `disposition_tag` (the heading tag),
 `pipeline_status`, `continues`, `phases_run`, `skipped`, `overrides`, `tea`, `code_review`,
-`open_questions` (list), `deferred_work` (list) + `deferred_archived_note` (the Phase 8 archive
-line appended under it), `planning_drift`, `needs_human` (list — the ⚠️ heading), `next`,
+`open_questions` (list), `deferred_work` (list) + `deferred_archived_note` (the Phase 8
+reconcile + archive line appended under it), `planning_drift`, `needs_human` (list — the ⚠️ heading), `next`,
 `head_sha` (the Branch line's short SHA).
 
 ```markdown
@@ -388,7 +389,7 @@ line appended under it), `planning_drift`, `needs_human` (list — the ⚠️ he
 
 **Open questions:** <numbered list, one per line — questions surfaced by any step; "(none)" if empty — keep the heading>.
 
-**Deferred work:** <numbered list, one per line — anything intentionally postponed (also appended to the durable cross-story `<impl>/deferred-work.md` ledger; cross-link it when items landed there); on the last story of an epic, add a line noting how many resolved entries Phase 8 moved to the `deferred-work-resolved.md` archive (e.g. "archived 6 resolved → deferred-work-resolved.md"; omit the note if none); "(none)" if empty — keep the heading>.
+**Deferred work:** <numbered list, one per line — anything intentionally postponed (also appended to the durable cross-story `<impl>/deferred-work.md` ledger; cross-link it when items landed there); on the last story of an epic, add a line from Phase 8 covering the reconcile + archive (e.g. "marked 2 missed-completions; archived 6 resolved → deferred-work-resolved.md"; name each reconcile-marked item with its one-line evidence; omit the note if nothing was marked or moved); "(none)" if empty — keep the heading>.
 
 **Planning drift:** <epic-end only — planning assumptions the retrospective proved wrong + the recommended re-sync (document-project → generate-project-context → /bmad-prd update; /bmad-correct-course if structural); non-blocking, never auto-run; "(none)" if clean or not epic-end>.
 

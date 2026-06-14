@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Epic end reconciles deferred work before archiving it.** A new delegated pass marks any ledger
+  item whose deferred work actually landed during the epic but went unmarked, so finished work stops
+  being re-folded into future stories instead of lingering open forever. Conservative by design — it
+  marks only on unambiguous evidence and keeps anything in doubt (pipeline.md, delegation.md).
+
 ## [0.22.1] - 2026-06-14
 
 ### Fixed

@@ -387,6 +387,49 @@ The orchestrator fills `{bootstrap_intent}` from the calling phase:
   retro notes at _bmad-output/auto-bmad/retro-notes/epic-{e}.md (and scan <impl>/deferred-work.md
   for any DURABLE constraint).`
 
+### deferred-reconcile
+This is **not** a `/bmad-*` skill call — it is a reconciliation pass (an inline prompt, like the
+code-review lenses). It runs once at epic end, immediately **before** the orchestrator-direct
+archive, to catch deferred items whose work actually landed during the epic but whose ledger entry
+was never updated to say so (so the text-only archive would keep re-folding finished work forever).
+```
+Reconcile the deferred-work ledger <impl>/deferred-work.md against the CURRENT codebase, in
+<project_root>, after epic {e}.
+
+For EACH ledger entry that is NOT already marked fully resolved — i.e. an UNMARKED entry (still
+open) OR a PARTIAL entry (it carries a resolution marker but also an open-remainder clause like
+"remainder owned by story X") — verify against the entry's referenced files (the `[path:line]`
+refs) and the current code whether ALL of that item's deferred work is now actually done.
+
+Mark an entry resolved ONLY on unambiguous evidence that EVERYTHING it defers is complete. This
+is the safety rule and it is asymmetric: a wrongly-KEPT item is merely re-folded once (harmless);
+a wrongly-MARKED item is silently archived and its real follow-up work is dropped. So when there
+is ANY doubt — the evidence is indirect, the item is vague, only part of it is clearly done —
+LEAVE THE ENTRY EXACTLY AS IT IS.
+
+For each entry you DO confirm fully resolved, edit only that bullet's text in place:
+- Prepend the resolution marker `✅ ` and append `— resolved in <where>` (name the file/commit/story
+  that landed it). Use exactly that vocabulary: a leading ✅ plus "resolved in".
+- It must read as FULLY resolved: do NOT include any of the words "remainder", "still open",
+  "portion", "owned by", or "partial" in the edited bullet (those keep it un-archivable). For a
+  previously-PARTIAL entry now fully done, REWRITE its remainder clause out so nothing open remains.
+
+Edit nothing else: preserve every `## Deferred from:` heading, every other entry, all nesting and
+prose, byte-for-byte — a downstream script re-parses this file. Do NOT reword, reorder, or remove
+still-open entries; do NOT touch already-fully-resolved entries; do NOT add new entries.
+
+Return, in `Deferred work`, the count of entries you marked and ONE line per marked entry naming
+the item and the one-line evidence (the file/commit that resolved it); `none` if you marked
+nothing.
+```
+The orchestrator runs this only when `deferred_ledger.py plan` shows at least one entry that is not
+already `resolved` (skip — and mark `phase8_steps.reconcile: done` — when the ledger is absent/empty
+or every entry is already `resolved`). It records the result in state and the report; the delegate's
+ledger edits land in the same epic-end `docs(epic-{e})` commit as the archive that follows. Pin the
+marker vocabulary above to what `deferred_ledger.py` recognizes (`✅` / "resolved in" / "closed" /
+"addressed in" / "done in", and no remainder signal) — a marker it can't read silently no-ops (safe:
+the entry is simply kept).
+
 ### retrospective
 ```
 Run `/bmad-retrospective` in <project_root> for epic {e}.

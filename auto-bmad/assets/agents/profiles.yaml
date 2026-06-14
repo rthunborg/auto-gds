@@ -138,3 +138,4 @@ phase_profiles:
   tea_epic_audit: ab-standard               # Phase 8 advisory gates (nfr + test-review) — one effort tier below the blocking trace gate
   retrospective: ab-alt-standard
   project_context: ab-standard              # Phase 2 bootstrap + Phase 8 refresh
+  deferred_reconcile: ab-standard           # Phase 8 (epic-end, pre-archive): verify-against-code which unmarked/partial deferred items are now fully resolved and mark them; reuses ab-standard like the sibling project_context step (no new agent file)

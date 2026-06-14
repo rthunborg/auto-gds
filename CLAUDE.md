@@ -187,8 +187,10 @@ changelog first). That's the only CI — no build/publish step, and nothing re-r
 - Never commit the local BMAD test install or generated agents — `_bmad/`, `_bmad-output/`,
   `.agents/`, `.claude/`, `.codex/` are gitignored. The published repo is module + marketplace +
   docs only. **One deliberate exception** (a `.gitignore` negation): the tracked maintainer skill
-  `.claude/skills/auto-bmad-compat-check/` — checks new BMAD releases (npm `latest`/`next`) for
-  impact on auto-bmad and offers to bump the README compat markers. It's repo tooling, not shipped
+  `.claude/skills/auto-bmad-compat-check/` — checks new releases (npm `latest`/`next`) of **both**
+  packages auto-bmad delegates into — `bmad-method` and the separately versioned
+  `bmad-method-test-architecture-enterprise` (TEA, the `bmad-testarch-*` skills) — for impact on
+  auto-bmad and offers to bump the README compat markers. It's repo tooling, not shipped
   inside the module (like `scripts/bump-version.py`); everything else under `.claude/` stays ignored.
 - Markdown reference files are read by the orchestrator at runtime; keep them concise and
   unambiguous (they are instructions, not prose). Helper scripts stay dependency-free with a

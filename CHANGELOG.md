@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **README now records TEA (test-architecture) module compatibility.** A second compat badge and
+  blockquote clause track the separately versioned `bmad-method-test-architecture-enterprise` skill
+  line (currently 1.19.x), which ships the `testarch` skills auto-bmad runs. (README)
+
 ## [0.20.2] - 2026-06-13
 
 ### Changed

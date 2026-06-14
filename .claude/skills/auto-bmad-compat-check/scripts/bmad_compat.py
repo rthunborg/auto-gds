@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""bmad_compat.py — assess BMAD-METHOD version changes against auto-bmad's surface.
+"""bmad_compat.py — assess BMAD version changes against auto-bmad's surface.
 
-The hard, error-prone part of "is the new BMAD release compatible?" is mechanical:
+auto-bmad's pipeline delegates into TWO separately versioned npm packages:
+`bmad-method` (the core BMM line — create-story/dev-story/code-review/…) and
+`bmad-method-test-architecture-enterprise` (the TEA module — the `bmad-testarch-*`
+skills run in the TEA-gated phases). They ship identically (`latest`/`next`
+dist-tags, `vX.Y.Z` git tags, a `package/src/**` payload), so one diff engine
+checks both; `--report` emits a combined result with a worst-of headline verdict.
+
+The hard, error-prone part of "is the new release compatible?" is mechanical:
 work out which versions exist (stable vs prerelease), download the *published*
 packages, diff them, and decide which changed files actually touch the skills
 auto-bmad delegates to. This script does exactly that and emits structured JSON.
@@ -36,11 +43,30 @@ import urllib.request
 from difflib import unified_diff
 from urllib.parse import urlparse
 
-REGISTRY = "https://registry.npmjs.org/bmad-method"
+NPM_REGISTRY = "https://registry.npmjs.org"
 # Tarball URLs are read out of the registry JSON, so pin them to https on the
 # npm host before fetching — never follow a `file://` or off-host URL even if
 # the metadata is tampered with.
 ALLOWED_HOST_SUFFIX = ".npmjs.org"
+
+# The BMAD npm packages auto-bmad's pipeline delegates into. They ship the SAME
+# way — `latest`/`next` dist-tags, `vX.Y.Z` git tags, a `package/src/**` payload
+# (docs/tests/tools excluded) — so one diff engine serves both. `bmad-method` is
+# the core BMM line; `bmad-method-test-architecture-enterprise` is the separately
+# versioned TEA (test-architecture) module that ships the `bmad-testarch-*` skills
+# auto-bmad runs in its TEA-gated phases. Each entry pins the npm name (the dict
+# key), a short report label, and the GitHub slug Step 3 cross-checks + the README
+# blockquote windows baselines by. Order matters only cosmetically (report order).
+PACKAGES = {
+    "bmad-method": {
+        "label": "BMAD-METHOD",
+        "repo": "bmad-code-org/BMAD-METHOD",
+    },
+    "bmad-method-test-architecture-enterprise": {
+        "label": "TEA (test-architecture)",
+        "repo": "bmad-code-org/bmad-method-test-architecture-enterprise",
+    },
+}
 
 # Skills that don't just run in the pipeline but *own a durable contract*
 # auto-bmad reads or writes. A change here is the highest-signal kind: it can
@@ -177,10 +203,26 @@ def find_new_skills(files_a: dict, files_b: dict, since: str) -> list:
     return out
 
 
-def parse_baseline_from_readme(text: str):
-    """Read the last-verified versions out of the README compat blockquote.
-    Returns (stable, prerelease|None) — the highest plain semver and the
-    highest -next, respectively."""
+def _compat_blockquote(text: str) -> str:
+    """Isolate the `> … Compatibility: …` blockquote so version parsing can't
+    collide with the BMAD-METHOD repo URL that also appears in the page's badges
+    and links. Falls back to the whole text when no such blockquote is found."""
+    lines = text.splitlines()
+    idx = next((i for i, ln in enumerate(lines)
+                if ln.lstrip().startswith(">") and "Compatibility" in ln), None)
+    if idx is None:
+        return text
+    start = idx
+    while start > 0 and lines[start - 1].lstrip().startswith(">"):
+        start -= 1
+    end = idx
+    while end + 1 < len(lines) and lines[end + 1].lstrip().startswith(">"):
+        end += 1
+    return "\n".join(lines[start:end + 1])
+
+
+def _highest_pair(text: str):
+    """(highest plain semver, highest -next) found in a span — None where absent."""
     finals, pres = [], []
     for m in SEMVER_RE.finditer(text):
         v = m.group(0)
@@ -188,6 +230,33 @@ def parse_baseline_from_readme(text: str):
     stable = max(finals, key=semver_key) if finals else None
     prerelease = max(pres, key=semver_key) if pres else None
     return stable, prerelease
+
+
+def parse_baseline_from_readme(text: str, package=None, packages=None):
+    """Read the last-verified versions out of the README compat blockquote.
+
+    With `package` set, scope to *that* package's clause: within the compat
+    blockquote, the window runs from the package's GitHub repo slug up to the next
+    package's slug (or end of blockquote). Per-package scoping is a *correctness*
+    requirement, not a nicety — the two lines need not share a prerelease (TEA's
+    `next` can sort below its own stable, leaving its clause with no `-next` token),
+    so a global 'highest -next' would hand one package's prerelease to the other.
+    Authoring rule the windowing assumes: each clause's versions sit *after* its
+    repo link. Returns (stable, prerelease|None); (None, None) when the package's
+    clause isn't present yet. With `package=None`, the legacy global parse over the
+    blockquote (highest plain semver + highest -next)."""
+    packages = packages or PACKAGES
+    region = _compat_blockquote(text)
+    if package is None:
+        return _highest_pair(region)
+    repo = packages[package]["repo"]
+    start = region.find(repo)
+    if start == -1:
+        return None, None
+    later = [p for p in (region.find(m["repo"]) for k, m in packages.items() if k != package)
+             if p != -1 and p > start]
+    end = min(later) if later else len(region)
+    return _highest_pair(region[start:end])
 
 
 def prerelease_anchor(stable, prev_prerelease, prerelease):
@@ -255,8 +324,12 @@ def _get(url: str, timeout: int = 30) -> bytes:
         return r.read()
 
 
-def fetch_registry() -> dict:
-    return json.loads(_get(REGISTRY).decode("utf-8"))
+def registry_url(package: str) -> str:
+    return f"{NPM_REGISTRY}/{package}"
+
+
+def fetch_registry(package: str) -> dict:
+    return json.loads(_get(registry_url(package)).decode("utf-8"))
 
 
 def extract_package_src(tar_bytes: bytes) -> dict:
@@ -344,8 +417,8 @@ def _compare(label, older_v, newer_v, older, newer, surface, max_lines) -> dict:
     }
 
 
-def build_report(baseline, prev_prerelease, surface, max_lines) -> dict:
-    registry = fetch_registry()
+def build_report(package, baseline, prev_prerelease, surface, max_lines) -> dict:
+    registry = fetch_registry(package)
     tags = registry.get("dist-tags", {})
     stable = tags.get("latest")
     nxt = tags.get("next")
@@ -391,7 +464,9 @@ def build_report(baseline, prev_prerelease, surface, max_lines) -> dict:
                      trees[pre_anchor], trees[prerelease], surface, max_lines))
 
     return {
-        "package": "bmad-method",
+        "package": package,
+        "label": PACKAGES.get(package, {}).get("label", package),
+        "repo": PACKAGES.get(package, {}).get("repo"),
         "baseline": baseline,
         "prev_prerelease": prev_prerelease,
         "stable": stable,
@@ -428,6 +503,43 @@ def _summarize(comparisons) -> dict:
         "contract_owner_changes": hits["critical"],
         "other_skill_changes": hits["low"],
         "new_skills": sorted(set(new_skills)),
+    }
+
+
+# Worst-of ordering, so the combined headline verdict is the most-attention-needing
+# of the packages checked (a TEA break must not be masked by a clean BMAD line).
+VERDICT_RANK = {"up-to-date": 0, "compatible": 1, "review-opportunities": 2,
+                "needs-attention": 3}
+
+
+def build_combined_report(specs, surface, max_lines) -> dict:
+    """Build one per-package report for each (package, baseline, prev_prerelease)
+    spec and fold them into a combined result with a worst-of headline verdict.
+
+    A package whose baseline can't be resolved (no README clause and no override)
+    becomes an `error` entry rather than aborting the whole run — one missing clause
+    must never sink the other package's check."""
+    reports = []
+    for package, baseline, prev_prerelease in specs:
+        if not baseline:
+            reports.append({
+                "package": package,
+                "label": PACKAGES.get(package, {}).get("label", package),
+                "error": "could not determine baseline (no README compat clause and no override)",
+            })
+            continue
+        reports.append(build_report(package, baseline, prev_prerelease, surface, max_lines))
+    graded = [r["summary"]["verdict"] for r in reports if "summary" in r]
+    if graded:
+        verdict = max(graded, key=lambda v: VERDICT_RANK.get(v, 0))
+    elif reports:
+        verdict = "error"
+    else:
+        verdict = "up-to-date"
+    return {
+        "verdict": verdict,
+        "surface_skills": surface,
+        "packages": reports,
     }
 
 
@@ -493,11 +605,47 @@ def _self_test() -> int:
     check("new_skills: detects added skill", len(ns) == 1 and ns[0]["name"] == "bmad-b")
     check("new_skills: parses description", ns[0]["description"] == "Does a new thing.")
 
-    # README baseline parse — mirrors the real compat blockquote wording
+    # README baseline parse — legacy global parse over the blockquote
     readme = "> **Compatibility:** tested ... up to **6.8.0** (and the **6.8.1-next.0** prerelease)."
     stable, pre = parse_baseline_from_readme(readme)
     check("readme: stable baseline", stable == "6.8.0")
     check("readme: prerelease baseline", pre == "6.8.1-next.0")
+
+    # Per-package windowing — mirrors the real two-clause compat blockquote, with a
+    # decoy badge line carrying the BMAD-METHOD repo URL *outside* the blockquote
+    # (proves _compat_blockquote isolation dodges the badge collision).
+    two_pkg = (
+        "[badge](https://github.com/bmad-code-org/BMAD-METHOD) [other](https://x)\n"
+        "\n"
+        "> **Compatibility:** tested against the "
+        "**[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) v6 skill line** up to "
+        "**6.8.0** (and the **6.8.1-next.9** prerelease), and the separately versioned "
+        "**[TEA test-architecture module]"
+        "(https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise) v1 line** up to "
+        "**1.19.0** — auto-bmad couples to those skills' contracts rather than pinned versions.\n"
+    )
+    bm_s, bm_p = parse_baseline_from_readme(two_pkg, "bmad-method")
+    check("windowed: bmad-method stable", bm_s == "6.8.0")
+    check("windowed: bmad-method prerelease", bm_p == "6.8.1-next.9")
+    tea_s, tea_p = parse_baseline_from_readme(two_pkg, "bmad-method-test-architecture-enterprise")
+    check("windowed: TEA stable scoped to its clause", tea_s == "1.19.0")
+    check("windowed: TEA has no prerelease (next sorts below stable)", tea_p is None)
+    miss_s, miss_p = parse_baseline_from_readme(
+        "> **Compatibility:** only **6.8.0** here.", "bmad-method-test-architecture-enterprise")
+    check("windowed: absent clause -> (None, None)", miss_s is None and miss_p is None)
+
+    # PACKAGES integrity — distinct, non-substring repo slugs (windowing depends on it)
+    slugs = [m["repo"] for m in PACKAGES.values()]
+    check("packages: repo slugs distinct", len(set(slugs)) == len(slugs))
+    check("packages: no slug is a substring of another",
+          not any(a != b and a in b for a in slugs for b in slugs))
+
+    # Combined verdict — worst-of, so a TEA break isn't masked by a clean BMAD line
+    check("verdict: worst-of needs-attention > compatible",
+          max(["compatible", "needs-attention"], key=lambda v: VERDICT_RANK[v]) == "needs-attention")
+    check("verdict: worst-of review-opportunities > up-to-date",
+          max(["up-to-date", "review-opportunities"], key=lambda v: VERDICT_RANK[v])
+          == "review-opportunities")
 
     # prerelease anchoring — only diff what's genuinely new since the last check
     check("anchor: no live prerelease -> skip",
@@ -556,12 +704,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--self-test", action="store_true", help="run hermetic checks and exit")
-    ap.add_argument("--report", action="store_true", help="fetch + diff + classify (network)")
-    ap.add_argument("--baseline", help="last-verified stable version (e.g. 6.8.0); "
+    ap.add_argument("--report", action="store_true",
+                    help="fetch + diff + classify BOTH packages (bmad-method + TEA) (network)")
+    ap.add_argument("--baseline", help="bmad-method last-verified stable (e.g. 6.8.0); "
                                        "defaults to the README compat blockquote via --readme")
-    ap.add_argument("--prev-prerelease", help="last-checked prerelease (e.g. 6.8.1-next.2); "
+    ap.add_argument("--prev-prerelease", help="bmad-method last-checked prerelease (e.g. 6.8.1-next.2); "
                                               "defaults to the README compat blockquote via --readme")
-    ap.add_argument("--readme", help="path to README.md to read the baselines from")
+    ap.add_argument("--tea-baseline", help="TEA last-verified stable (e.g. 1.19.0); "
+                                           "defaults to the README compat blockquote via --readme")
+    ap.add_argument("--tea-prev-prerelease", help="TEA last-checked prerelease (e.g. 1.20.0-next.1); "
+                                                  "defaults to the README compat blockquote via --readme")
+    ap.add_argument("--readme", help="path to README.md to read both packages' baselines from")
     ap.add_argument("--refs", nargs="*", default=[],
                     help="reference docs to derive the delegated-skill surface from")
     ap.add_argument("--max-diff-lines", type=int, default=160,
@@ -574,16 +727,28 @@ def main() -> int:
     if not args.report:
         ap.error("nothing to do: pass --report or --self-test")
 
-    baseline = args.baseline
-    prev_prerelease = args.prev_prerelease
-    if args.readme and (not baseline or not prev_prerelease):
+    # Per-package CLI overrides; everything else comes from the README blockquote.
+    overrides = {
+        "bmad-method": (args.baseline, args.prev_prerelease),
+        "bmad-method-test-architecture-enterprise": (args.tea_baseline, args.tea_prev_prerelease),
+    }
+    readme_text = None
+    if args.readme:
         with open(args.readme, encoding="utf-8") as fh:
-            r_stable, r_pre = parse_baseline_from_readme(fh.read())
-        baseline = baseline or r_stable
-        if prev_prerelease is None:
-            prev_prerelease = r_pre
-    if not baseline:
-        ap.error("could not determine baseline: pass --baseline or --readme")
+            readme_text = fh.read()
+
+    specs = []
+    for package in PACKAGES:
+        baseline, prev_prerelease = overrides.get(package, (None, None))
+        if readme_text is not None and (not baseline or prev_prerelease is None):
+            r_stable, r_pre = parse_baseline_from_readme(readme_text, package)
+            baseline = baseline or r_stable
+            if prev_prerelease is None:
+                prev_prerelease = r_pre
+        specs.append((package, baseline, prev_prerelease))
+
+    if not any(b for _, b, _ in specs):
+        ap.error("could not determine any baseline: pass --readme, --baseline, or --tea-baseline")
 
     surface = []
     for path in args.refs:
@@ -594,7 +759,7 @@ def main() -> int:
             pass
     surface = sorted(set(surface)) or FALLBACK_SURFACE
 
-    report = build_report(baseline, prev_prerelease, surface, args.max_diff_lines)
+    report = build_combined_report(specs, surface, args.max_diff_lines)
     json.dump(report, sys.stdout, indent=2)
     print()
     return 0

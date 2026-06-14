@@ -29,6 +29,14 @@ Three modes, all emitting a single JSON object on stdout:
   ``reasons`` names each firing clause. Exit 0 = verdict delivered (draft or
   not), 1 = state file missing, 2 = usage errors.
 
+All three modes accept ``--scope epic`` to operate on the **epic anchors** under
+``<state-dir>/epic`` instead of the per-story files: ``--scope epic`` (scan) lists
+the in-flight epic pipelines, each enriched with ``epic_num`` + ``active_story``
+(the cursor) for the epic resume + the per-story "this story is owned by an
+in-flight epic" guard; ``--scope epic --story-key epic-{e}`` resumes/finalizes one
+epic anchor. The per-story scan ignores the ``epic/`` subdirectory (it lists only
+``*.yaml`` files), so the two scopes never collide.
+
 Dependency-free: state files are flat ``key: value`` YAML, so the few top-level
 scalars we need (``status``, ``updated_at``) are read line by line — the
 finalize mode additionally reads the ``blockers`` list (inline ``[]`` or block
@@ -135,6 +143,88 @@ def _scan(state_dir: str):
     if in_flight:
         result["target"] = in_flight[0]["story_key"]
         result["target_status"] = in_flight[0]["status"]
+        result["extra_in_flight"] = [r["story_key"] for r in in_flight[1:]]
+        result["resume"] = True
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# --scope epic: scan the epic anchors under <state-dir>/epic. A separate scan so
+# the per-story _scan stays pure (it never sees the epic/ subdir — listdir keeps
+# only *.yaml files). Enriches each record with epic_num + active_story (cursor).
+# --------------------------------------------------------------------------- #
+_EPIC_NUM_RE = re.compile(r"^epic_num:\s*(.*?)\s*(?:#.*)?$")
+_ACTIVE_STORY_RE = re.compile(r"^active_story:\s*(.*?)\s*(?:#.*)?$")
+
+
+def _read_epic_fields(path: str):
+    """Read ``epic_num`` (int when numeric) and ``active_story`` (the loop cursor)
+    from an epic anchor — the two fields the per-story reader doesn't track."""
+    epic_num = None
+    active_story = None
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.rstrip("\n")
+                if epic_num is None:
+                    m = _EPIC_NUM_RE.match(line)
+                    if m:
+                        v = _scalar_or_none(m.group(1))
+                        epic_num = int(v) if (v and v.isdigit()) else v
+                if active_story is None:
+                    m = _ACTIVE_STORY_RE.match(line)
+                    if m:
+                        active_story = _scalar_or_none(m.group(1))
+                if epic_num is not None and active_story is not None:
+                    break
+    except OSError:
+        pass
+    return epic_num, active_story
+
+
+def _scan_epics(epic_dir: str):
+    """Scan the epic anchors under ``epic_dir`` (``<state-dir>/epic``): mirror
+    ``_scan`` but enrich each record with ``epic_num`` + ``active_story`` and pick
+    the most-recently-updated in-flight epic as the resume ``target``."""
+    result = {
+        "mode": "epic-scan",
+        "state_dir": epic_dir,
+        "state_dir_exists": os.path.isdir(epic_dir),
+        "epics": [],
+        "in_flight": [],
+        "in_flight_count": 0,
+        "target": None,
+        "target_status": None,
+        "target_epic_num": None,
+        "target_active_story": None,
+        "extra_in_flight": [],
+        "resume": False,
+    }
+    if not result["state_dir_exists"]:
+        return result
+
+    records = []
+    for name in os.listdir(epic_dir):
+        if name.endswith(".yaml") and os.path.isfile(os.path.join(epic_dir, name)):
+            rec = _story_record(epic_dir, name)
+            epic_num, active_story = _read_epic_fields(os.path.join(epic_dir, name))
+            rec["epic_key"] = rec["story_key"]
+            rec["epic_num"] = epic_num
+            rec["active_story"] = active_story
+            records.append(rec)
+
+    records.sort(key=lambda r: (r["updated_at"] or "", r["_mtime"]), reverse=True)
+
+    in_flight = [r for r in records if not r["done"]]
+    result["epics"] = [_public(r) for r in records]
+    result["in_flight"] = [_public(r) for r in in_flight]
+    result["in_flight_count"] = len(in_flight)
+    if in_flight:
+        t = in_flight[0]
+        result["target"] = t["story_key"]
+        result["target_status"] = t["status"]
+        result["target_epic_num"] = t["epic_num"]
+        result["target_active_story"] = t["active_story"]
         result["extra_in_flight"] = [r["story_key"] for r in in_flight[1:]]
         result["resume"] = True
     return result
@@ -421,6 +511,42 @@ def _run_self_test():
     check("scan: absent dir no resume", empty["resume"] is False)
     check("scan: absent dir zero in-flight", empty["in_flight_count"] == 0)
 
+    # ---- --scope epic: epic-anchor scan over <state-dir>/epic -------------- #
+    epic_dir = os.path.join(state_dir, "epic")
+    os.makedirs(epic_dir)
+    with open(os.path.join(epic_dir, "epic-1.yaml"), "w", encoding="utf-8") as fh:
+        fh.write('story_key: epic-1\nepic_num: 1\nstatus: done\nactive_story: null\nupdated_at: "2026-05-20T08:00:00Z"\n')
+    with open(os.path.join(epic_dir, "epic-2.yaml"), "w", encoding="utf-8") as fh:
+        fh.write('story_key: epic-2\nepic_num: 2\nstatus: in-progress\nactive_story: 2-3-widget\nupdated_at: "2026-05-25T12:00:00Z"\n')
+    epscan = _scan_epics(epic_dir)
+    check("epic-scan: mode", epscan["mode"] == "epic-scan")
+    check("epic-scan: lists 2 epics", len(epscan["epics"]) == 2)
+    check("epic-scan: one in-flight (epic-1 done)", epscan["in_flight_count"] == 1)
+    check("epic-scan: target most-recent in-flight epic-2", epscan["target"] == "epic-2")
+    check("epic-scan: target_epic_num int 2", epscan["target_epic_num"] == 2)
+    check("epic-scan: target_active_story is the cursor", epscan["target_active_story"] == "2-3-widget")
+    check("epic-scan: resume true", epscan["resume"] is True)
+    check("epic-scan: done epic null active_story", any(e["epic_key"] == "epic-1" and e["active_story"] is None for e in epscan["epics"]))
+    check("epic-scan: no internal mtime leak", all(not any(k.startswith("_") for k in e) for e in epscan["epics"]))
+
+    # The epic/ subdir is invisible to the per-story scan (no collision).
+    rescan = build_result(state_dir)
+    check("epic subdir invisible to per-story scan", all(not s["story_key"].startswith("epic-") for s in rescan["stories"]))
+
+    # An epic anchor resumes/finalizes via the epic subdir as the state dir.
+    epstory = build_result(epic_dir, "epic-2")
+    check("epic anchor resume via subdir", epstory["exists"] is True and epstory["resume"] is True)
+    epfin, epcode = build_finalize_result(epic_dir, "epic-1")
+    check("epic finalize reads the anchor", epcode == 0 and epfin["story_key"] == "epic-1")
+
+    # Absent epic/ subdir: no resume (first epic run).
+    noepic = _scan_epics(os.path.join(tmp, "no-epic-dir"))
+    check("epic-scan: absent dir no resume", noepic["state_dir_exists"] is False and noepic["resume"] is False)
+
+    for name in os.listdir(epic_dir):
+        os.unlink(os.path.join(epic_dir, name))
+    os.rmdir(epic_dir)
+
     # ---- finalize mode ---------------------------------------------------- #
     fin_dir = os.path.join(tmp, "fin")
     os.makedirs(fin_dir)
@@ -610,6 +736,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="auto-bmad state-file reader")
     parser.add_argument("--state-dir", help="the {output_folder}/auto-bmad/state directory")
     parser.add_argument("--story-key", help="check one exact {key}.yaml instead of scanning all")
+    parser.add_argument("--scope", choices=["story", "epic"], default="story", help="state scope: per-story files under --state-dir (default), or the epic anchors under <state-dir>/epic")
     parser.add_argument("--finalize", action="store_true", help="evaluate the Phase 9 draft predicate / clean-completion verdict for --story-key")
     parser.add_argument("--ci-status", choices=["passed", "failed", "timeout", "none", "unknown"], help="with --finalize: the live post-CI-wait value (overrides the state file)")
     parser.add_argument("--no-pr-draft", action="store_true", help="with --finalize: the no_pr_draft override — forces draft=false, never touches clean_completion")
@@ -622,16 +749,23 @@ def main(argv=None):
     if not args.state_dir:
         parser.error("--state-dir is required (or use --self-test)")
 
+    # --scope epic operates on the epic anchors under <state-dir>/epic; default
+    # scope is the per-story files directly under --state-dir.
+    effective_dir = os.path.join(args.state_dir, "epic") if args.scope == "epic" else args.state_dir
+
     if args.finalize:
         if not args.story_key:
             parser.error("--finalize requires --story-key")
-        result, code = build_finalize_result(args.state_dir, args.story_key, args.ci_status, args.no_pr_draft)
+        result, code = build_finalize_result(effective_dir, args.story_key, args.ci_status, args.no_pr_draft)
         print(json.dumps(result, indent=2))
         return code
     if args.ci_status or args.no_pr_draft:
         parser.error("--ci-status/--no-pr-draft are only valid with --finalize")
 
-    result = build_result(args.state_dir, args.story_key)
+    if args.scope == "epic" and not args.story_key:
+        result = _scan_epics(effective_dir)
+    else:
+        result = build_result(effective_dir, args.story_key)
     print(json.dumps(result, indent=2))
     return 0
 

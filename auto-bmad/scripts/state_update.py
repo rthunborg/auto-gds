@@ -42,7 +42,10 @@ Subcommands (each emits a single JSON object on stdout):
                       ``--overwrite-confirmed``. ``--allow-missing-state`` covers the pre-init
                       hard-stop (Phase 0 — "always produce a report" before ``init`` ever ran):
                       renders against a default state keyed off the state file's name.
-* ``retro-append``  — ``--json {"lines": [...]}``: drop empty/``none``/whitespace lines; append the
+                      With ``--epic`` it renders the *epic-rollup* template instead (epic header +
+                      per-story rollup + integration-review/gate + open-findings/deferred checklist),
+                      keyed off the epic anchor, with its own ``EPIC_REPORT_PAYLOAD_KEYS`` allowlist.
+* ``retro-append``  —``--json {"lines": [...]}``: drop empty/``none``/whitespace lines; append the
                       survivors as ``- `` bullets under ``## Story {KEY}`` (reuse the heading if
                       present, else create at EOF; create the file lazily). If nothing survives,
                       write NOTHING — not even the heading.
@@ -60,7 +63,7 @@ Usage:
     state_update.py timing-start   --state-file PATH
     state_update.py timing-pause   --state-file PATH
     state_update.py report-section --report-file PATH --state-file PATH --json -|FILE
-                                   [--overwrite-confirmed] [--allow-missing-state]
+                                   [--epic] [--overwrite-confirmed] [--allow-missing-state]
     state_update.py retro-append   --retro-file PATH --story-key KEY --json -|FILE
     state_update.py --self-test
 """
@@ -695,9 +698,74 @@ def render_section(state: dict, payload: dict, timestamp: str, resumed: int) -> 
     return "\n".join(lines) + "\n"
 
 
+# The epic-mode report payload vocabulary (the single epic report, NOT per story).
+# Same reject-unknown discipline as REPORT_PAYLOAD_KEYS: a misspelled list key would
+# silently drop its content from the committed, PR-visible epic report.
+EPIC_REPORT_PAYLOAD_KEYS = frozenset((
+    "disposition_tag", "pipeline_status", "continues", "epic_summary",
+    "story_rollup", "stories_skipped", "integration_review", "epic_gate", "tea",
+    "overrides", "open_questions", "deferred_work", "deferred_archived_note",
+    "planning_drift", "needs_human", "next", "head_sha",
+))
+
+
+def render_epic_section(state: dict, payload: dict, timestamp: str, resumed: int) -> str:
+    """Render the epic-rollup report section (one epic, all its stories) — the
+    epic analog of render_section, keyed off the epic anchor state file."""
+    unknown = sorted(set(payload) - EPIC_REPORT_PAYLOAD_KEYS)
+    if unknown:
+        raise UsageError(
+            "unknown epic report-section payload key(s): " + ", ".join(unknown)
+            + " — every missing key renders '(none)', so a misnamed one would "
+            "silently drop its content; valid keys: " + ", ".join(sorted(EPIC_REPORT_PAYLOAD_KEYS)))
+    tag = str(payload.get("disposition_tag") or "").strip().strip("()")
+    if not tag:
+        raise UsageError("epic report-section payload needs a non-empty disposition_tag")
+    count = state.get("epic_story_count")
+    count_text = f"{count} stories" if count else "stories"
+    lines = [
+        f"## Report — {timestamp} ({tag})",
+        "",
+        f"**Epic:** `{state.get('epic_num')}` — {count_text}.",
+        f"**Branch:** `{state.get('branch') or '(unknown)'}` "
+        f"(HEAD `{_short_sha(payload.get('head_sha'))}`).",
+        f"**Pipeline status:** {_prose(payload, 'pipeline_status', '(none)')}",
+        f"**Continues:** {_prose(payload, 'continues', '(none — first run)')}",
+        "",
+        f"**Summary:** {_prose(payload, 'epic_summary', '(none)')}",
+        "",
+        _timing_line(state, resumed),
+        "",
+        *_list_block("**Stories:**", payload.get("story_rollup")),
+        "",
+        f"**Skipped (already done):** {_prose(payload, 'stories_skipped', '(none)')}",
+        "",
+        f"**Integration review:** {_prose(payload, 'integration_review', '(none)')}",
+        "",
+        f"**Epic gate:** {_prose(payload, 'epic_gate', '(none)')}",
+        "",
+        f"**TEA:** {_prose(payload, 'tea', '(none)')}",
+        "",
+        f"**Overrides:** {_prose(payload, 'overrides', 'none')}",
+        "",
+        *_list_block("**Open questions:**", payload.get("open_questions")),
+        "",
+        *_list_block("**Deferred work:**", payload.get("deferred_work"),
+                     str(payload.get("deferred_archived_note") or "").strip()),
+        "",
+        f"**Planning drift:** {_prose(payload, 'planning_drift', '(none)')}",
+        "",
+        *_list_block("**⚠️ Needs human:**", payload.get("needs_human")),
+        "",
+        f"**Next:** {_prose(payload, 'next', '(none)')}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def cmd_report_section(report_file: Path, state_file: Path, payload: dict,
                        overwrite_confirmed: bool,
-                       allow_missing_state: bool = False) -> dict:
+                       allow_missing_state: bool = False,
+                       epic: bool = False) -> dict:
     if allow_missing_state and not state_file.is_file():
         # Pre-init hard-stop (Phase 0): the state file is only created by
         # Phase 1's `init`, but "always produce a report" still holds. Render
@@ -711,8 +779,9 @@ def cmd_report_section(report_file: Path, state_file: Path, payload: dict,
     existing = report_file.read_text(encoding="utf-8") if report_file.is_file() else ""
     prior_sections = 0 if overwrite_confirmed else sum(
         1 for ln in existing.splitlines() if ln.startswith("## Report — "))
-    section = render_section(state, payload, timestamp, prior_sections)
-    title = f"# auto-bmad report log — {state.get('story_key')}\n"
+    # The epic-rollup template (one epic, all its stories) vs the per-story one.
+    section = (render_epic_section if epic else render_section)(state, payload, timestamp, prior_sections)
+    title = f"# auto-bmad {'epic ' if epic else ''}report log — {state.get('story_key')}\n"
     if overwrite_confirmed or not existing.strip():
         content = title + "\n" + section
     else:
@@ -1044,6 +1113,51 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             assert "1. commit or stash, then re-run" in rt0, rt0
             assert not sf0.exists(), "report fallback must never create the state file"
 
+            # --- report-section --epic (the epic-rollup template) ------------ #
+            esf = tmp / "state" / "epic" / "epic-1.yaml"
+            clock["iso"] = "2026-05-28T13:55:02Z"
+            cmd_init(esf, {"story_key": "epic-1", "epic_num": 1,
+                           "branch": "epic/1-account-system", "epic_story_count": 4,
+                           "active_story": None, "stories_landed": ["1-2-mgmt", "1-3-model"]})
+            # the net-new epic fields ride as preserved extras (no SCHEMA_ORDER change)
+            est = full_state(load_state(esf))
+            assert est["stories_landed"] == ["1-2-mgmt", "1-3-model"], est.get("stories_landed")
+            assert est["active_story"] is None and est["epic_num"] == 1, est
+            erf = tmp / "reports" / "epic-1.md"
+            epic_payload = {
+                "disposition_tag": "final",
+                "pipeline_status": "✅ clean epic completion.",
+                "epic_summary": "Delivered the account system across 4 stories.",
+                "story_rollup": ["`1-2-mgmt` — done; thin review: Crit 0/High 1 (fixed).",
+                                 "`1-3-model` — done; thin review: clean."],
+                "stories_skipped": "1-1-auth (already done, in base).",
+                "integration_review": "2 iterations; converged; Crit 0 / High 0.",
+                "epic_gate": "trace PASS; nfr CONCERNS; test-review PASS.",
+                "tea": "epic automate: 14 tests.", "open_questions": [],
+                "deferred_work": ["Index tuning -> next epic"],
+                "deferred_archived_note": "Archived 3 resolved.",
+                "needs_human": [], "next": "epic 2.", "head_sha": "abcdef1234"}
+            clock["iso"] = "2026-05-28T15:00:00Z"
+            r = cmd_report_section(erf, esf, epic_payload, False, epic=True)
+            assert r["section_written"], r
+            et = erf.read_text(encoding="utf-8")
+            assert et.startswith("# auto-bmad epic report log — epic-1\n"), et.splitlines()[0]
+            assert "## Report — 2026-05-28T15:00:00Z (final)" in et, et
+            assert "**Epic:** `1` — 4 stories." in et, et
+            assert "**Branch:** `epic/1-account-system` (HEAD `abcdef1`)." in et, et
+            assert "1. `1-2-mgmt` — done; thin review: Crit 0/High 1 (fixed)." in et, et
+            assert "**Integration review:** 2 iterations; converged" in et, et
+            assert "**Epic gate:** trace PASS" in et, et
+            assert "**Skipped (already done):** 1-1-auth (already done, in base)." in et, et
+            assert "1. Index tuning -> next epic" in et and "Archived 3 resolved." in et, et
+            # the epic template rejects a per-story-only payload key (allowlist discipline)
+            try:
+                cmd_report_section(erf, esf, {"disposition_tag": "x", "phases_run": "Phase 5"},
+                                   False, epic=True)
+                raise AssertionError("a per-story key in an epic payload must raise UsageError")
+            except UsageError as exc:
+                assert "phases_run" in str(exc), exc
+
             # --- retro-append ------------------------------------------------- #
             rn = tmp / "retro-notes" / "epic-1.md"
             r = cmd_retro_append(rn, "1-2-user-auth", {"lines": ["none", "  ", "None.", "- (none)"]})
@@ -1227,6 +1341,9 @@ def main(argv=None) -> int:
     add("timing-pause")
     add("report-section", js=True,
         report_file={"required": True},
+        epic={"action": "store_true",
+              "help": "render the epic-rollup template (one epic, all its stories) "
+                      "keyed off the epic anchor, not the per-story template"},
         overwrite_confirmed={"action": "store_true"},
         allow_missing_state={"action": "store_true",
                              "help": "pre-init hard-stop (Phase 0): render with a "
@@ -1255,7 +1372,7 @@ def main(argv=None) -> int:
         elif args.cmd == "report-section":
             result = cmd_report_section(Path(args.report_file), Path(args.state_file),
                                         payload, args.overwrite_confirmed,
-                                        args.allow_missing_state)
+                                        args.allow_missing_state, args.epic)
         else:  # retro-append
             result = cmd_retro_append(Path(args.retro_file), args.story_key, payload)
     except ContractError as exc:

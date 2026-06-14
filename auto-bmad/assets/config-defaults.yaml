@@ -41,9 +41,16 @@ tea:
     skip_last_stories: 3    # also skip the epic's last N stories (their gap surfaces at the epic-end gate)
 git:
   branch_prefix: "story/"
+  epic_branch_prefix: "epic/"  # epic mode: the one branch a whole epic run commits to (epic/{e}-{slug})
   offer_merge: true         # Phase 9: ask whether to merge a clean-completion PR
   ci_wait_minutes: 30       # max wait for in-progress CI before deciding (only when offer_merge is on)
 code_review:
   max_iterations: 2
   security_review: true     # run the dedicated per-story security review inside the Phase 7 loop
                             # (auto-bmad-local; the ab-security delegate, gated here). false => skip it.
+  epic_review: true         # epic mode: run the Tier-B epic integration review (the heavy adversarial
+                            # pass + the single HITL halt). false => skip it (per-story thin review only).
+  tier_a_lenses: [auditor, security]  # epic mode: the per-story thin-review lens set (no loop/halt).
+                            # security gated by security_review above; drop blind/edge — Tier B's job.
+  epic_diff_chunk_threshold_lines: 6000  # epic mode: chunk the Tier-B review when the epic diff exceeds
+                            # this many lines (per-story sub-diffs + joint triage). 0 => never chunk.

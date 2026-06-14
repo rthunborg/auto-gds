@@ -1186,13 +1186,14 @@ def _run_self_test() -> int:
 
     # The asset INCLUDES the constant-default setup keys ...
     assert "cli_phases" in s_nodes["delegation"]["children"], "asset missing delegation.cli_phases"
-    for k in ("branch_prefix", "offer_merge", "ci_wait_minutes"):
+    for k in ("branch_prefix", "epic_branch_prefix", "offer_merge", "ci_wait_minutes"):
         assert k in s_nodes["git"]["children"], f"asset missing git.{k}"
     assert "gate_max_iterations" in s_nodes["tea"]["children"], "asset missing tea.gate_max_iterations"
     sta = s_nodes["tea"]["children"].get("story_trace_advisory")
     assert sta and {"enabled", "min_epic_stories", "skip_last_stories"}.issubset(set(sta["children"])), "asset story_trace_advisory shape"
-    assert "max_iterations" in s_nodes["code_review"]["children"], "asset missing code_review.max_iterations"
-    assert "security_review" in s_nodes["code_review"]["children"], "asset missing code_review.security_review"
+    for k in ("max_iterations", "security_review", "epic_review", "tier_a_lenses",
+              "epic_diff_chunk_threshold_lines"):
+        assert k in s_nodes["code_review"]["children"], f"asset missing code_review.{k}"
     # Removed keys must never be re-healed into configs (a stale copy in a user
     # config is harmless — the orchestrator just stops reading it).
     assert "alternate_models" not in s_nodes["code_review"]["children"], \
@@ -1214,7 +1215,8 @@ def _run_self_test() -> int:
     # (the lockstep the asset header warns about). Cheap guard against a silent value edit.
     for kv in ("offer_merge: true", "ci_wait_minutes: 30", "min_epic_stories: 6",
                "skip_last_stories: 3", "max_iterations: 2", "gate_max_iterations: 2",
-               "security_review: true"):
+               "security_review: true", 'epic_branch_prefix: "epic/"', "epic_review: true",
+               "tier_a_lenses: [auditor, security]", "epic_diff_chunk_threshold_lines: 6000"):
         assert kv in setup_text, f"asset default drifted from the documented schema: expected `{kv}`"
 
     def _heal(cfg: str) -> tuple:
@@ -1340,10 +1342,13 @@ def _run_self_test() -> int:
                + '\ndelegation:\n  cli_phases: {}\n'
                'tea:\n  gate_max_iterations: 2\n  story_trace_advisory:\n'
                '    enabled: true\n    min_epic_stories: 6\n    skip_last_stories: 3\n'
-               'git:\n  branch_prefix: "story/"\n  ci_wait_minutes: 30\n'   # <- git.offer_merge missing
+               'git:\n  branch_prefix: "story/"\n  epic_branch_prefix: "epic/"\n'
+               '  ci_wait_minutes: 30\n'   # <- git.offer_merge missing
                # alternate_models + skip_hitl_on_clean_convergence are REMOVED keys
                # deliberately left stale here: the heal must ignore them, never flag or strip them.
-               'code_review:\n  max_iterations: 2\n  security_review: true\n  alternate_models: true\n'
+               'code_review:\n  max_iterations: 2\n  security_review: true\n'
+               '  epic_review: true\n  tier_a_lenses: [auditor, security]\n'
+               '  epic_diff_chunk_threshold_lines: 6000\n  alternate_models: true\n'
                '  skip_hitl_on_clean_convergence: false\n')
         cfgp.write_text(cur, encoding="utf-8")
         chk = check_file(cfgp, asset, "0.9.0", setup_asset)

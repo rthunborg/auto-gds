@@ -31,12 +31,16 @@ tea:
 git:
   mode: auto               # auto -> detect; or force "remote" / "local"
   branch_prefix: "story/"
+  epic_branch_prefix: "epic/"  # epic mode: the one branch a whole epic run commits to (epic/{e}-{slug}). Absent => orchestrator defaults to "epic/"
   base_branch: main        # auto-detected; written after first detection
   offer_merge: true        # Phase 9: ask the user whether to merge a clean-completion PR
   ci_wait_minutes: 30      # max wait for in-progress CI before deciding (used only when offer_merge is on)
 code_review:
   max_iterations: 2
   security_review: true    # run the dedicated per-story security review inside the Phase 7 loop (auto-bmad-local; ab-security delegate). false => skip it. Absent => orchestrator defaults to true
+  epic_review: true        # epic mode: run the Tier-B epic integration review (heavy adversarial pass + the single HITL halt). false => per-story thin review only. Absent => defaults to true
+  tier_a_lenses: [auditor, security]  # epic mode: the per-story thin-review lens set (one pass, no loop/halt); security gated by security_review. Absent => defaults to [auditor, security]
+  epic_diff_chunk_threshold_lines: 6000  # epic mode: chunk the Tier-B review when the epic diff exceeds this many lines (per-story sub-diffs + joint triage); 0 => never. Absent => defaults to 6000
 # profiles + phase_profiles complete the file — single source: assets/agents/profiles.yaml
 # (first run copies it in verbatim; edit it or this copy, then `/auto-bmad reprovision`;
 # `/auto-bmad reset-defaults` re-seeds — see below). Codex model names ship as real defaults —
@@ -210,6 +214,30 @@ waits land on idle, not active. A non-null `timing_anchor` on resume is a crash 
 `completed_at − started_at` (includes resume gaps), **AI-run time** ≈ `active_seconds`,
 **human/idle wait** ≈ `elapsed − active_seconds` — best-effort host wall-clock, not token-compute time.
 
+## state/epic/epic-{e}.yaml  (epic mode)
+The **epic anchor** — one per epic run, the cursor + epic-level bookkeeping for `/auto-bmad epic`. It
+lives under the `epic/` **subdirectory** so the per-story `state_plan.py` scan (which lists only
+`state/*.yaml` files, never a subdir) cannot see it; the epic resume scan is `state_plan.py
+--scope epic`. It reuses the **same per-story schema** and the same `state_update.py` writers (`init`
+/ `set` / `phase-done` / `timing-*` / `report-section --epic`) — there is no separate state schema.
+
+Meaningful reused fields: `story_key: epic-{e}`, `epic_num`, `status`, `branch` (`epic/{e}-{slug}`),
+the timing fields, `completed_phases` (the epic **E-steps** as ints), `gate_decision` /
+`gate_iterations` (epic-end trace gate), `deferred_work_archived`, `convergence_unverified`
+(aggregated up from the per-story thin reviews + the Tier-B integration review — drives the epic PR
+draft predicate), `pr_url` / `ci_run_url` / `ci_status`, `blockers` / `open_questions` /
+`deferred_work` (the epic rollup), and the merge fields. `story_num` stays null.
+
+Plus net-new epic fields that ride as **preserved extras** — NOT in the per-story `SCHEMA_ORDER`, so
+they cost no lockstep change (`state_update.py` keeps unknown fields verbatim):
+- `active_story` — the loop cursor (the `{key}` being processed, or null before E5 / after E_final).
+- `stories_landed` — the `{key}`s this run actually processed (drives the batch BMAD-status flip + the report rollup).
+- `epic_slug` — the resolved branch/PR slug (stored so resume reuses it, never re-derives a different one).
+- `batch_flip_done` / `integration_review_done` — idempotency markers for E_final / E_review on resume.
+
+The per-story `state/{key}.yaml` files still exist (one per story the loop touches) and own
+intra-story resume; the epic anchor owns *which story / which E-step*. Full flow: `epic-pipeline.md`.
+
 ## Target selection & resume logic
 No-arg `/auto-bmad` chooses the target story with this precedence (an explicit `--story <arg>`
 overrides both and targets that story directly):
@@ -318,6 +346,12 @@ and a draft's summary reason — is a summary, not an artifact: it belongs in th
 - The **only** overwrite is a deliberate full re-run of an already-`done` story, after explicit
   user confirmation ("overwrite the existing report log for {key}?") — only then pass
   `--overwrite-confirmed` (without the flag the script always appends); if declined, append instead.
+- **Epic mode** writes ONE epic report — `reports/epic-{e}.md`, via `state_update.py report-section
+  --epic` (the epic-rollup template + its own `EPIC_REPORT_PAYLOAD_KEYS` allowlist): epic header, the
+  per-story rollup, the integration-review + epic-gate verdicts, and the aggregated open-findings /
+  deferred checklist. It replaces the per-story reports (per-story detail lives in the per-story state
+  files + the rollup), committed once pre-push as `docs(epic-{e}): pipeline report`. Same append +
+  disposition-tag rules as above (`epic-pipeline.md` E_final).
 
 ### Section template (use literally, in this order)
 This template is the **single home** for the file portion's fields, heading order, and per-field

@@ -27,8 +27,15 @@ left is the instant between the two replaces; the ``sprint_updated`` /
 Exit 0 on success/no-op; 1 when the key or the Status line can't be found or
 a write fails; 2 on usage errors.
 
+A third mode, ``--epic N`` (N or ``epic-N``), enumerates every story in epic N
+ordered by story number, each with its status, story-file path, and next BMAD
+action — the reader the auto-bmad *epic* pipeline loops over. Like the default
+reader it never writes and returns a single JSON object (exit 0); ``hard_stop``
+is set when the epic is unknown/empty or already ``done``.
+
 Usage:
     story_plan.py --sprint-status PATH [--story 1-3|1-3-slug] [--impl-dir DIR]
+    story_plan.py --epic N --sprint-status PATH [--impl-dir DIR]
     story_plan.py --mark-done KEY --sprint-status PATH [--story-file PATH]
     story_plan.py --self-test
 """
@@ -217,6 +224,89 @@ def build_result(sprint_status_path, story_arg, impl_dir):
     if result["epic_status"] == "done" and next_action == "create-story":
         result["hard_stop"] = True
         result["hard_stop_reason"] = f"epic {epic_num} is marked done; cannot create new story"
+
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# --epic: enumerate every story in one epic (ordered), for the epic pipeline.
+# --------------------------------------------------------------------------- #
+def parse_epic_arg(epic_arg):
+    """Parse an --epic argument (``N`` or ``epic-N``) -> int, or None if invalid."""
+    m = re.match(r"^(?:epic-)?(\d+)$", str(epic_arg).strip())
+    return int(m.group(1)) if m else None
+
+
+def build_epic_result(sprint_status_path, epic_arg, impl_dir):
+    """Enumerate every story in epic N ordered by story_num — the list the
+    auto-bmad epic pipeline loops over. Each story carries its key, status,
+    absolute story_file, and next BMAD action. ``hard_stop`` is set when the
+    epic arg is unparseable, the epic is unknown/empty, or it is already
+    ``done`` (nothing to complete). Never writes; exit 0 (verdict in JSON)."""
+    result = {
+        "epic_num": None,
+        "epic_status": None,
+        "epic_story_count": None,
+        "epic_stories": [],
+        "retrospective_status": None,
+        "hard_stop": False,
+        "hard_stop_reason": None,
+        "error": None,
+    }
+
+    epic_num = parse_epic_arg(epic_arg)
+    if epic_num is None:
+        result["error"] = f"could not parse --epic '{epic_arg}' (expected N or epic-N)"
+        result["hard_stop"] = True
+        result["hard_stop_reason"] = result["error"]
+        return result
+    result["epic_num"] = epic_num
+
+    if not os.path.isfile(sprint_status_path):
+        result["error"] = f"sprint-status file not found: {sprint_status_path}"
+        result["hard_stop"] = True
+        result["hard_stop_reason"] = "no sprint-status.yaml; run /bmad-sprint-planning first"
+        return result
+
+    with open(sprint_status_path, "r", encoding="utf-8") as fh:
+        text = fh.read()
+
+    entries = parse_development_status(text)
+    if not entries:
+        result["error"] = "no development_status entries found"
+        result["hard_stop"] = True
+        result["hard_stop_reason"] = "empty/invalid sprint-status; run /bmad-sprint-planning"
+        return result
+
+    epics, stories, retros = classify(entries)
+    same_epic = sorted(
+        (s for s in stories if s["epic_num"] == epic_num),
+        key=lambda s: s["story_num"],
+    )
+    result["epic_status"] = epics.get(epic_num)
+    result["retrospective_status"] = retros.get(epic_num)
+
+    if not same_epic:
+        result["hard_stop"] = True
+        result["hard_stop_reason"] = f"epic {epic_num} has no stories in sprint-status"
+        result["error"] = result["hard_stop_reason"]
+        return result
+
+    result["epic_story_count"] = len(same_epic)
+    result["epic_stories"] = [
+        {
+            "key": s["key"],
+            "story_num": s["story_num"],
+            "status": s["status"],
+            "story_file": os.path.join(impl_dir, s["key"] + ".md") if impl_dir else s["key"] + ".md",
+            "next_action": ACTION_FOR_STATUS.get(s["status"], "dev-story"),
+        }
+        for s in same_epic
+    ]
+
+    if result["epic_status"] == "done":
+        result["hard_stop"] = True
+        result["hard_stop_reason"] = f"epic {epic_num} is marked done"
 
     return result
 
@@ -433,7 +523,50 @@ def _run_self_test():
     bad = build_result(path, "9-9", "/impl")
     check("unknown story hard_stop", bad["hard_stop"] is True)
 
+    # ---- --epic enumeration mode ------------------------------------------ #
+    ep1 = build_epic_result(path, "1", "/impl")
+    check("epic-1: epic_num 1", ep1["epic_num"] == 1)
+    check("epic-1: status in-progress", ep1["epic_status"] == "in-progress")
+    check("epic-1: story count 3", ep1["epic_story_count"] == 3)
+    check("epic-1: not hard_stop", ep1["hard_stop"] is False)
+    check("epic-1: retro optional", ep1["retrospective_status"] == "optional")
+    check(
+        "epic-1: ordered by story_num",
+        [s["key"] for s in ep1["epic_stories"]]
+        == ["1-1-user-authentication", "1-2-account-management", "1-3-plant-data-model"],
+    )
+    check("epic-1: first story done", ep1["epic_stories"][0]["status"] == "done")
+    check("epic-1: done -> next_action done", ep1["epic_stories"][0]["next_action"] == "done")
+    check(
+        "epic-1: story_file joined",
+        ep1["epic_stories"][0]["story_file"] == "/impl/1-1-user-authentication.md",
+    )
+    check("epic-1: review -> code-review", ep1["epic_stories"][1]["next_action"] == "code-review")
+    check("epic-1: backlog -> create-story", ep1["epic_stories"][2]["next_action"] == "create-story")
+
+    # The ``epic-N`` form parses too; epic 2 has a single backlog story.
+    ep2 = build_epic_result(path, "epic-2", "/impl")
+    check("epic-2: parsed epic-N form", ep2["epic_num"] == 2)
+    check("epic-2: story count 1", ep2["epic_story_count"] == 1)
+    check("epic-2: single story", [s["key"] for s in ep2["epic_stories"]] == ["2-1-personality-system"])
+
+    # Unknown / unparseable epic -> hard_stop, no stories.
+    ep_missing = build_epic_result(path, "9", "/impl")
+    check("epic-9 empty hard_stop", ep_missing["hard_stop"] is True and ep_missing["epic_stories"] == [])
+    ep_bad = build_epic_result(path, "nope", "/impl")
+    check("epic bad-arg hard_stop", ep_bad["hard_stop"] is True)
+
     os.unlink(path)
+
+    # A done epic hard-stops (nothing to complete) but still lists its stories.
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write("development_status:\n  epic-3: done\n  3-1-foo: done\n  3-2-bar: done\n")
+        done_path = f.name
+    dep = build_epic_result(done_path, "3", "/impl")
+    check("epic-3 done hard_stop", dep["hard_stop"] is True)
+    check("epic-3 done reason", "done" in (dep["hard_stop_reason"] or ""))
+    check("epic-3 done still lists stories", len(dep["epic_stories"]) == 2)
+    os.unlink(done_path)
 
     # ---- mark-done mode --------------------------------------------------- #
     mark_fixture = """\
@@ -590,6 +723,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="auto-bmad sprint-status reader")
     parser.add_argument("--sprint-status", help="path to sprint-status.yaml")
     parser.add_argument("--story", help="explicit story id (N-N or N-N-slug)")
+    parser.add_argument("--epic", metavar="N", help="enumerate all stories in epic N (N or epic-N), for the epic pipeline")
     parser.add_argument("--impl-dir", default="", help="implementation_artifacts dir (for absolute story_file)")
     parser.add_argument("--mark-done", metavar="KEY", help="flip KEY's development_status entry to done (Phase 9 BMAD-status flip)")
     parser.add_argument("--story-file", help="with --mark-done: also flip this story file's Status line to done")
@@ -601,6 +735,13 @@ def main(argv=None):
 
     if not args.sprint_status:
         parser.error("--sprint-status is required (or use --self-test)")
+
+    if args.epic is not None:
+        if args.mark_done or args.story or args.story_file:
+            parser.error("--epic cannot be combined with --story/--mark-done/--story-file")
+        result = build_epic_result(args.sprint_status, args.epic, args.impl_dir)
+        print(json.dumps(result, indent=2))
+        return 0
 
     if args.mark_done:
         result, code = mark_done(args.sprint_status, args.mark_done, args.story_file)

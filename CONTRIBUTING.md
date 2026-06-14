@@ -121,4 +121,6 @@ exist locally as a test sandbox; it is gitignored — never commit it.
 ## Reporting bugs & ideas
 
 Open a GitHub issue with steps to reproduce (and a minimal `sprint-status.yaml` excerpt where
-relevant). Security or conduct concerns: stefano@stefanoginella.com.
+relevant). Report security vulnerabilities **privately** via
+[GitHub Security Advisories](https://github.com/stefanoginella/auto-bmad/security/advisories/new).
+For conduct concerns, see the [Code of Conduct](./CODE_OF_CONDUCT.md).

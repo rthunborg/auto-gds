@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Epic mode no longer halts on an unconverged review.** The end-of-epic convergence halt is gone; an
   unconverged or lens-incomplete review ships a draft PR with the findings flagged for attention.
 
+### Fixed
+
+- **External-CLI delegates now wait on real process exit, not a fragile poll loop.** A new
+  `cli_delegate.py --wait`/`--once` keys completion on an exit-code sentinel, so a routed step can run
+  for hours without a wall-clock kill and stale watch loops no longer spin forever.
+
 ## [0.23.0] - 2026-06-14
 
 ### Added

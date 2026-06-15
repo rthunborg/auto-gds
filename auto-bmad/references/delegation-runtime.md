@@ -112,23 +112,40 @@ it carries persona retunes and custom profiles the shipped asset doesn't; fall b
 `assets/agents/profiles.yaml` only if the config lacks the strings), **plus** the `delegation.md`
 step body with placeholders filled (story id, absolute paths).
 
-**Spawn it in-place and capture:** deliver the prompt per `prompt_via` — pipe to **stdin** for
-claude/codex; for **opencode** append it as the **final positional `argv` element** (`opencode run`
-does NOT read stdin). Run in the **same repo dir** (`cwd`) — no HOME/Docker isolation; the child
-edits the real working tree you then commit. codex (`-C <cwd>`) and opencode (`--dir <cwd>`) pin
-their working root in the argv; the **claude** argv has no equivalent, so a `claude` route MUST
-`cd "$cwd"` before the call. **Serialize the helper's `argv` as literal shell tokens** — or a zsh
-array (`OC=(opencode run … ); "${OC[@]}" "$prompt"`); **never** assign it to a scalar and run `$OC`:
-zsh leaves an unquoted scalar **unsplit** (`SH_WORD_SPLIT` is off by default, unlike bash), so the
-whole string is exec'd as a single filename (`no such file or directory`). **Every routed invocation
-runs in the background — never foreground:**
-host shell tools cap foreground commands far below real delegate runtimes (Claude Code: 2-min
-default, 10-min max; a routed step — `dev_story`, a review lens — routinely needs 20+ min). Launch
-it detached, stdout redirected to `capture_log`, and monitor to process exit; if the background
-mechanism still takes a timeout knob, set it to **at least 30 minutes**. Long runtimes are normal —
-declare a delegate wedged (a failed delegation: hard-stop) only after `capture_log` has been silent
-for that same allowance with the process still alive.
-Then read `result_source`: claude → parse `result_field` (`.result`) from the JSON envelope,
+**Launch it via the helper's `launch_cmd` — never hand-roll the spawn.** The `resolve()` plan emits a
+ready `launch_cmd` (a `bash -c` body) alongside `prompt_file` and `exit_file`: write the assembled
+prompt (above) to `prompt_file`, then run the delegate as a **background** task — `bash -c
+"$launch_cmd"`. It `cd`s into `cwd`, delivers the prompt (stdin for claude/codex; final positional
+arg for opencode — `opencode run` does NOT read stdin), redirects stdout+stderr to `capture_log`, and
+writes the child's `$?` to `exit_file` as a **completion sentinel**. Use the emitted `launch_cmd`
+(every token `shlex.quote`d, wrapped in `bash -c`) precisely so the spawn does NOT ride the host's
+interactive shell: a raw `( … ) & pid=$!` / `$?` wrapper is a bash/zsh-ism that breaks under fish, and
+an unquoted argv scalar is left **unsplit** by zsh (`SH_WORD_SPLIT` off) and exec'd as one filename.
+Capture the task's pid where the host exposes it and pass it to the waiter.
+
+**Runs in the background — never foreground; process exit is the completion signal; total runtime is
+UNBOUNDED.** Host shell tools cap foreground commands far below real delegate runtimes (Claude Code:
+2-min default, 10-min max; a routed step — `dev_story`, a review lens — routinely needs 20+ min, and a
+big `dev_story` can run **hours**), so a delegate that runs for hours is healthy and must **never** be
+killed on a clock. Wait for it **with the helper** — never a hand-rolled poll loop, and **never**
+`grep` `capture_log` for a result pattern (a format mismatch makes such a loop spin forever after the
+process is long gone):
+- **Host that re-invokes you when a background task exits** (e.g. Claude Code `run_in_background`):
+  background the delegate, then classify once on wake — `cli_delegate.py --once --capture-log
+  <capture_log> --exit-file <exit_file> [--pid <pid>]`. (Claude Code hands back a task id, not a unix
+  pid, so `--pid` is usually unavailable here — a post-exit wake with **no sentinel** then means the
+  delegate crashed; treat it as `dead-no-sentinel`.)
+- **Host without exit-notification:** background the **blocking** wait beside the delegate —
+  `cli_delegate.py --wait …` (it MUST itself be backgrounded, or it hits the same foreground cap).
+
+Wedge model (so a long *quiet* step is never falsely killed): **with a `--pid` a live process is never
+idle-wedged** (`claude -p` emits nothing until its final envelope, so log-silence ≠ liveness) — the
+only stops are the real exit, a crash (`dead-no-sentinel`), and the **opt-in** `--max-wait` absolute
+cap (default 0 = unbounded). **Without** a pid the `--idle-timeout` backstop applies (default 30 min of
+*no new `capture_log` output* — a SILENCE allowance, **NOT** a runtime cap). Any non-`exited` verdict
+is a **failed delegation: hard-stop** (surface `capture_log`).
+
+On `status:"exited"`, read `result_source`: claude → parse `result_field` (`.result`) from the JSON envelope,
 `error_field` (`.is_error`) true = failed delegation; codex → read the `-o` last-message file
 verbatim; opencode → pass `capture_log` (the `--format json` event stream) through
 `cli_delegate.py`'s `extract_opencode_result()`.
@@ -151,9 +168,10 @@ sure opencode is logged in before routing to it. Routing a reviewer-slot phase
 reviewer's three lens delegates** through the CLI — plus, for `code_review_review` only, the
 **triage** (it always runs at the primary profile) — one invocation each, with a
 distinct `--label` per delegate (e.g. `blind-hunter-primary`, `edge-case-secondary`, `triage`) so
-`capture_log` / `-o` paths don't collide. **Launch the lens invocations in parallel** — across
-CLI-routed reviewers too — as concurrent background processes (the spawn rule above), and wait for
-all of them to exit before the triage, which consumes their outputs. This holds on **every** host
+`capture_log` / `exit_file` / `-o` paths don't collide. **Launch the lens invocations in parallel** —
+across CLI-routed reviewers too — as concurrent background processes (the spawn rule above; each
+waited via `--once`/`--wait` on its own `exit_file`), and wait for all of them to exit before the
+triage, which consumes their outputs. This holds on **every** host
 — CLI delegates are plain OS child processes with per-`--label` capture paths, and the lenses only
 write their own reserved lens-output files, never the tree, so concurrent runs can't collide.
 Routing a slot whose `phase_profiles` value is blank is a

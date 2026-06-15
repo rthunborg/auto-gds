@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Epic mode auto-resolves review decisions instead of asking.** `[Review][Decision]` findings now
+  proceed with the reviewer's recommended fix/defer/dismiss — no human ask, not even at epic end — and
+  a Critical/High auto-decision ships the PR as a draft. Each is listed in the epic report's new
+  Auto-decided section (epic-pipeline.md, delegation.md).
+- **Epic mode no longer halts on an unconverged review.** The end-of-epic convergence halt is gone; an
+  unconverged or lens-incomplete review ships a draft PR with the findings flagged for attention.
+
 ## [0.23.0] - 2026-06-14
 
 ### Added

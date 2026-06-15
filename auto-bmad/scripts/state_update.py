@@ -705,7 +705,7 @@ EPIC_REPORT_PAYLOAD_KEYS = frozenset((
     "disposition_tag", "pipeline_status", "continues", "epic_summary",
     "story_rollup", "stories_skipped", "integration_review", "epic_gate", "tea",
     "overrides", "open_questions", "deferred_work", "deferred_archived_note",
-    "planning_drift", "needs_human", "next", "head_sha",
+    "auto_decided", "planning_drift", "needs_human", "next", "head_sha",
 ))
 
 
@@ -752,6 +752,8 @@ def render_epic_section(state: dict, payload: dict, timestamp: str, resumed: int
         "",
         *_list_block("**Deferred work:**", payload.get("deferred_work"),
                      str(payload.get("deferred_archived_note") or "").strip()),
+        "",
+        *_list_block("**Auto-decided (epic mode):**", payload.get("auto_decided")),
         "",
         f"**Planning drift:** {_prose(payload, 'planning_drift', '(none)')}",
         "",
@@ -1136,6 +1138,8 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
                 "tea": "epic automate: 14 tests.", "open_questions": [],
                 "deferred_work": ["Index tuning -> next epic"],
                 "deferred_archived_note": "Archived 3 resolved.",
+                "auto_decided": ["Token TTL [Med] → fix: default 15m (Tier A, 1-2-mgmt)",
+                                 "Retry policy [High] → defer: out of epic scope (E_review, epic-1)"],
                 "needs_human": [], "next": "epic 2.", "head_sha": "abcdef1234"}
             clock["iso"] = "2026-05-28T15:00:00Z"
             r = cmd_report_section(erf, esf, epic_payload, False, epic=True)
@@ -1150,6 +1154,18 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             assert "**Epic gate:** trace PASS" in et, et
             assert "**Skipped (already done):** 1-1-auth (already done, in base)." in et, et
             assert "1. Index tuning -> next epic" in et and "Archived 3 resolved." in et, et
+            assert "**Auto-decided (epic mode):**" in et, et
+            assert "1. Token TTL [Med] → fix: default 15m (Tier A, 1-2-mgmt)" in et, et
+            assert "2. Retry policy [High] → defer: out of epic scope (E_review, epic-1)" in et, et
+            # the per-story template has no auto_decided key (epic-only) — rejected there
+            psf = tmp / "state" / "ps-1.yaml"
+            cmd_init(psf, {"story_key": "ps-1", "epic_num": 1, "story_num": 1})
+            try:
+                cmd_report_section(tmp / "reports" / "ps-1.md", psf,
+                                   {"disposition_tag": "x", "auto_decided": ["y"]}, False)
+                raise AssertionError("auto_decided is epic-only; per-story payload must reject it")
+            except UsageError as exc:
+                assert "auto_decided" in str(exc), exc
             # the epic template rejects a per-story-only payload key (allowlist discipline)
             try:
                 cmd_report_section(erf, esf, {"disposition_tag": "x", "phases_run": "Phase 5"},

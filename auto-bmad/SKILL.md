@@ -14,7 +14,8 @@ story — in one run, then **one PR**, per `references/epic-pipeline.md`. The tw
 (paths/config), the On-activation gate, the delegation mechanics, and the final report; epic mode
 replaces Step 1's per-story target/preflight and Step 2's per-story Phases 1–9 with the epic pipeline's
 **E-steps** (the per-story phases become the epic's inner loop). It warns + hard-confirms up front
-(no per-story human halts — the single halt is the epic integration review). When `epic` is in the
+(no per-story human halts, and no review halt at all — review decisions are auto-resolved with the
+reviewer's recommendation and surfaced in the report; see `epic-pipeline.md`). When `epic` is in the
 invocation, follow `epic-pipeline.md` from Step 1 onward; the per-story sub-steps below are the loop body.
 
 ## Output discipline
@@ -159,7 +160,7 @@ invocation carried any instructions — `references/overrides.md`, then:
 ### Step 2 — Run the pipeline
 **Epic mode:** if `epic` is in the invocation, execute the **E-steps** in
 `references/epic-pipeline.md` (E0…E_final) **instead of** Phases 1–9 — same delegation mechanics,
-same checkpoint/commit + timing discipline, the single HITL halt at E_review — then go to Step 3.
+same checkpoint/commit + timing discipline, no review halt (decisions auto-resolved at E_review) — then go to Step 3.
 The per-story phase loop below is the epic's inner loop (E5). Otherwise (per-story run):
 
 Execute Phases 1–9 exactly as specified in `references/pipeline.md`, in order, skipping phases

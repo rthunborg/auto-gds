@@ -33,12 +33,15 @@ bookkeeping it already holds full pipeline context for. Don't "fix" these into d
   either.** Because auto-bmad here mirrors the upstream skill's
   *internal* structure (lens roster, the inline Acceptance Auditor prompt, the triage rubric), an
   upstream `bmad-code-review` change can drift silently — keep the replica in lockstep.
-  **Two deliberate auto-bmad-local additions ride on top of the replica** (fenced with
-  `auto-bmad-local` markers so a compat-check sees them as intentional, not drift): a single-instance
-  `code-review-security` delegate per iteration (gated by `code_review.security_review`, off the
-  `3×R` lens total — it gates via finding severity), and a triage **security-severity map + Low
-  keep/drop test**. Both live in `delegation.md` (security entry + triage edits) and `pipeline.md`
-  (Phase 7 step 1); design rationale in `docs/design-phase7-security-and-triage.md`.
+  **Three deliberate auto-bmad-local additions ride on top of the replica** (fenced with
+  `auto-bmad-local` markers so a compat-check sees them as intentional, not drift): (1) a
+  single-instance `code-review-security` delegate per iteration (gated by
+  `code_review.security_review`, off the `3×R` lens total — it gates via finding severity); (2) a
+  triage **security-severity map + Low keep/drop test** — both in `delegation.md` (security entry +
+  triage edits) and `pipeline.md` (Phase 7 step 1); and (3) a triage **recommended resolution per
+  `[Review][Decision]`** (a `fix`/`defer`/`dismiss` channel + direction) that **epic mode** applies
+  autonomously instead of asking the user — `delegation.md` (triage REPORT/PERSIST) + `epic-pipeline.md`
+  (E5f / E_review). Per-story mode is unchanged (the recommendation is advisory; the human still picks).
 - **Phase 7 external-change handling** — at the end-of-loop human halt, the orchestrator detects any
   external-review changes with a **git-only check** (never a code read), commits them, and re-opens
   the halt. The **re-review of those changes is delegated** like every other review (the same

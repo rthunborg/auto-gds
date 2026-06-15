@@ -27,7 +27,8 @@ already carry the full form, so the short version is enough.
 - `{e}` / `{s}` — epic / story number.
 - `{key}` — full story key (e.g. `1-2-user-auth`).
 - `{slug}` — the title part of the key.
-- `{decisions}` — the human-chosen fix directions from Phase 7.
+- `{decisions}` — the chosen fix directions from Phase 7: human-picked (per-story), or in **epic
+  mode** the triage's recommended `fix:` directions applied autonomously (`epic-pipeline.md`).
 - `<project_root>` — absolute cwd.
 - `<impl>` — the `implementation_artifacts` dir; `<planning>` — the planning dir.
 - `<story_file>` — absolute path `<impl>/{key}.md` (from `story_plan.py`).
@@ -247,6 +248,15 @@ TRIAGE:
      defense-in-depth where the value is already guarded (count them as noise). Do NOT apply this
      "realistic trigger" test to security findings — use their exclusion list above. A genuine-but-
      minor Low goes to Defer; a noise Low is dismissed.
+5. (auto-bmad-local — NOT upstream bmad-code-review) Recommended resolution for every Decision:
+   for each finding you bucket as Decision, also pick the single resolution a domain expert would
+   most likely choose, as one of three channels + a one-line direction:
+   - `fix: <concrete fix direction to implement>` — when one resolution is clearly best;
+   - `defer: <why it is follow-up, not now>` — when the right call is to log it for later;
+   - `dismiss: <why it is a non-issue / won't-fix>` — when on reflection it needs no action.
+   Always recommend an actual resolution — NEVER "ask a human" (that is not a resolution). This is a
+   best-guess for autonomous (epic-mode) runs that proceed without a human; in a per-story run a human
+   still chooses, so the recommendation is advisory there.
 
 PERSIST (this is the deliverable the orchestrator gates on):
 - In <story_file>, add/append a `### Review Findings` section with one bullet per surviving finding,
@@ -257,12 +267,20 @@ PERSIST (this is the deliverable the orchestrator gates on):
   Tag EVERY bullet with its severity, directly after the type tag as shown. The orchestrator reads
   severity from THIS FILE (an untagged finding is treated as Critical/High), never from your chat
   counts — an untagged bullet can force an extra review iteration.
+- (auto-bmad-local — NOT upstream bmad-code-review) End every `[Review][Decision]` bullet's
+  `<detail>` with ` Recommended: <fix|defer|dismiss>: <one-line direction>` — the SAME as REPORT
+  below, persisted for auditability. The orchestrator's findings parser ignores trailing text, so
+  this never affects tagging.
 - Copy every `[Review][Defer]` finding to <impl>/deferred-work.md (create it if absent) under a
   `## Deferred from: code review of {key} (<date>)` heading — one bullet each.
 
 REPORT (chat — the orchestrator reads this, then independently gates the file): verdict (Approve /
 Changes Requested / Blocked); Critical/High/Med/Low counts; the count of open `[Review][Decision]`
-items (a human call — `pipeline.md` Phase 7); `Findings persisted: <N>` = total `[Review][*]` bullets
+items (a human call — `pipeline.md` Phase 7); (auto-bmad-local — NOT upstream bmad-code-review)
+`Recommended resolutions:` = one line per OPEN `[Review][Decision]` item, `<title> [<sev>] ->
+<fix|defer|dismiss>: <one-line direction>` (the channel an autonomous epic-mode run applies without
+asking — `epic-pipeline.md` E5f / E_review; `none` if no open Decision items); `Findings persisted:
+<N>` = total `[Review][*]` bullets
 you wrote to <story_file>; `Deferrals logged: <W>` = bullets you added under this story's
 `## Deferred from:` heading in <impl>/deferred-work.md; `Failed layers: <list or none>`;
 `Dismissed (noise): <D>` = Low/noise findings you dropped, with a one-line category each (cosmetic /
@@ -312,8 +330,12 @@ it unresolved. Make tests pass. Do not commit.
 
 Resolved decisions (implement exactly these): {decisions}
 ```
-(The orchestrator fills `{decisions}` from the Phase 7 AskUserQuestion answers, or omits the line
-when there are none.)
+(The orchestrator fills `{decisions}` with the chosen `fix`-direction resolutions — the Phase 7
+`AskUserQuestion` answers (per story), or in **epic mode** the triage's auto-bmad-local
+`Recommended resolutions:` `fix:` directions applied without asking (`epic-pipeline.md` E5f /
+E_review) — and omits the line when there are none. Only `fix`-channel resolutions go here;
+`defer`/`dismiss` resolutions are direct orchestrator writes to the findings file, never the fix
+delegate.)
 
 ### code-review fix (epic)
 <!-- VARIANT OF code-review fix: identical prompt; only the findings file + a one-line epic context
@@ -323,7 +345,9 @@ Identical to **`code-review fix`** above, with these substitutions:
   place of `<story_file>`; resolve the open `[Review][Patch]` items (+ any human-resolved
   `[Review][Decision]`) under that file's `### Review Findings` section;
 - add one context line: `These findings span epic {e}'s stories; implemented story files: {story_files}.`
-- `{decisions}` is filled from the E_review `AskUserQuestion` answers exactly as the base entry.
+- `{decisions}` is filled exactly as the base entry — in epic mode from the triage's auto-bmad-local
+  `Recommended resolutions:` `fix:` directions applied without asking (`epic-pipeline.md` E_review),
+  never an `AskUserQuestion`.
 
 ### testarch-test-design (epic level)
 ```

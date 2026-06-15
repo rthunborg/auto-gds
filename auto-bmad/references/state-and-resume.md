@@ -38,7 +38,7 @@ git:
 code_review:
   max_iterations: 2
   security_review: true    # run the dedicated per-story security review inside the Phase 7 loop (auto-bmad-local; ab-security delegate). false => skip it. Absent => orchestrator defaults to true
-  epic_review: true        # epic mode: run the Tier-B epic integration review (heavy adversarial pass + the single HITL halt). false => per-story thin review only. Absent => defaults to true
+  epic_review: true        # epic mode: run the Tier-B epic integration review (heavy adversarial pass; no halt — decisions auto-resolved, unconverged ships a draft). false => per-story thin review only. Absent => defaults to true
   tier_a_lenses: [auditor, security]  # epic mode: the per-story thin-review lens set (one pass, no loop/halt); security gated by security_review. Absent => defaults to [auditor, security]
   epic_diff_chunk_threshold_lines: 6000  # epic mode: chunk the Tier-B review when the epic diff exceeds this many lines (per-story sub-diffs + joint triage); 0 => never. Absent => defaults to 6000
 # profiles + phase_profiles complete the file — single source: assets/agents/profiles.yaml
@@ -174,9 +174,9 @@ stories_after_in_epic: 7         # epic stories ordered after this one (0=last);
 completed_phases: [0, 1, 2, 3, 4, 5, 6] # phase numbers from pipeline.md; gate-false no-op phases land here too (override-window skips do NOT); Phase 2 only once BOTH its sub-step gates resolved (ran, or gate false)
 code_review_iterations: 1      # the review-loop iteration currently in progress (1-based); a mid-iteration resume re-runs this iteration from step 1 (one redundant review pass is the cost of a rare crash — there is no mid-iteration capsule). A value ABOVE code_review.max_iterations is a user-granted extension from the step-4 halt — gate it as the final iteration (--max-iterations {code_review_iterations}, pipeline.md step 3)
 code_review_loop_done: false   # set true when the review loop exits (converged or capped); flipped back to false when the user extends the loop at the step-4 halt; on resume, true => re-open the Phase 7 HITL halt instead of re-iterating — UNLESS the step-4 skip gate applies (convergence_unverified=false, a clean convergence), in which case proceed to the Phase 7 tail without re-opening
-hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | null (not yet reached; also reset to null when the user extends the loop at the halt — it resolves at the next exit)
+hitl_halt: null                # Phase 7 step-4 outcome once the loop is done: "continued" | "stopped" | "skipped (clean convergence)" | "auto-continued (epic — no halt)" (epic mode never opens the halt) | null (not yet reached; also reset to null when the user extends the loop at the halt — it resolves at the next exit)
 external_review_iterations: 0  # Phase 7 post-halt re-reviews of external-review changes run on Continue (single-shot — at most one per run; resumes can accumulate more); 0 if none
-convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings and the user chose to continue with them open, or Phase 7 was skipped by the `skip code-review` override (zero review passes) -> Phase 9 opens the PR as a draft. CLEARED when the user extends the loop at the step-4 halt — the extended pass re-verifies it and the gate re-decides
+convergence_unverified: false  # true if the review loop hit max_iterations while the last pass still hadn't converged (review_loop.py's convergence rule: a non-deferred Critical/High/untagged finding, or >3 non-deferred findings that aren't all Low) (Phase 7); ALSO set when a post-halt re-review surfaced meaningful external-change findings and the user chose to continue with them open, or Phase 7 was skipped by the `skip code-review` override (zero review passes), or — in EPIC mode — any `[Review][Decision]` was auto-resolved at Critical/High severity (a best-guess on a high-severity item ships as a draft for human review; epic-pipeline.md E5f/E_review) -> Phase 9 opens the PR as a draft. CLEARED when the user extends the loop at the step-4 halt — the extended pass re-verifies it and the gate re-decides
 story_trace: null              # Phase 7 tail trace advisory result, or null if not selected / not yet run:
                                #   {verdict: PASS|CONCERNS|FAIL, uncovered: [..], ran: true}. Advisory only — never blocks/drafts; non-null = done (resume marker)
 commits: [a1b2c3d, e4f5g6h]
@@ -234,6 +234,10 @@ they cost no lockstep change (`state_update.py` keeps unknown fields verbatim):
 - `active_story` — the loop cursor (the `{key}` being processed, or null before E5 / after E_final).
 - `stories_landed` — the `{key}`s this run actually processed (drives the batch BMAD-status flip + the report rollup).
 - `epic_slug` — the resolved branch/PR slug (stored so resume reuses it, never re-derives a different one).
+- `auto_decisions` — the `[Review][Decision]` items this epic auto-resolved with the triage's
+  recommendation (Tier A + E_review), each a one-line `"<title> [<sev>] → <fix|defer|dismiss>:
+  <direction> (<context>)"`; rendered into the E_final report's `auto_decided` section. A Critical/High
+  entry also set `convergence_unverified` (the epic PR ships a draft — `epic-pipeline.md` E5f).
 - `batch_flip_done` / `integration_review_done` — idempotency markers for E_final / E_review on resume.
 
 The per-story `state/{key}.yaml` files still exist (one per story the loop touches) and own
@@ -349,7 +353,9 @@ and a draft's summary reason — is a summary, not an artifact: it belongs in th
   `--overwrite-confirmed` (without the flag the script always appends); if declined, append instead.
 - **Epic mode** writes ONE epic report — `reports/epic-{e}.md`, via `state_update.py report-section
   --epic` (the epic-rollup template + its own `EPIC_REPORT_PAYLOAD_KEYS` allowlist): epic header, the
-  per-story rollup, the integration-review + epic-gate verdicts, and the aggregated open-findings /
+  per-story rollup, the integration-review + epic-gate verdicts, an **Auto-decided (epic mode)**
+  section (`auto_decided` — every `[Review][Decision]` the run auto-resolved with the triage's
+  recommendation, Tier A + E_review), and the aggregated open-findings /
   deferred checklist. It replaces the per-story reports (per-story detail lives in the per-story state
   files + the rollup), committed once pre-push as `docs(epic-{e}): pipeline report`. Same append +
   disposition-tag rules as above (`epic-pipeline.md` E_final).

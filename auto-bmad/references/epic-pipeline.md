@@ -4,8 +4,12 @@ Epic mode drives a **whole epic** — every actionable story — in one run, the
 to recover wall-clock on an epic that is unsustainable story-by-story: it trims the per-story heavy
 code-review loop to a **thin single review + fix** (Tier A), batches the heavy adversarial review
 into **one epic integration review** (Tier B), and collapses N branches / PRs / CI-waits / merges
-into **one**. The deliberate trade — **warned and confirmed up front** — is that there are **no
-per-story human checkpoints**; the single human halt is the epic integration review (E_review).
+into **one**. The deliberate trade — **warned and confirmed up front** — is that epic mode runs
+**unattended through the review**: there are **no per-story human checkpoints** and **no review
+halt at all** (not even at epic end). Every `[Review][Decision]` finding is **auto-resolved with the
+triage's recommended resolution** and an unconverged review **ships a draft** — both surfaced in the
+final report (a Critical/High auto-decision also forces the draft). The only human touchpoints left
+are the **E0 preflight safety asks** (adopt / base-readiness) and the **E_final merge prompt**.
 
 This file is the epic analog of `pipeline.md`. It does **not** restate per-story phase internals —
 each E-step names the per-story phase it reuses; read `pipeline.md` for that phase's mechanics. The
@@ -30,7 +34,7 @@ anchor** is `{state}/epic/epic-{e}.yaml` (`state-and-resume.md` → "state/epic/
 | **E2** Epic-start | Phase 2 | once (conditional) | delegated |
 | **E5** Story loop (sequential) + **Tier A** | Phases 3–7 per story | per story | delegated steps; orchestrator commits/state |
 | **E8a** Epic-end gates | Phase 8 (gates) | once (conditional) | delegated; gate ask **suppressed** |
-| **E_review** Epic integration review (**Tier B**) | Phase 7 at epic scope | once (conditional) | delegated fan-out; **the single HITL halt** |
+| **E_review** Epic integration review (**Tier B**) | Phase 7 at epic scope | once (conditional) | delegated fan-out; **no halt** — decisions auto-resolved; unconverged ⇒ draft |
 | **E8b** Epic-end closing | Phase 8 (closing) | once (conditional) | delegated |
 | **E_final** Finalize | Phase 9 | once | orchestrator (git) |
 
@@ -97,8 +101,8 @@ Runs during the SKILL procedure before any commit. Same probe discipline as Phas
 - Write the epic anchor: `python3 {skill-root}/scripts/state_update.py init --state-file
   {state}/epic/epic-{e}.yaml --json -` (refuses if it exists, so resume never re-inits — `started_at`
   + timing span all sessions). The payload carries E0's decisions plus `story_key: epic-{e}`,
-  `epic_num: {e}`, `branch`, `epic_slug`, `active_story: null`, `stories_landed: []`. Commit:
-  `chore(epic-{e}): start auto-bmad epic pipeline`.
+  `epic_num: {e}`, `branch`, `epic_slug`, `active_story: null`, `stories_landed: []`,
+  `auto_decisions: []`. Commit: `chore(epic-{e}): start auto-bmad epic pipeline`.
 
 ## E2 — Epic-start setup  *(conditional; reuses Phase 2)*
 Runs **once** at the start of the epic (the epic's first story IS the epic start). Two
@@ -144,14 +148,24 @@ f. **Tier A — thin single review + fix (NO loop, NO convergence gate, NO halt)
      **`<story_file>`** verbatim, as in a per-story run. Apply the **same reconciliation gate**
      (`review_findings.py … --story-file <story_file>`; one triage re-run on non-persist, else
      `needs-human`).
-   - **Resolve `[Review][Decision]` items autonomously** (no halt to ask): the orchestrator
-     **auto-defers** each — re-tag `[Review][Decision]` → `[Review][Defer]` (a git-only direct write,
-     never a code read), log it to `<impl>/deferred-work.md` under `## Deferred from: code review of
-     {key}`. It then surfaces at the E_review halt.
-   - Delegate **one** `code-review fix` pass (`code_review_fix`) on the `[Review][Patch]` items, then
-     **post-fix verify** (`review_loop.py post-fix`; one `retry-fix` allowed; `needs-human` stops the
-     epic). Commit `fix(story-{e}-{s}): address code review (thin)` (or `chore(story-{e}-{s}): code
-     review passed (thin)` if nothing fixable).
+   - **Auto-resolve `[Review][Decision]` items with the triage's recommendation** (no halt to ask):
+     each open Decision carries a `Recommended resolutions:` channel from the triage (`delegation.md`
+     → `code-review-triage`, auto-bmad-local). Apply it as if a human picked it — a direct
+     findings-file write the orchestrator already owns (never a code read): `fix:` → carry the
+     direction into this story's fix pass via `{decisions}`; `defer:` → re-tag `[Review][Decision]` →
+     `[Review][Defer]` + log to `<impl>/deferred-work.md` under `## Deferred from: code review of
+     {key}`; `dismiss:` → check the bullet off as won't-fix. **No recommendation for an item ⇒
+     default to `defer`** (never leave it open). Record each on the **epic anchor**
+     (`auto_decisions += "<title> [<sev>] → <channel>: <direction> (Tier A, {key})"`) for the E_final
+     **Auto-decided** report section. **Any Critical/High auto-decision sets epic
+     `convergence_unverified: true`** (a best-guess on a high-severity item must reach a human before
+     merge — the epic PR then ships a draft and the item lands in **⚠️ Needs human**). Tier-A
+     decisions are resolved with **per-story context only** — noted in the report.
+   - Delegate **one** `code-review fix` pass (`code_review_fix`) on the `[Review][Patch]` items **plus
+     any `fix:`-channel resolved decisions** (via `{decisions}`), then **post-fix verify**
+     (`review_loop.py post-fix`; one `retry-fix` allowed; `needs-human` stops the epic). Commit
+     `fix(story-{e}-{s}): address code review (thin)` (or `chore(story-{e}-{s}): code review passed
+     (thin)` if nothing fixable).
    - **Aggregate up to the epic anchor:** if this story's post-fix non-deferred findings include any
      Critical/High (`open_crit_high > 0` or `open_severity.untagged > 0` from the gate-time capture),
      set epic `convergence_unverified: true`; record any blocker on the epic `blockers`. No per-story
@@ -163,24 +177,25 @@ h. **Append `stories_landed += [{key}]`** on the epic anchor and advance `active
    retro notes to `state_update.py retro-append` (`retro-notes/epic-{e}.md`).
 
 ## E8a — Epic-end gates  *(conditional; reuses Phase 8 gates; runs BEFORE E_review)*
-Only the **gates** run here (so their verdicts feed the single E_review halt); the closing steps are
-E8b. **Only if `tea.enabled`** (epic-level skills always on at the epic end):
+Only the **gates** run here (so their verdicts feed E_review and the epic report); the closing steps
+are E8b. **Only if `tea.enabled`** (epic-level skills always on at the epic end):
 - Delegate **`testarch-trace`** via `tea_epic` (the blocking gate, full depth), then **`testarch-nfr`**
   and **`testarch-test-review`** via `tea_epic_audit` (advisory). Capture each verdict; record
   `gate_decision`.
-- **The trace `FAIL` interactive ask is SUPPRESSED in epic mode** (the only halt is E_review). Run
-  the gate to a verdict: remediation may still run mechanically up to `tea.gate_max_iterations`
+- **The trace `FAIL` interactive ask is SUPPRESSED in epic mode** (epic mode never halts for review).
+  Run the gate to a verdict: remediation may still run mechanically up to `tea.gate_max_iterations`
   (delegate **`testarch-automate`** at epic scope, commit `test(epic-{e}): close trace coverage gaps
   (gate iter {i})`, re-trace). Whatever the terminal verdict, record it: `PASS`/`CONCERNS` continue;
-  `FAIL`/`WAIVED` become a **finding fed into the E_review halt** (and drive the draft predicate at
+  `FAIL`/`WAIVED` become a **finding surfaced in the epic report** (and drive the draft predicate at
   E_final). Do **not** open `AskUserQuestion` here.
 
-## E_review — Epic integration review (Tier B) + the single HITL halt  *(conditional)*
+## E_review — Epic integration review (Tier B)  *(conditional; no halt — decisions auto-resolved)*
 The heavy adversarial pass over the **whole epic diff**, run **once** after all stories land and the
 gates resolve. Gated by `code_review.epic_review` (default true; false ⇒ skip Tier B, rely on Tier A
-+ E8a). This **relocates Phase 7 steps 1–4 to epic scope** — reuse them, do not fork. Track
-`code_review_iterations` + `code_review_loop_done` on the epic anchor (resume continues mid-loop or
-re-opens the halt).
++ E8a). This **relocates Phase 7 steps 1–4 to epic scope** — reuse them, do not fork, **except step
+2 (decisions are auto-resolved, never asked) and step 4 (no halt — see below)**. Track
+`code_review_iterations` + `code_review_loop_done` on the epic anchor (resume continues mid-loop or,
+once the loop is done, proceeds to E8b — there is no halt to re-open).
 
 1. **Roster — the per-story Phase 7 shape, at epic scope.** Build the epic diff with `review_loop.py
    prep-diff --project-root <project_root> --base {base}` (everything the epic branch changed). Fan
@@ -195,18 +210,33 @@ re-opens the halt).
    epic-{e}`. Apply the **same reconciliation gate** as Phase 7 step 1 against that file
    (`review_findings.py --story-file <impl>/epic-{e}-review-findings.md … --story-key epic-{e}`; one
    triage re-run on non-persist, else `needs-human`).
-3. **Loop + classify** exactly as Phase 7 steps 2–3, against the epic findings file: resolve open
-   `[Review][Decision]` items via `AskUserQuestion` (**this IS the single review halt** — the only
-   place epic mode asks the user about review); delegate **`code-review fix (epic)`**
-   (`code_review_fix`) on the `[Review][Patch]` items, commit `fix(epic-{e}): address code review
-   (iter {i})`; drive the loop with `review_loop.py gate --findings-json - --iteration {i}
-   --max-iterations {code_review.max_iterations} --lenses-failed {failed} --lenses-total {3×R}`
-   (`--convergence-unverified true` when a security pass failed on the exit iteration). Obey its
-   `action`.
-4. **HITL halt** = Phase 7 step 4 verbatim at epic scope: the skip gate auto-continues on a clean
-   convergence (`convergence_unverified=false`); otherwise summarize + offer **Run another iteration**
-   / **Continue** (with the git-only external-change check + single-shot re-review via the epic
-   fan-out) / **Stop**. `convergence_unverified` persisted here drives the epic PR draft predicate.
+3. **Loop + classify** as Phase 7 steps 2–3, against the epic findings file, with ONE epic
+   substitution at step 2: **auto-resolve open `[Review][Decision]` items with the triage's
+   recommendation instead of asking** — the same mechanism as Tier A (E5f): `fix:` → `{decisions}`;
+   `defer:` → re-tag + ledger; `dismiss:` → check off; missing ⇒ default `defer`. Record each on the
+   epic anchor's `auto_decisions` (`(E_review, epic-{e})` context) and set `convergence_unverified:
+   true` for any Critical/High auto-decision. **No `AskUserQuestion` — epic mode never asks about
+   review findings.** Then delegate **`code-review fix (epic)`** (`code_review_fix`) on the
+   `[Review][Patch]` items **+ the `fix:`-channel resolved decisions**, commit `fix(epic-{e}): address
+   code review (iter {i})`; drive the loop with `review_loop.py gate --findings-json - --iteration {i}
+   --max-iterations {code_review.max_iterations} --lenses-failed {failed} --lenses-total {3×R}`. Pass
+   **`--convergence-unverified true`** whenever the epic anchor **already holds the sticky flag** — a
+   Tier-A story aggregated a Crit/High (E5f), or a Crit/High decision was just auto-resolved this pass
+   (above) — **or** when this iteration's security pass failed. The gate's `convergence_unverified` is
+   **sticky**: it preserves a `true` even on a clean exit and never clears it (`review_loop.py`), so
+   passing it here is what keeps the caveat from being overwritten when you persist the gate's output
+   to state. Obey its `action`.
+4. **No halt — auto-continue (epic mode runs unattended).** Unlike per-story Phase 7 step 4, E_review
+   does **not** open `AskUserQuestion` on loop exit — there is no human to pause for, and no
+   external-change re-review (no human pause produced changes to review). On a **clean convergence**
+   (`convergence_unverified=false`) the epic ships a normal PR; on a **capped-unconverged,
+   lens-incomplete, or caveated** exit (`convergence_unverified=true` — persisted by the loop gate,
+   which preserves the sticky caveat carried in from a Tier-A aggregate or a Crit/High auto-decision,
+   per step 3) the epic ships a **draft** PR with the open findings in the report + PR `Needs
+   attention` checklist. Either way record `hitl_halt: "auto-continued (epic —
+   no halt)"` (the loop exit already set `code_review_loop_done: true`) and proceed straight to E8b —
+   on resume, `code_review_loop_done: true` means "go to E8b", never "re-open a halt".
+   `convergence_unverified` drives the epic PR draft predicate (E_final).
 
 **Large-diff strategy.** Default: one high-context pass (`prep-diff` writes the full epic diff). When
 `diff_file` exceeds `code_review.epic_diff_chunk_threshold_lines` (a deterministic `wc -l` check on
@@ -239,7 +269,9 @@ Commit once: `docs(epic-{e}): gate, project context, deferred-work reconcile + a
 - Ensure everything is committed (no dirty tree).
 - **Write the epic report (before push):** `state_update.py report-section --epic --report-file
   <output_folder>/auto-bmad/reports/epic-{e}.md --state-file {state}/epic/epic-{e}.yaml --json -`
-  (the epic-rollup template; `EPIC_REPORT_PAYLOAD_KEYS`). Commit `docs(epic-{e}): pipeline report`.
+  (the epic-rollup template; `EPIC_REPORT_PAYLOAD_KEYS`). Pass `auto_decided` = the epic anchor's
+  accumulated `auto_decisions` (Tier-A + E_review auto-resolutions) so the **Auto-decided (epic mode)**
+  section lists every decision the run made without a human. Commit `docs(epic-{e}): pipeline report`.
 - **git mode `remote`:** push the epic branch, open **one** PR, wait for CI (`ci_wait.py`), convert to
   draft if warranted — all per `git-and-pr.md` → "Epic mode". Capture `pr_url`, `ci_run_url`,
   `ci_status`. **git mode `local`** (or "stop" was chosen): leave the branch, no push/PR.
@@ -263,6 +295,8 @@ in the anchor's `completed_phases`; for the story named by `active_story`, read 
 story / which E-step*, the per-story file owns *which phase within the story*. **Stories already in
 `stories_landed` are skipped** (E0 adopt) — a resume never re-enters a story this run already landed,
 even though it sits at `review` with a complete state file. E_review resumes mid-loop
-(`code_review_iterations`) or re-opens the halt (`code_review_loop_done`), exactly as Phase 7. A bare `/auto-bmad` (no `epic`) whose resolved target story is owned by an in-flight epic
+(`code_review_iterations`) or, once `code_review_loop_done`, simply proceeds to E8b — there is no
+halt to re-open (epic mode auto-continues; Phase 7's re-open-the-halt resume path does not apply).
+A bare `/auto-bmad` (no `epic`) whose resolved target story is owned by an in-flight epic
 anchor **hard-stops, redirecting to `/auto-bmad epic --epic {e}`** (SKILL.md) — finishing one story
 alone would split the epic's single PR.

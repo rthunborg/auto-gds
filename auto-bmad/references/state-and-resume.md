@@ -58,7 +58,7 @@ phase_profiles: {…}        # create_story, dev_story, code_review_review, code
                            #   blank "" => disabled; secondary ships on, tertiary ships blank),
                            #   code_review_security (dedicated security review; blank "" => primary profile),
                            #   code_review_fix, tea_triage, tea_per_story, tea_epic, tea_epic_audit,
-                           #   retrospective, project_context (git/PR work runs in the orchestrator
+                           #   retrospective, project_context, uat (git/PR work runs in the orchestrator
                            #   directly — no delegate profile). Values may name ANY profile in the
                            #   profiles block above — shipped or custom
 ```
@@ -238,6 +238,10 @@ they cost no lockstep change (`state_update.py` keeps unknown fields verbatim):
   recommendation (Tier A + E_review), each a one-line `"<title> [<sev>] → <fix|defer|dismiss>:
   <direction> (<context>)"`; rendered into the E_final report's `auto_decided` section. A Critical/High
   entry also set `convergence_unverified` (the epic PR ships a draft — `epic-pipeline.md` E5f).
+- `uat_items` — the per-story manual UAT one-liners accumulated across the loop; E5 appends each
+  landed story's `[{key}]`-tagged check items in the SAME `set` write as `stories_landed` (so a
+  crash between them can't double-append on resume). The E_final `uat (epic)` consolidation delegate
+  composes them into the single-session checklist rendered in the epic report's **UAT** section.
 - `batch_flip_done` / `integration_review_done` — idempotency markers for E_final / E_review on resume.
 
 The per-story `state/{key}.yaml` files still exist (one per story the loop touches) and own
@@ -353,7 +357,9 @@ and a draft's summary reason — is a summary, not an artifact: it belongs in th
   `--overwrite-confirmed` (without the flag the script always appends); if declined, append instead.
 - **Epic mode** writes ONE epic report — `reports/epic-{e}.md`, via `state_update.py report-section
   --epic` (the epic-rollup template + its own `EPIC_REPORT_PAYLOAD_KEYS` allowlist): epic header, the
-  per-story rollup, the integration-review + epic-gate verdicts, an **Auto-decided (epic mode)**
+  per-story rollup, the integration-review + epic-gate verdicts, a single-session **UAT** checklist
+  (`uat` — composed across all stories by the E_final `uat (epic)` consolidation), an
+  **Auto-decided (epic mode)**
   section (`auto_decided` — every `[Review][Decision]` the run auto-resolved with the triage's
   recommendation, Tier A + E_review), and the aggregated open-findings /
   deferred checklist. It replaces the per-story reports (per-story detail lives in the per-story state
@@ -370,7 +376,7 @@ keeps its heading with `(none)`. Timing-split semantics: the timing fields above
 **`--json` payload keys (exact names — the script REJECTS unknown keys, because a misspelled key
 would silently render its heading `(none)`):** `disposition_tag` (the heading tag),
 `pipeline_status`, `continues`, `phases_run`, `skipped`, `overrides`, `tea`, `code_review`,
-`open_questions` (list), `deferred_work` (list) + `deferred_archived_note` (the Phase 8
+`uat` (list), `open_questions` (list), `deferred_work` (list) + `deferred_archived_note` (the Phase 8
 reconcile + archive line appended under it), `planning_drift`, `needs_human` (list — the ⚠️ heading), `next`,
 `head_sha` (the Branch line's short SHA).
 
@@ -392,6 +398,8 @@ reconcile + archive line appended under it), `planning_drift`, `needs_human` (li
 **TEA:** <which skills ran and their one-line outcome; "disabled" if tea.enabled=false; epic-gate decision if last story; for the per-story trace advisory, its verdict + any uncovered ACs (advisory, non-blocking)>.
 
 **Code review:** <iterations run; one line each: per-iteration verdict + severity counts in the fixed form `Critical N / High N / Medium N / Low N`; then the end-of-loop HITL-halt outcome (continued / stopped / skipped (clean convergence)); and, if external-review changes triggered a post-halt re-review, its verdict/counts and the user's continue / stop decision; "skipped" if no review>.
+
+**UAT:** <numbered manual User-Acceptance-Testing checklist — what a human can exercise BY HAND at THIS implementation state; one item per line, each an action → expected result, scoped to the acceptance criteria actually satisfied (never aspirational / full-feature steps). The producing `uat` delegate (Phase 9 head per story; E5 per story + the E_final consolidation in epic mode) ALWAYS returns ≥1 item: when nothing is manually testable yet (pure internal refactor, infra-only, no human-observable surface) it returns ONE line saying exactly that + the reason. "(none)" renders only when the step did not run — a halt before Phase 9 / E_final, or the `skip uat` override>.
 
 **Open questions:** <numbered list, one per line — questions surfaced by any step; "(none)" if empty — keep the heading>.
 

@@ -102,7 +102,7 @@ Runs during the SKILL procedure before any commit. Same probe discipline as Phas
   {state}/epic/epic-{e}.yaml --json -` (refuses if it exists, so resume never re-inits — `started_at`
   + timing span all sessions). The payload carries E0's decisions plus `story_key: epic-{e}`,
   `epic_num: {e}`, `branch`, `epic_slug`, `active_story: null`, `stories_landed: []`,
-  `auto_decisions: []`. Commit: `chore(epic-{e}): start auto-bmad epic pipeline`.
+  `auto_decisions: []`, `uat_items: []`. Commit: `chore(epic-{e}): start auto-bmad epic pipeline`.
 
 ## E2 — Epic-start setup  *(conditional; reuses Phase 2)*
 Runs **once** at the start of the epic (the epic's first story IS the epic start). Two
@@ -172,9 +172,16 @@ f. **Tier A — thin single review + fix (NO loop, NO convergence gate, NO halt)
      draft decision (stories get no PR). Record a thin marker `tier_a_review` in the per-story state
      (NOT `code_review_iterations` — that is Tier-B-only).
 g. **Leave the story at `review`** (not `done`). Optionally run the per-story trace advisory
-   (Phase 7 tail) if `trace-advisory ∈ tea_selected` — non-blocking, reuses as-is.
-h. **Append `stories_landed += [{key}]`** on the epic anchor and advance `active_story`. Hand any
-   retro notes to `state_update.py retro-append` (`retro-notes/epic-{e}.md`).
+   (Phase 7 tail) if `trace-advisory ∈ tea_selected` — non-blocking, reuses as-is. Then, unless
+   `skip uat`, delegate the **`uat`** entry (`delegation.md` → `uat`; `uat` profile; `<story_file>`)
+   — read-only, returns this story's manual UAT one-liners (or the single not-applicable line).
+h. **Land the story on the anchor in ONE write.** A single `state_update.py set` on the epic anchor
+   that BOTH extends `stories_landed += [{key}]` AND extends `uat_items += [<this story's UAT items,
+   each prefixed `[{key}] `>]`, plus advances `active_story` — the same patch, never two writes
+   (`stories_landed` / `uat_items` are anchor preserved-extras, so read-modify-write the full list for
+   each in one patch; `_append` doesn't apply to them). One write so a crash between them can't
+   double-append a re-entered story's items — a re-entry isn't in `stories_landed` yet (E0 adopt).
+   Hand any retro notes to `state_update.py retro-append` (`retro-notes/epic-{e}.md`).
 
 ## E8a — Epic-end gates  *(conditional; reuses Phase 8 gates; runs BEFORE E_review)*
 Only the **gates** run here (so their verdicts feed E_review and the epic report); the closing steps
@@ -267,9 +274,17 @@ Commit once: `docs(epic-{e}): gate, project context, deferred-work reconcile + a
 
 ## E_final — Finalize  *(orchestrator, git)*
 - Ensure everything is committed (no dirty tree).
+- **UAT consolidation (delegated — `uat (epic)`).** Before writing the report, if the anchor's
+  `uat_items` is non-empty, delegate the **`uat (epic)`** entry (`delegation.md` → `uat (epic)`; `uat`
+  profile), filling `{uat_items}` with the accumulated `[{key}] <item>` one-liners — it composes ONE
+  single-session checklist for the whole assembled epic (dedup + order across stories). Read-only;
+  route its `Outcome` into the report's `uat` list key below (never read as code). Empty `uat_items`
+  (no story produced a testable item) or `skip uat` ⇒ skip the delegate; the **UAT** section renders
+  `(none)`. Bracket with `state_update.py timing-start`/`timing-pause` on the epic anchor.
 - **Write the epic report (before push):** `state_update.py report-section --epic --report-file
   <output_folder>/auto-bmad/reports/epic-{e}.md --state-file {state}/epic/epic-{e}.yaml --json -`
-  (the epic-rollup template; `EPIC_REPORT_PAYLOAD_KEYS`). Pass `auto_decided` = the epic anchor's
+  (the epic-rollup template; `EPIC_REPORT_PAYLOAD_KEYS`). Pass `uat` = the consolidated single-session
+  checklist (above) and `auto_decided` = the epic anchor's
   accumulated `auto_decisions` (Tier-A + E_review auto-resolutions) so the **Auto-decided (epic mode)**
   section lists every decision the run made without a human. Commit `docs(epic-{e}): pipeline report`.
 - **git mode `remote`:** push the epic branch, open **one** PR, wait for CI (`ci_wait.py`), convert to

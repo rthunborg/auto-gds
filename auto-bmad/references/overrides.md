@@ -34,7 +34,7 @@ story, `epic` / `--epic N` runs a whole epic; see "Epic mode" below).
   to the report (Step 3).
 - `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `tea`,
   `code-review`, `retrospective`, `branch`, `merge-prompt`, `project-context-bootstrap`,
-  `trace-advisory`.
+  `trace-advisory`, `uat`.
 - `max_review_iterations: <int>` — override `code_review.max_iterations` for this run.
 - `git_mode: local` — force local mode (no push/PR), regardless of detection.
 - `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded. (Also set
@@ -65,6 +65,9 @@ story, `epic` / `--epic N` runs a whole epic; see "Epic mode" below).
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
 - **skip trace-advisory:** suppress only the Phase 7 tail per-story trace advisory for this run,
   even when its conditions hold (see `tea-policy.md` §3); the epic-end trace gate is unaffected.
+- **skip uat:** suppress the manual UAT checklist step (Phase 9 head per story; epic E5 per story +
+  the E_final consolidation). The report's **UAT** section then renders `(none)`. Nothing else is
+  affected — it is a read-only hand-off artifact, not a gate.
 - **skip branch:** stay on the current branch (do not create `story/...`). Only sensible with a
   clean intent like a dry run or when the user is already on the right branch; warn otherwise.
 - **skip merge-prompt:** Phase 9 still pushes and opens the PR, but does **not** wait for CI and
@@ -82,7 +85,8 @@ via `epic-pipeline.md`. `--story` and `epic` are **mutually exclusive** — hard
 Overrides that **compose** with epic mode (echo + apply the same way): `dry_run` (prints the epic plan
 + the ordered story list + per-step profiles, then stops), `skip tea`, `skip merge-prompt`,
 `git_mode local`, `max_review_iterations` (caps the **E_review** loop), `no_pr_draft` (the epic PR
-opens non-draft; the epic still stays caveated), `skip git-commits`. `skip code-review` skips the
+opens non-draft; the epic still stays caveated), `skip git-commits`, `skip uat` (suppresses the
+per-story UAT step AND the E_final consolidation). `skip code-review` skips the
 **Tier-B** epic integration review (equivalent to `code_review.epic_review: false`) AND sets
 `convergence_unverified` — the per-story **Tier-A** thin review is then the only quality gate left,
 for **every** story, so flag it even more prominently than per story (it compounds across the epic).

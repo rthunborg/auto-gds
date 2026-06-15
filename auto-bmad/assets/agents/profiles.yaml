@@ -139,3 +139,4 @@ phase_profiles:
   retrospective: ab-alt-standard
   project_context: ab-standard              # Phase 2 bootstrap + Phase 8 refresh
   deferred_reconcile: ab-standard           # Phase 8 (epic-end, pre-archive): verify-against-code which unmarked/partial deferred items are now fully resolved and mark them; reuses ab-standard like the sibling project_context step (no new agent file)
+  uat: ab-standard                          # Phase 9 head (per story) + epic E5 per story + the E_final single-session consolidation: read-only manual UAT checklist for the report (auto-bmad-local). Reuses ab-standard like project_context (no new agent file)

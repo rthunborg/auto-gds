@@ -645,7 +645,7 @@ def _short_sha(sha) -> str:
 # silently drop its content from the committed, PR-visible report.
 REPORT_PAYLOAD_KEYS = frozenset((
     "disposition_tag", "pipeline_status", "continues", "phases_run", "skipped",
-    "overrides", "tea", "code_review", "open_questions", "deferred_work",
+    "overrides", "tea", "code_review", "uat", "open_questions", "deferred_work",
     "deferred_archived_note", "planning_drift", "needs_human", "next", "head_sha",
 ))
 
@@ -684,6 +684,8 @@ def render_section(state: dict, payload: dict, timestamp: str, resumed: int) -> 
         "",
         f"**Code review:** {_prose(payload, 'code_review', 'skipped')}",
         "",
+        *_list_block("**UAT:**", payload.get("uat")),
+        "",
         *_list_block("**Open questions:**", payload.get("open_questions")),
         "",
         *_list_block("**Deferred work:**", payload.get("deferred_work"),
@@ -703,7 +705,7 @@ def render_section(state: dict, payload: dict, timestamp: str, resumed: int) -> 
 # silently drop its content from the committed, PR-visible epic report.
 EPIC_REPORT_PAYLOAD_KEYS = frozenset((
     "disposition_tag", "pipeline_status", "continues", "epic_summary",
-    "story_rollup", "stories_skipped", "integration_review", "epic_gate", "tea",
+    "story_rollup", "stories_skipped", "integration_review", "epic_gate", "tea", "uat",
     "overrides", "open_questions", "deferred_work", "deferred_archived_note",
     "auto_decided", "planning_drift", "needs_human", "next", "head_sha",
 ))
@@ -745,6 +747,8 @@ def render_epic_section(state: dict, payload: dict, timestamp: str, resumed: int
         f"**Epic gate:** {_prose(payload, 'epic_gate', '(none)')}",
         "",
         f"**TEA:** {_prose(payload, 'tea', '(none)')}",
+        "",
+        *_list_block("**UAT:**", payload.get("uat")),
         "",
         f"**Overrides:** {_prose(payload, 'overrides', 'none')}",
         "",
@@ -1034,6 +1038,8 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
                        "overrides": "none.", "tea": "automate ran — 6 tests added.",
                        "code_review": "2 iterations; iter 1: Critical 0 / High 1 / Medium 2 / Low 1; "
                                       "iter 2: clean; HITL halt: continued.",
+                       "uat": ["Register with a valid email → account created, redirected to dashboard",
+                               "Submit the login form with a wrong password → inline error, no redirect"],
                        "open_questions": [], "deferred_work": ["Index tuning deferred to 1-4"],
                        "deferred_archived_note": "Phase 8 archived 2 resolved → deferred-work-resolved.md.",
                        "planning_drift": "(none)", "needs_human": [],
@@ -1050,15 +1056,16 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             # elapsed 13:55:02->16:01:02 = 2h 06m; AI-run 0m; wait 2h 06m; no resume suffix
             assert ("**Timing:** started 2026-05-28T13:55:02Z; completed 2026-05-28T16:01:02Z — "
                     "elapsed 2h 06m (≈0m AI-run, ≈2h 06m human/idle wait).") in rt, rt
+            assert "1. Register with a valid email → account created, redirected to dashboard" in rt, rt
             assert "**Open questions:** (none)" in rt, rt
             assert "1. Index tuning deferred to 1-4" in rt, rt
             assert "Phase 8 archived 2 resolved" in rt, rt
             assert "**⚠️ Needs human:** (none)" in rt, rt
             labels = ["## Report — ", "**Story:**", "**Branch:**", "**Pipeline status:**",
                       "**Continues:**", "**Timing:**", "**Phases run:**", "**Skipped:**",
-                      "**Overrides:**", "**TEA:**", "**Code review:**", "**Open questions:**",
-                      "**Deferred work:**", "**Planning drift:**", "**⚠️ Needs human:**",
-                      "**Next:**"]
+                      "**Overrides:**", "**TEA:**", "**Code review:**", "**UAT:**",
+                      "**Open questions:**", "**Deferred work:**", "**Planning drift:**",
+                      "**⚠️ Needs human:**", "**Next:**"]
             idxs = [rt.index(lb) for lb in labels]
             assert idxs == sorted(idxs), "section headings out of template order"
             # second append: prior section preserved, resumed 1×, in-progress timing branch
@@ -1072,6 +1079,7 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             assert ("completed in progress — elapsed 4h 00m (≈1h 10m AI-run, "
                     "≈2h 50m human/idle wait); resumed 1×.") in rt2, rt2
             assert "**Code review:** skipped" in rt2 and "**Overrides:** none" in rt2, rt2
+            assert "**UAT:** (none)" in rt2, rt2          # absent uat key -> the "say so" fallback
             assert "1. Set the STRIPE_KEY secret" in rt2, rt2
             # overwrite requires the flag; with it, the file is rebuilt from scratch
             r = cmd_report_section(rf, sf, {"disposition_tag": "final"}, True)
@@ -1135,7 +1143,10 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
                 "stories_skipped": "1-1-auth (already done, in base).",
                 "integration_review": "2 iterations; converged; Crit 0 / High 0.",
                 "epic_gate": "trace PASS; nfr CONCERNS; test-review PASS.",
-                "tea": "epic automate: 14 tests.", "open_questions": [],
+                "tea": "epic automate: 14 tests.",
+                "uat": ["Sign up, then log out and back in → session persists",
+                        "Open the account page as an admin → user list renders"],
+                "open_questions": [],
                 "deferred_work": ["Index tuning -> next epic"],
                 "deferred_archived_note": "Archived 3 resolved.",
                 "auto_decided": ["Token TTL [Med] → fix: default 15m (Tier A, 1-2-mgmt)",
@@ -1153,6 +1164,7 @@ def _run_self_test() -> int:  # noqa: C901 — fixture-driven, intentionally exh
             assert "**Integration review:** 2 iterations; converged" in et, et
             assert "**Epic gate:** trace PASS" in et, et
             assert "**Skipped (already done):** 1-1-auth (already done, in base)." in et, et
+            assert "1. Sign up, then log out and back in → session persists" in et, et
             assert "1. Index tuning -> next epic" in et and "Archived 3 resolved." in et, et
             assert "**Auto-decided (epic mode):**" in et, et
             assert "1. Token TTL [Med] → fix: default 15m (Tier A, 1-2-mgmt)" in et, et

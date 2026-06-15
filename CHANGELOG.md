@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Reports now include a manual UAT checklist.** Concrete `action → expected result` checks for what
+  a human can verify by hand at the current implementation state — per story, and one consolidated
+  single-session checklist in epic mode; the section says so when nothing is manually testable.
+
 ### Changed
 
 - **Epic mode auto-resolves review decisions instead of asking.** `[Review][Decision]` findings now

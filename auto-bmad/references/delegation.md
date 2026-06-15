@@ -466,3 +466,70 @@ built), list each as one line — the artifact, what drifted, and whether it is 
 structural — so the orchestrator can recommend a re-sync. Say `none` when the build matched the plan.
 ```
 
+### uat  (manual User-Acceptance-Testing checklist — auto-bmad-local, NOT a /bmad-* skill)
+<!-- auto-bmad-local: no upstream bmad-code-review / BMAD counterpart — a hand-off artifact unique to
+     auto-bmad. Do not reconcile away on a compat-check. -->
+This is **not** a `/bmad-*` skill call — it is a **read-only** acceptance pass (an inline prompt, like
+the code-review lenses). It runs once the implementation is settled (Phase 9 head per story;
+`epic-pipeline.md` E5 per story in epic mode) and returns a manual UAT checklist the orchestrator
+routes verbatim into the report's **UAT** section — finding/content stays out of the orchestrator's
+read path exactly like the `tea` / `pipeline_status` strings.
+```
+Produce a manual User-Acceptance-Testing (UAT) checklist for story {key}, in <project_root>.
+
+READ-ONLY: read the story spec / acceptance criteria at <story_file> (plus any docs its `context`
+frontmatter lists), then inspect the IMPLEMENTED code to see what actually exists and is runnable at
+THIS point. Do NOT modify, create, or delete any file — make NO change to the working tree; your
+`Files changed` is `none`.
+
+Build the checklist from what a human can EXERCISE BY HAND right now:
+- One item per line, each a concrete `action → expected result` a person can perform and verify
+  (e.g. "Register with a valid email → account created, you land on the dashboard"). Fold any
+  precondition/setup the human needs INTO the line (test creds, a seeded record, the exact
+  command / URL / endpoint to hit).
+- Scope to the acceptance criteria the implementation ACTUALLY satisfies at this state, and to the
+  interface that actually exists now — if the slice shipped is a backend endpoint with no UI yet,
+  write API / curl-level checks, NOT "click the button". NEVER write aspirational or full-feature
+  steps for behavior not yet built.
+- Cover the happy path plus the acceptance-relevant error / edge cases that are manually observable.
+
+If NOTHING is manually user-testable at this state — a pure internal refactor, infra-only change, or
+work with no human-observable surface yet — return EXACTLY ONE item that says so plainly with the
+one-line reason (e.g. "No manual UAT applicable at this state — internal refactor of the auth token
+store; behavior unchanged and covered by automated tests"). NEVER invent steps to fill the section.
+
+Return the checklist as your `Outcome`: the list of one-line items (or the single not-applicable
+line). Keep each item self-contained and short. `Files changed: none`; `Deferred work` / `Retro
+notes`: `none` unless genuinely worth the epic retrospective.
+```
+
+### uat (epic)  (single-session consolidation — epic mode E_final)
+<!-- VARIANT OF uat: composes the per-story UAT one-liners the E5 loop accumulated into ONE
+     session-ordered checklist against the assembled epic; auto-bmad-local, NOT upstream. -->
+```
+Compose a SINGLE-SESSION manual UAT checklist for epic {e}, in <project_root>, from the per-story UAT
+items the loop accumulated (below) reconciled against the FINAL assembled epic.
+
+READ-ONLY (same discipline as `uat`): you may inspect the implemented code for reachability; make NO
+change to the working tree (`Files changed: none`).
+
+Accumulated per-story UAT items (each tagged with its story key):
+{uat_items}
+
+Produce ONE checklist a human can run end-to-end in a single sitting against the assembled epic:
+- DEDUPLICATE across stories (a later story often supersedes an earlier story's interim step) and DROP
+  any item a later story made obsolete or that no longer matches the final state.
+- ORDER the survivors into a coherent walk-through — setup / precondition items first, then the user
+  journeys they unlock — merging per-story fragments into whole flows where they compose.
+- Re-scope each item to the final assembled interface (a check that was API-only mid-epic may have a
+  UI now — verify against what exists now).
+- Same not-applicable rule: if NOTHING across the epic is manually user-testable, return EXACTLY ONE
+  line saying so + the reason.
+
+Return the consolidated checklist as your `Outcome` (one item per line). `Files changed: none`;
+`Deferred work` / `Retro notes`: `none` unless genuinely retro-worthy.
+```
+(The orchestrator fills `{uat_items}` from the epic anchor's accumulated `uat_items`, one
+`[{key}] <item>` per line; if it is empty — no story produced a testable item — skip this delegate and
+render the report's **UAT** section `(none)`.)
+

@@ -542,13 +542,22 @@ runs — step 1.)
 
 ## Phase 9 — Finalize  *(orchestrator)*
 - Ensure everything is committed (no dirty tree).
+- **UAT checklist (delegated — `uat`).** Before writing the report, delegate the **`uat`** entry
+  (`delegation.md` → `uat`) via the `uat` profile, passing `<story_file>`. It is **read-only** (makes
+  no working-tree change — so it never trips the dirty-tree guard above) and returns a manual
+  user-acceptance checklist (or the single "No manual UAT applicable at this state — <reason>" line).
+  Capture its `Outcome` and pass it as the report's `uat` **list key** below — route it by value, the
+  same as every other prose snippet; never read it as code. Suppress only on the `skip uat` override
+  (the report's **UAT** section then renders `(none)`). Bracket the delegation with
+  `state_update.py timing-start`/`timing-pause`.
 - **Write the report file (before push, so it ships in the PR).** Emit it with
   `python3 {skill-root}/scripts/state_update.py report-section --report-file
   _bmad-output/auto-bmad/reports/{key}.md --state-file <state> --json -` — the script appends a new
   `## Report — <ISO timestamp>` section (creating the file if absent, never touching earlier
   sections) and derives the Story/Branch/Timing lines from state; you supply the prose snippets
   (`disposition_tag`, `pipeline_status`, `continues`, `phases_run`, `skipped`, `overrides`, `tea`,
-  `code_review`, `next`, `head_sha`) plus the **list keys** `open_questions`, `deferred_work`,
+  `code_review`, `next`, `head_sha`) plus the **list keys** `uat` (the checklist from the `uat`
+  delegate above), `open_questions`, `deferred_work`,
   `deferred_archived_note` (Phase 8's reconcile + archive line), `planning_drift`, and `needs_human` in the
   JSON — these exact names: the script REJECTS an unknown key (a misspelled one would otherwise
   render its section `(none)` and silently drop content; the key↔heading map is pinned next to

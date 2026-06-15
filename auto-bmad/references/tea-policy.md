@@ -7,10 +7,12 @@ Applies only when `tea.enabled` is true in config.
 - **Epic end** (`is_last_in_epic`): `bmad-testarch-trace` (gate) → `bmad-testarch-nfr` → `bmad-testarch-test-review`.
 
 ## 2. Per-story skills — RISK-BASED (triage in Phase 0)
-`bmad-testarch-atdd` (before dev) and `bmad-testarch-automate` (after dev) are selected per story.
+Per story, the matrix below selects from two skills:
+- `bmad-testarch-atdd` — runs before dev.
+- `bmad-testarch-automate` — runs after dev.
 
 ### Risk classification
-Look at the story's epic entry / acceptance criteria / described scope and score the signals:
+Score the signals from the story's epic entry, acceptance criteria, and described scope:
 
 **High** — any of:
 - authentication, authorization, sessions, secrets, crypto, or permissions
@@ -35,28 +37,34 @@ no behavior change, or pure scaffolding with no logic.
 | Medium | no | yes |
 | Low | no | no |
 
-Record the classified level as `tea_risk` (`low|med|high`) **and** the chosen set as `tea_selected`
-in state, with a one-line rationale (which signal drove it); the §3 advisory gates on `tea_risk` —
-keep it explicit, don't re-derive it from `tea_selected`.
+Record in state:
+- `tea_risk` (`low|med|high`) — the classified level.
+- `tea_selected` — the chosen set.
+- A one-line rationale — which signal drove the level.
+
+Keep `tea_risk` explicit; don't re-derive it from `tea_selected` — the §3 advisory gates on it.
 
 ## 3. Long-epic trace advisory — per-story, NON-BLOCKING (opt-out)
-A story-scope `bmad-testarch-trace` pass at the **tail of Phase 7** (after the code-review loop
-converges), surfacing this story's uncovered acceptance criteria while the dev context is fresh.
-**Advisory only**: it records gaps, never halts, remediates, asks, or forces a draft PR. The
-blocking gate stays at epic end (§1).
+A story-scope `bmad-testarch-trace` pass at the **tail of Phase 7** — after the code-review loop
+converges.
+- Surfaces this story's uncovered acceptance criteria while the dev context is fresh.
+- **Advisory only**: it records gaps. It never halts, remediates, asks, or forces a draft PR.
+- The blocking gate stays at epic end (§1).
 
-Select `trace-advisory` (add it to `tea_selected`) at Phase-0 triage **iff all** of:
-- `tea.enabled` **and** `tea.story_trace_advisory.enabled` (default true), **and**
-- `tea_risk == high` — only high-risk stories make an uncovered AC costly enough for the extra pass, **and**
-- `stories_after_in_epic >= tea.story_trace_advisory.skip_last_stories` (default 3) — skip the
-  epic's last few stories, whose imminent epic-end gate makes an advisory near-duplication
-  (`stories_after_in_epic` = how many stories in this epic come after this one: 0 for the last,
-  1 for second-to-last, … — so `>= 3` skips the last three), **and**
+Select `trace-advisory` (add it to `tea_selected`) at Phase-0 triage **iff all** of these hold:
+- `tea.enabled` is true **and** `tea.story_trace_advisory.enabled` (default true).
+- `tea_risk == high` — because only high-risk stories make an uncovered AC costly enough for the
+  extra pass.
+- `stories_after_in_epic >= tea.story_trace_advisory.skip_last_stories` (default 3) — because an
+  advisory on the epic's last few stories near-duplicates their imminent epic-end gate.
+  - `stories_after_in_epic` = how many stories in this epic come after this one: 0 for the last, 1
+    for second-to-last, and so on.
+  - So `>= 3` skips the last three stories.
 - `epic_story_count >= tea.story_trace_advisory.min_epic_stories` (default 6) — the **long-epic
-  gate**: dormant on short epics (the epic-end gate is already near), self-activating on long ones.
+  gate**: dormant on short epics (their epic-end gate is already near), self-activating on long ones.
 
 `epic_story_count` and `stories_after_in_epic` come from the same `story_plan.py` read that sets
-`is_first_in_epic`/`is_last_in_epic`; record both in state alongside `tea_risk`.
+`is_first_in_epic`/`is_last_in_epic`. Record both in state alongside `tea_risk`.
 
 ### Notes
 - Low risk ⇒ `tea_selected = []` and Phases 4 & 6 are skipped — the story still gets full code review.

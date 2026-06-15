@@ -1,15 +1,22 @@
 # Delegation prompts
 
 **This file is the single source of truth for what each BMAD step runs** — its exact `/bmad-*`
-command, prompt body, and the placeholders below. One entry per step, named by its heading;
-`pipeline.md` references each by heading name and never repeats the command. Git/PR steps are not
-delegated and have no entry here — the orchestrator runs them; see `git-and-pr.md`.
+command, prompt body, and the placeholders below.
 
-The orchestrator fills the placeholders and sends the result as the Agent prompt to the profile
-that `phase_profiles` assigns to the step's phase (see `pipeline.md` for the phase→profile-key
-mapping and `state-and-resume.md` for the config). Keep prompts **minimal** (command + the inputs
-the skill needs) and end each with the shared autonomy directive below — the delegate profiles
-already carry the full form, so the short version is enough.
+- One entry per step, named by its heading.
+- `pipeline.md` references each by heading name and never repeats the command.
+- Git/PR steps are not delegated and have no entry here — the orchestrator runs them. See
+  `git-and-pr.md`.
+
+To dispatch a step, the orchestrator:
+- Fills the placeholders below.
+- Sends the result as the Agent prompt to the profile `phase_profiles` assigns to the step's phase
+  — the phase→profile-key mapping is in `pipeline.md`, the config in `state-and-resume.md`.
+
+Prompt-authoring rules:
+- Keep each prompt **minimal** — the command plus the inputs the skill needs.
+- End each prompt with the shared autonomy directive below — the short version is enough, because
+  the delegate profiles already carry the full form.
 
 **Shared autonomy directive (append to every prompt):**
 > Run fully autonomously — answer any interactive BMAD menu/checkpoint with the sensible default
@@ -51,18 +58,20 @@ Create the comprehensive story context file for story {e}-{s}.
 {retro_notes_hint}
 {deferred_work_hint}
 ```
-The orchestrator fills `{retro_notes_hint}` from on-disk state:
-- If `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` exists and is non-empty (earlier stories in
-  this epic have landed signal): `BEFORE drafting the story context, ALSO read
+The orchestrator fills `{retro_notes_hint}` from on-disk state. First matching branch wins:
+- If `_bmad-output/auto-bmad/retro-notes/epic-{e}.md` exists and is non-empty — earlier stories in
+  this epic have landed signal — inject: `BEFORE drafting the story context, ALSO read
   _bmad-output/auto-bmad/retro-notes/epic-{e}.md and treat each '## Story <key>' section's bullets
   as constraints surfaced by earlier stories in the same epic — epic-wide gotchas, schema
   inheritance, conventions ratified, things later stories MUST or MUST NOT do. Reflect any that
   apply to this story directly in the Story Context (constraints, persistent_facts, or test
   notes), not as a generic "see retro-notes" reference.`
-- Else, if this is the **first story of epic {e}** AND a prior epic `{e-1}` closed with a
-  retrospective document — locate it with `find <impl> -name 'epic-{e-1}-retro-*.md'` (BMAD writes
-  the retro there; never iterate a raw glob — unmatched globs abort under zsh/fish; use the newest
-  match if several, omit if none): `BEFORE drafting the story context, ALSO read the prior epic's
+- Else if this is the **first story of epic {e}** AND a prior epic `{e-1}` closed with a
+  retrospective document, inject the string below.
+  - Locate the retro with `find <impl> -name 'epic-{e-1}-retro-*.md'` — BMAD writes the retro there.
+  - NEVER iterate a raw glob — unmatched globs abort under zsh/fish.
+  - Use the newest match if several; omit this branch if none.
+  - Inject: `BEFORE drafting the story context, ALSO read the prior epic's
   retrospective document and focus on its FORWARD-looking sections (e.g. "Next Epic Preparation",
   "Preparation Checklist Before Epic {e}", "Conventions Ratified for All Epic {e}+ Stories", Action
   Items). These are the epic-transition prep + conventions the just-closed epic flagged for THIS
@@ -72,22 +81,23 @@ The orchestrator fills `{retro_notes_hint}` from on-disk state:
   heads-ups — not as a generic "see the retro" reference. (Durable conventions also reach you via
   project-context.md as persistent_facts; this feed adds the transient, epic-specific prep that
   project-context.md does not carry.)`
-- Otherwise omit the line entirely (first story of epic 1, or no signal yet).
+- Otherwise omit the line entirely — first story of epic 1, or no signal yet.
 
 Phase notes in the retro file use a `[Phase X — short-name]` prefix (e.g.
-`[Phase 5 — dev-story]`, `[Phase 7 — code review]`). Preserve the prefix when appending — it
-lets later stories filter by phase if they need to.
+`[Phase 5 — dev-story]`, `[Phase 7 — code review]`).
+- Preserve the prefix when appending — it lets later stories filter by phase if they need to.
 
-The orchestrator also fills `{deferred_work_hint}` from on-disk state. No BMAD or TEA skill reads
-the ledger `<impl>/deferred-work.md` back, so create-story only sees it if we inject it here.
-- If `<impl>/deferred-work.md` exists and is non-empty: `ALSO read <impl>/deferred-work.md before
+The orchestrator also fills `{deferred_work_hint}` from on-disk state.
+- No BMAD or TEA skill reads the ledger `<impl>/deferred-work.md` back — so create-story only sees
+  it if we inject it here.
+- If `<impl>/deferred-work.md` exists and is non-empty, inject: `ALSO read <impl>/deferred-work.md before
   drafting the story context. It is a project-wide ledger of work earlier stories consciously
   deferred — most entries are out of scope for this story. Identify ONLY the deferrals whose
   subject overlaps this story's area, files, or acceptance criteria, and fold those into the Story
   Context (constraints, persistent_facts, or test notes) so the dev agent either addresses them or
   knowingly works around them. Do NOT copy the whole ledger, and do NOT reopen or re-defer items
   unrelated to this story.`
-- Otherwise omit the line entirely (the ledger doesn't exist yet, or is empty).
+- Otherwise omit the line entirely — the ledger doesn't exist yet, or is empty.
 
 ### dev-story
 ```
@@ -101,43 +111,57 @@ body (and a `BREAKING CHANGE:` footer).
 ```
 
 ### code-review  (fan-out — 3×R lens delegates + one triage, not one skill call)
-Code-review is **not** delegated as a single `/bmad-code-review` call — that skill internally fans
-out to three review subagents, which a delegate cannot do (a sub-agent can't spawn sub-agents). So
-the **orchestrator hoists the fan-out** (`pipeline.md` Phase 7 step 1): it builds the diff, runs the
-three lens entries below **once per roster reviewer** — `code_review_review` (primary, always)
-plus `code_review_review_secondary` / `code_review_review_tertiary` when mapped to a non-blank
-profile, each lens at its reviewer's profile, writing to that reviewer slot's reserved paths — then
-one `code-review-triage` at the **primary** profile over all the lens files, and gates persistence.
-It passes the diff and each lens's findings **by path, never by content** — it never reads either,
-so "no code inspection at any tier" holds.
+Code-review is **not** delegated as a single `/bmad-code-review` call.
+- That skill internally fans out to three review subagents.
+- A delegate cannot do that — a sub-agent can't spawn sub-agents.
+
+So the **orchestrator hoists the fan-out** (`pipeline.md` Phase 7 step 1). It:
+- Builds the diff.
+- Runs the three lens entries below **once per roster reviewer** — `code_review_review` (primary,
+  always), plus `code_review_review_secondary` / `code_review_review_tertiary` when each maps to a
+  non-blank profile. Each lens runs at its reviewer's profile and writes to that reviewer slot's
+  reserved paths.
+- Runs one `code-review-triage` at the **primary** profile over all the lens files.
+- Gates persistence.
+
+It passes the diff and each lens's findings **by path, never by content** — so it never reads
+either, and "no code inspection at any tier" holds.
 
 <!-- auto-bmad-local: NOT from upstream bmad-code-review (which has no security lens); do not
      reconcile away on a compat-check. -->
 **Plus a dedicated security review (auto-bmad-local).** When `code_review.security_review` is true
-(default), each iteration ALSO fans out one `code-review-security` delegate — **single-instance**
-(one per iteration at the `code_review_security` profile, NOT per reviewer), writing to
-`<security_out>`. Its findings feed the SAME `code-review-triage` and gate convergence through the
-findings-severity channel (a security Critical/High lands in `open_crit_high`), so it is **not**
-counted in the gate's `3×R` `--lenses-total`. A blank `code_review_security` profile falls back to
-the `code_review_review` (primary) profile. Handling its run/failure (a successful 0-finding pass is
-clean; only a genuine delegate failure forces a draft) is `pipeline.md` Phase 7 step 1.
+(default), each iteration ALSO fans out one `code-review-security` delegate.
+- It is **single-instance** — one per iteration at the `code_review_security` profile, NOT per
+  reviewer — and writes to `<security_out>`.
+- A blank `code_review_security` profile falls back to the `code_review_review` (primary) profile.
+- Its findings feed the SAME `code-review-triage` and gate convergence through the findings-severity
+  channel — a security Critical/High lands in `open_crit_high`.
+- It is therefore **not** counted in the gate's `3×R` `--lenses-total`.
+- Handling its run/failure is `pipeline.md` Phase 7 step 1: a successful 0-finding pass is clean;
+  only a genuine delegate failure forces a draft.
 
-**Keep that invariant real for the three lenses:** when you append the shared autonomy directive to a
-lens prompt, bind its structured result so finding content stays out of chat — the lens's `Outcome` is
-just its output-file path + finding count, and its `Deferred work` / `Retro notes` are `none`. Only
-`code-review-triage` reads the findings. (Triage's own report carries counts + verdict — metadata, not
-code — which the orchestrator needs for the loop.)
+**Keep that invariant real for the three lenses.** When you append the shared autonomy directive to a
+lens prompt, bind its structured result so finding content stays out of chat:
+- The lens's `Outcome` is just its output-file path + finding count.
+- Its `Deferred work` / `Retro notes` are `none`.
+- Only `code-review-triage` reads the findings.
+- Triage's own report carries counts + verdict — metadata, not code — which the orchestrator needs
+  for the loop.
 
-**Diff construction (orchestrator — tool call, by path, no ingestion).** `review_loop.py prep-diff
---project-root <project_root> --base {git.base_branch}` builds `<review_tmp>`, `<diff_file>` and the
-three lens-output paths (three-dot diff; the `:(exclude)` pathspecs live in the script — `pipeline.md`
-Phase 7 step 1a). Non-code files beyond those excludes are **not** a path rule — `code-review-triage`
-dismisses them (see its prompt). If `diff_empty`, there is nothing to review.
+**Diff construction (orchestrator — tool call, by path, no ingestion).**
+- `review_loop.py prep-diff --project-root <project_root> --base {git.base_branch}` builds
+  `<review_tmp>`, `<diff_file>` and the three lens-output paths (three-dot diff; the `:(exclude)`
+  pathspecs live in the script — `pipeline.md` Phase 7 step 1a).
+- Non-code files beyond those excludes are **not** a path rule — `code-review-triage` dismisses them
+  (see its prompt).
+- If `diff_empty`, there is nothing to review.
 
 **Epic mode (Tier B)** reuses this exact fan-out over the **whole-epic** diff (`prep-diff --base
-{base}`), swapping the auditor/triage/fix entries for their `(epic)` variants below and persisting to
-`<impl>/epic-{e}-review-findings.md`; security stays single-instance off-total exactly as here. The
-roster shape is identical (`3×R` = blind/edge/auditor per reviewer). Flow: `epic-pipeline.md` E_review.
+{base}`). Flow: `epic-pipeline.md` E_review.
+- Swap the auditor/triage/fix entries for their `(epic)` variants below.
+- Persist to `<impl>/epic-{e}-review-findings.md`.
+- Security stays single-instance off-total exactly as here.
+- The roster shape is identical (`3×R` = blind/edge/auditor per reviewer).
 
 #### code-review-blind  (Blind Hunter — diff only, unanchored)
 ```
@@ -166,7 +190,7 @@ frontmatter lists). Write your findings to <auditor_out>. Report ONLY the path y
 finding count — NOT the findings text.
 ```
 (The first paragraph is the Acceptance Auditor prompt **verbatim** from the `bmad-code-review` skill's
-`step-02-review.md`; keep it in lockstep with upstream.)
+`step-02-review.md`. Keep it in lockstep with upstream.)
 
 #### code-review-auditor (epic)  (Acceptance Auditor — epic diff + epic planning; epic mode Tier B)
 <!-- VARIANT OF code-review-auditor: the upstream-verbatim first paragraph stays the single source —
@@ -203,9 +227,10 @@ The diff is at <diff_file>; you may read project files the diff references for r
 findings as a Markdown list to <security_out>. Report ONLY the path you wrote and your finding count
 (by severity) — NOT the findings text.
 ```
-(Bind the structured result like the three lenses: the `Outcome` is the output path + per-severity
-count, and `Deferred work` / `Retro notes` are `none` — finding content stays out of chat; only
-`code-review-triage` reads `<security_out>`.)
+Bind the structured result like the three lenses, so finding content stays out of chat:
+- The `Outcome` is the output path + per-severity count.
+- `Deferred work` / `Retro notes` are `none`.
+- Only `code-review-triage` reads `<security_out>`.
 
 #### code-review-triage  (triage + persist — the only code-review delegate that writes findings)
 ```
@@ -287,17 +312,19 @@ you wrote to <story_file>; `Deferrals logged: <W>` = bullets you added under thi
 hypothetical / already-guarded) so the human can pull any back. Do NOT change
 the story's Status field, sync sprint-status.yaml, or halt for input — the orchestrator owns those.
 ```
-(The orchestrator fills `{R}` with the roster size and `{lens_files}` with one block per roster
-reviewer, from `prep-diff`'s `lens_paths`:
+The orchestrator fills `{R}` with the roster size.
+
+The orchestrator fills `{lens_files}` with one block per roster reviewer, from `prep-diff`'s
+`lens_paths`:
 - Reviewer `primary`:
   - Blind Hunter (adversarial markdown list): `<lens_paths.primary.blind>`
   - Edge Case Hunter (JSON array — location / trigger_condition / guard_snippet / potential_consequence): `<lens_paths.primary.edge>`
   - Acceptance Auditor (markdown list — title / AC-or-constraint / evidence): `<lens_paths.primary.auditor>`
-repeated for `secondary` / `tertiary` when on the roster — list only active slots.
-The orchestrator fills `{security_file_hint}` only when `code_review.security_review` is true: `A
-dedicated security review also ran (auto-bmad-local); its findings (severity HIGH/MEDIUM/LOW per the
-prompt) are at <security_out> — may be empty or absent.` When security is off, `{security_file_hint}`
-is empty.)
+- Repeat for `secondary` / `tertiary` when on the roster — list only active slots.
+
+The orchestrator fills `{security_file_hint}` from `code_review.security_review`:
+- When true, inject: `A dedicated security review also ran (auto-bmad-local); its findings (severity HIGH/MEDIUM/LOW per the prompt) are at <security_out> — may be empty or absent.`
+- When off, `{security_file_hint}` is empty.
 
 ### code-review-triage (epic)
 <!-- VARIANT OF code-review-triage: the TRIAGE 1–4 block (incl. the auto-bmad-local security map +
@@ -315,9 +342,12 @@ security severity map + Low selectivity, same REPORT contract), with these subst
   `## Deferred from: epic review of epic-{e} (<date>)`.
 - **REPORT** is unchanged except `Findings persisted` / `Deferrals logged` count against the epic
   findings file + the `epic-{e}` heading.
-(`{lens_files}` / `{security_file_hint}` are filled exactly as the base entry, from the epic roster's
-`prep-diff` paths; `{R}` = the epic roster size. In the chunked large-diff path the orchestrator hands
-ONE triage call the lens files from every chunk — `epic-pipeline.md` E_review.)
+
+Fill the remaining placeholders exactly as the base entry:
+- `{lens_files}` / `{security_file_hint}` are filled from the epic roster's `prep-diff` paths.
+- `{R}` = the epic roster size.
+- In the chunked large-diff path, the orchestrator hands ONE triage call the lens files from every
+  chunk — `epic-pipeline.md` E_review.
 
 ### code-review fix
 ```
@@ -330,12 +360,14 @@ it unresolved. Make tests pass. Do not commit.
 
 Resolved decisions (implement exactly these): {decisions}
 ```
-(The orchestrator fills `{decisions}` with the chosen `fix`-direction resolutions — the Phase 7
-`AskUserQuestion` answers (per story), or in **epic mode** the triage's auto-bmad-local
-`Recommended resolutions:` `fix:` directions applied without asking (`epic-pipeline.md` E5f /
-E_review) — and omits the line when there are none. Only `fix`-channel resolutions go here;
-`defer`/`dismiss` resolutions are direct orchestrator writes to the findings file, never the fix
-delegate.)
+The orchestrator fills `{decisions}` with the chosen `fix`-direction resolutions:
+- Per story: the Phase 7 `AskUserQuestion` answers.
+- In **epic mode**: the triage's auto-bmad-local `Recommended resolutions:` `fix:` directions
+  applied without asking (`epic-pipeline.md` E5f / E_review).
+- Omit the line when there are none.
+
+Only `fix`-channel resolutions go here — `defer`/`dismiss` resolutions are direct orchestrator
+writes to the findings file, never the fix delegate.
 
 ### code-review fix (epic)
 <!-- VARIANT OF code-review fix: identical prompt; only the findings file + a one-line epic context
@@ -413,9 +445,11 @@ The orchestrator fills `{bootstrap_intent}` from the calling phase:
 
 ### deferred-reconcile
 This is **not** a `/bmad-*` skill call — it is a reconciliation pass (an inline prompt, like the
-code-review lenses). It runs once at epic end, immediately **before** the orchestrator-direct
-archive, to catch deferred items whose work actually landed during the epic but whose ledger entry
-was never updated to say so (so the text-only archive would keep re-folding finished work forever).
+code-review lenses).
+- It runs once at epic end, immediately **before** the orchestrator-direct archive.
+- It catches deferred items whose work actually landed during the epic but whose ledger entry was
+  never updated to say so — because the text-only archive would otherwise keep re-folding finished
+  work forever.
 ```
 Reconcile the deferred-work ledger <impl>/deferred-work.md against the CURRENT codebase, in
 <project_root>, after epic {e}.
@@ -446,13 +480,19 @@ Return, in `Deferred work`, the count of entries you marked and ONE line per mar
 the item and the one-line evidence (the file/commit that resolved it); `none` if you marked
 nothing.
 ```
-The orchestrator runs this only when `deferred_ledger.py plan` shows at least one entry that is not
-already `resolved` (skip — and mark `phase8_steps.reconcile: done` — when the ledger is absent/empty
-or every entry is already `resolved`). It records the result in state and the report; the delegate's
-ledger edits land in the same epic-end `docs(epic-{e})` commit as the archive that follows. Pin the
-marker vocabulary above to what `deferred_ledger.py` recognizes (`✅` / "resolved in" / "closed" /
-"addressed in" / "done in", and no remainder signal) — a marker it can't read silently no-ops (safe:
-the entry is simply kept).
+Run condition:
+- Run this only when `deferred_ledger.py plan` shows at least one entry that is not already
+  `resolved`.
+- Skip it — and mark `phase8_steps.reconcile: done` — when the ledger is absent/empty or every entry
+  is already `resolved`.
+
+The orchestrator records the result in state and the report.
+- The delegate's ledger edits land in the same epic-end `docs(epic-{e})` commit as the archive that
+  follows.
+
+Pin the marker vocabulary above to what `deferred_ledger.py` recognizes — `✅` / "resolved in" /
+"closed" / "addressed in" / "done in", and no remainder signal.
+- A marker it can't read silently no-ops — safe, because the entry is simply kept.
 
 ### retrospective
 ```
@@ -470,10 +510,13 @@ structural — so the orchestrator can recommend a re-sync. Say `none` when the 
 <!-- auto-bmad-local: no upstream bmad-code-review / BMAD counterpart — a hand-off artifact unique to
      auto-bmad. Do not reconcile away on a compat-check. -->
 This is **not** a `/bmad-*` skill call — it is a **read-only** acceptance pass (an inline prompt, like
-the code-review lenses). It runs once the implementation is settled (Phase 9 head per story;
-`epic-pipeline.md` E5 per story in epic mode) and returns a manual UAT checklist the orchestrator
-routes verbatim into the report's **UAT** section — finding/content stays out of the orchestrator's
-read path exactly like the `tea` / `pipeline_status` strings.
+the code-review lenses).
+- It runs once the implementation is settled — Phase 9 head per story; `epic-pipeline.md` E5 per
+  story in epic mode.
+- It returns a manual UAT checklist the orchestrator routes verbatim into the report's **UAT**
+  section.
+- Finding/content stays out of the orchestrator's read path exactly like the `tea` /
+  `pipeline_status` strings.
 ```
 Produce a manual User-Acceptance-Testing (UAT) checklist for story {key}, in <project_root>.
 
@@ -529,7 +572,8 @@ Produce ONE checklist a human can run end-to-end in a single sitting against the
 Return the consolidated checklist as your `Outcome` (one item per line). `Files changed: none`;
 `Deferred work` / `Retro notes`: `none` unless genuinely retro-worthy.
 ```
-(The orchestrator fills `{uat_items}` from the epic anchor's accumulated `uat_items`, one
-`[{key}] <item>` per line; if it is empty — no story produced a testable item — skip this delegate and
-render the report's **UAT** section `(none)`.)
+The orchestrator fills `{uat_items}` from the epic anchor's accumulated `uat_items`, one
+`[{key}] <item>` per line.
+- If it is empty — no story produced a testable item — skip this delegate and render the report's
+  **UAT** section `(none)`.
 

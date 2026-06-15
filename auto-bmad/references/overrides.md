@@ -43,37 +43,49 @@ story, `epic` / `--epic N` runs a whole epic; see "Epic mode" below).
 
 ## How each maps to the pipeline
 
-- **start_phase / stop_*:** define the active window. Run a phase only if it's within
-  `[start_phase, stop_after]` (inclusive) and before any `stop_before`. Phases outside the window
-  are recorded as skipped in state with the reason `override`.
-- **skip git-commits:** run phases but perform **no** per-phase checkpoint commits and **no** PR
-  (a PR needs commits). Leave all changes in the working tree for the user to commit. ⚠️ This
-  removes the commit-based resume safety net — say so in the echo and report; the state file is
-  then the only resume record.
+- **start_phase / stop_*:** define the active window.
+  - Run a phase only if it's within `[start_phase, stop_after]` (inclusive) and before any
+    `stop_before`.
+  - Phases outside the window are recorded as skipped in state with the reason `override`.
+- **skip git-commits:** run phases but perform **no** per-phase checkpoint commits and **no** PR — a
+  PR needs commits.
+  - Leave all changes in the working tree for the user to commit.
+  - ⚠️ This removes the commit-based resume safety net — say so in the echo and report.
+  - The state file is then the only resume record.
 - **skip pr** / **git_mode local:** Phase 9 pushes/opens nothing; the branch is left in place and
   noted in the report.
-- **skip tea:** treat `tea.enabled` as false for this run — skips Phases 4, 6, Phase 2's
-  *test-design sub-step*, and the epic-end TEA gates in Phase 8. Project-context + retrospective
-  still run; Phase 2's project-context-bootstrap sub-step is TEA-independent (runs when needed).
+- **skip tea:** treat `tea.enabled` as false for this run.
+  - Skips Phases 4 and 6, Phase 2's *test-design sub-step*, and the epic-end TEA gates in Phase 8.
+  - Project-context and retrospective still run.
+  - Phase 2's project-context-bootstrap sub-step is TEA-independent — it runs when needed.
 - **skip project-context-bootstrap:** suppress only Phase 2's project-context bootstrap sub-step,
-  even when `needs_project_context_bootstrap` is true. Use sparingly — every create-story in the
-  epic will then run without persistent_facts injection (see Phase 0 → "Project-context probe").
-- **skip code-review:** skip Phase 7 entirely AND set `convergence_unverified: true` — zero review
-  passes is the strongest form of unverified, so the PR opens as a **draft** and the story stays at
-  `review` (draft-predicate clause 2; combine with `no_pr_draft` to ship non-draft anyway — the
-  story still stays at `review`). ⚠️ Quality gate removed — flag prominently.
+  even when `needs_project_context_bootstrap` is true.
+  - Use sparingly — every create-story in the epic will then run without persistent_facts injection
+    (see Phase 0 → "Project-context probe").
+- **skip code-review:** skip Phase 7 entirely AND set `convergence_unverified: true`.
+  - Zero review passes is the strongest form of unverified, so the PR opens as a **draft** and the
+    story stays at `review` (draft-predicate clause 2).
+  - Combine with `no_pr_draft` to ship non-draft anyway — the story still stays at `review`.
+  - ⚠️ Quality gate removed — flag prominently.
 - **skip retrospective:** skip only the retrospective sub-step of Phase 8.
 - **skip trace-advisory:** suppress only the Phase 7 tail per-story trace advisory for this run,
-  even when its conditions hold (see `tea-policy.md` §3); the epic-end trace gate is unaffected.
+  even when its conditions hold (see `tea-policy.md` §3).
+  - The epic-end trace gate is unaffected.
 - **skip uat:** suppress the manual UAT checklist step (Phase 9 head per story; epic E5 per story +
-  the E_final consolidation). The report's **UAT** section then renders `(none)`. Nothing else is
-  affected — it is a read-only hand-off artifact, not a gate.
-- **skip branch:** stay on the current branch (do not create `story/...`). Only sensible with a
-  clean intent like a dry run or when the user is already on the right branch; warn otherwise.
-- **skip merge-prompt:** Phase 9 still pushes and opens the PR, but does **not** wait for CI and
-  does **not** ask whether to merge — same shape as `git.offer_merge: false`, just for this run.
-  `ci_status` is recorded as `unknown` and the existing draft-predicate clauses 1–3 (no CI gate)
-  decide draft vs non-draft. PR stays open for the human to merge on their own time.
+  the E_final consolidation).
+  - The report's **UAT** section then renders `(none)`.
+  - Nothing else is affected — it is a read-only hand-off artifact, not a gate.
+- **skip branch:** stay on the current branch (do not create `story/...`).
+  - Only sensible with a clean intent like a dry run, or when the user is already on the right
+    branch.
+  - Warn otherwise.
+- **skip merge-prompt:** same shape as `git.offer_merge: false`, just for this run.
+  - Phase 9 still pushes and opens the PR.
+  - It does **not** wait for CI.
+  - It does **not** ask whether to merge.
+  - `ci_status` is recorded as `unknown`; the existing draft-predicate clauses 1–3 (no CI gate)
+    decide draft vs non-draft.
+  - The PR stays open for the human to merge on their own time.
 - **max_review_iterations / no_pr_draft:** adjust Phase 7 cap / Phase 9 draft decision.
 
 ## Epic mode (`/auto-bmad epic`)
@@ -82,31 +94,41 @@ story, `epic` / `--epic N` runs a whole epic; see "Epic mode" below).
 via `epic-pipeline.md`. `--story` and `epic` are **mutually exclusive** — hard-stop if both are given
 ("`--story` picks one story; `epic` runs a whole epic — pick one").
 
-Overrides that **compose** with epic mode (echo + apply the same way): `dry_run` (prints the epic plan
-+ the ordered story list + per-step profiles, then stops), `skip tea`, `skip merge-prompt`,
-`git_mode local`, `max_review_iterations` (caps the **E_review** loop), `no_pr_draft` (the epic PR
-opens non-draft; the epic still stays caveated), `skip git-commits`, `skip uat` (suppresses the
-per-story UAT step AND the E_final consolidation). `skip code-review` skips the
-**Tier-B** epic integration review (equivalent to `code_review.epic_review: false`) AND sets
-`convergence_unverified` — the per-story **Tier-A** thin review is then the only quality gate left,
-for **every** story, so flag it even more prominently than per story (it compounds across the epic).
+Overrides that **compose** with epic mode (echo + apply the same way):
+- `dry_run` — prints the epic plan + the ordered story list + per-step profiles, then stops.
+- `skip tea`.
+- `skip merge-prompt`.
+- `git_mode local`.
+- `max_review_iterations` — caps the **E_review** loop.
+- `no_pr_draft` — the epic PR opens non-draft; the epic still stays caveated.
+- `skip git-commits`.
+- `skip uat` — suppresses the per-story UAT step AND the E_final consolidation.
+- `skip code-review`:
+  - Skips the **Tier-B** epic integration review (equivalent to `code_review.epic_review: false`).
+  - AND sets `convergence_unverified`.
+  - The per-story **Tier-A** thin review is then the only quality gate left, for **every** story.
+  - Flag it even more prominently than per story — it compounds across the epic.
 
-Overrides that **do NOT map** (reject in epic mode for v1, with a precise message): the per-story
-**phase window** (`start_phase` / `stop_before` / `stop_after`) and phase-number `skip`s — the phase
-map above is per-**story**-run; epic mode runs **E-steps** (`epic-pipeline.md`), a different axis.
+Overrides that **do NOT map** — reject in epic mode for v1, with a precise message:
+- The per-story **phase window** (`start_phase` / `stop_before` / `stop_after`).
+- Phase-number `skip`s.
+- Reason: the phase map above is per-**story**-run; epic mode runs **E-steps** (`epic-pipeline.md`),
+  a different axis.
+
 Resume an interrupted epic with `/auto-bmad epic --epic N` — the epic anchor drives where it picks up.
 
 ## Prerequisite validation for `start_phase`
 
-Starting mid-pipeline requires the earlier outputs to already exist. Before skipping ahead,
-check and **hard-stop with a precise message** if a prerequisite is missing:
+Starting mid-pipeline requires the earlier outputs to already exist. Before skipping ahead, check
+the applicable prerequisite(s) below and **hard-stop with a precise message** if any is missing:
 - start at **5 (dev-story)** or later → the story context file (`<impl>/{key}.md`) must exist
   (Phase 3 output).
 - start at **7 (code-review)** or later → the story must be implemented (code present; story at
   `review`).
 - start at **9 (finalize)** → there must be commits on the story branch to push.
-Prefer the normal resume path (`state-and-resume.md`) over `start_phase` when a state file
-exists; use `start_phase` for deliberate manual control.
+
+Prefer the normal resume path (`state-and-resume.md`) over `start_phase` when a state file exists.
+Use `start_phase` for deliberate manual control.
 
 ## Echo format (always show before executing)
 

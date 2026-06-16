@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`config-check` previews config/profile drift before a run.** Read-only: what an update would add
+  (new profiles, settings, mappings) and what you've retuned vs the defaults — applies nothing.
+
+### Changed
+
+- **New config now pauses for review before a run.** When an update ships new profiles/settings the run
+  pauses so you can customise first (epic: once at start); skip with `skip config-pause`.
+
 ## [0.24.0] - 2026-06-16
 
 ### Added

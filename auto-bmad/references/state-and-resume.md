@@ -142,6 +142,25 @@ This is the single interactive episode in normal operation.
    - When agents were rendered, surface the **process-restart caveat** (`delegation-runtime.md` → "Newly-rendered agents need a process restart").
 6. Report scope, what was reset, the backup path, restamp, and whether a relaunch is needed. Stop.
 
+## config-check — preview pending config/profile updates
+`/auto-bmad config-check` is a **read-only** preview: it reports how `config.yaml` differs from the shipped defaults — what an update would **add**, and what **you've customised** — without applying, restamping, or rendering anything.
+- Run it before a story/epic to see the new profiles/settings an update shipped and decide whether to retune *before* they take effect. The same data drives the automatic Phase 0 / E0 **pre-run pause** (`pipeline.md`) — this command is the on-demand pull; the pause is the automatic push.
+- **Config-only:** report, then stop — never start a pipeline.
+
+**Flow:**
+1. Require `config.yaml` to exist. Absent → "auto-bmad isn't set up here yet — run `/auto-bmad setup`." and stop.
+2. Read drift (read-only):
+   ```
+   python3 {skill-root}/scripts/config_plan.py --check --config <output_folder>/auto-bmad/config.yaml
+   ```
+3. Render the **drift report** exactly as `pipeline.md` → "Drift report rendering" specifies — the two sides (*New since v<config>* + *Your customisations*), preceded by a version line (`config v<config> → module v<module>`), read straight from the `--check` JSON — **never read code**.
+   - `status: fresh` ⇒ the *New* side is empty (say "nothing new since v<module>"), but still render *Your customisations* so the user sees their retunes.
+4. Tell the user how to act, then stop:
+   - **Customise before applying** — edit the named keys in `config.yaml` (the heal is **append-only**, so a value you set / a profile block you add is preserved), then run the story/epic; Phase 0 applies the rest.
+   - **Accept the new defaults** — just run the story/epic (it auto-applies at the pre-run pause, or with `skip config-pause`).
+   - **Discard retunes** back to shipped values — `reset-defaults`.
+- Applies/renders **nothing**: never writes `config.yaml`, never restamps, never re-renders agents. Those land only at the Phase 0 / E0 heal, `reset-defaults`, or `reprovision`.
+
 ## state/{key}.yaml
 The state file is a **machine-readable contract**, not a prose log — the source of truth for resume.
 - It is updated after every phase.

@@ -1,7 +1,7 @@
 ---
 name: auto-bmad
 description: "Run the FULL BMAD story implementation workflow end-to-end — one story at a time, or an ENTIRE EPIC in one run with `epic`. Use when the user says 'auto-bmad', 'run auto-bmad', 'implement the next story', 'auto implement story X-Y', 'auto-bmad epic', 'implement the whole epic N', or wants the create-story -> dev-story -> code-review (+ TEA + epic-boundary) pipeline driven automatically on a branch with a PR at the end."
-argument-hint: "[epic [--epic <N>] | --story <id> | setup | reprovision | reset-defaults | <overrides…>]"
+argument-hint: "[epic [--epic <N>] | --story <id> | setup | reprovision | reset-defaults | config-check | <overrides…>]"
 ---
 
 # auto-bmad orchestrator
@@ -46,10 +46,13 @@ Before the procedure, handle module registration and delegate provisioning.
 **If invoked with `reset-defaults [scope]`:** run the **restore-shipped-defaults** flow in `references/state-and-resume.md` → "reset-defaults".
 - It is **config-only**: report what changed, then **stop** — never start a pipeline.
 
+**If invoked with `config-check`:** run the **read-only config preview** in `references/state-and-resume.md` → "config-check".
+- It applies/renders **nothing** — it reports what an update would add and what you've customised vs the shipped defaults, then **stops**. Never starts a pipeline.
+
 **Requires a BMAD project** — if `_bmad/` is absent, the Step 0.1 hard-stop applies.
 
 **Whether to start a pipeline after configuration:**
-- If the user's only intent was `setup`/`configure`/`reprovision`/`reset-defaults` → stop after reporting what was written/rendered; do **not** start a pipeline run.
+- If the user's only intent was `setup`/`configure`/`reprovision`/`reset-defaults`/`config-check` → stop after reporting what was written/rendered (or previewed); do **not** start a pipeline run.
 - If configuration ran **only because it was missing** (a run-intent invocation on a fresh project) → Step 0.3's first-run stop applies: finish config, then **stop for a fresh session** rather than launch the pipeline.
 - Otherwise → continue to the Procedure.
 
@@ -97,7 +100,8 @@ Before the procedure, handle module registration and delegate provisioning.
 3. Load auto-bmad config from `{project-root}/_bmad-output/auto-bmad/config.yaml`.
    - Missing → run the **first-run flow** in `references/state-and-resume.md`, write the config, then **stop for a fresh session** per the same file's First-run stop.
    - Present → continue to Step 1.
-   - First-run is the main interactive moment. auto-bmad also asks at three later halts — each halt's options/conditions are in the note under Hard-stop conditions:
+   - First-run is the main interactive moment. auto-bmad can also pause at a few other points — each halt's options/conditions are in the note under Hard-stop conditions:
+     - a config-drift review at preflight (Phase 0 / epic E0) — **only** when an update shipped new config/profiles; skippable with `skip config-pause`;
      - the end of the code-review loop (Phase 7);
      - a `FAIL` epic trace gate (Phase 8);
      - a clean-completion PR's merge prompt (Phase 9).
@@ -196,7 +200,8 @@ Each of these is a hard-stop:
 
 Never push past a hard-stop — report and let the human act.
 
-**Three pipeline situations are NOT silent hard-stops** — each **asks the user** what to do:
+**These pipeline situations are NOT silent hard-stops** — each **asks the user** what to do:
+- A config-drift review at preflight (Phase 0 / epic E0) — apply the new defaults & continue, or stop to edit `config.yaml` first. **Conditional** (only when an update shipped new config) and skippable with `skip config-pause`; epic pauses once at E0, then runs unattended.
 - The code-review loop's end-of-loop HITL halt (Phase 7) — run one more review iteration, continue (optionally after an external review), or stop. Re-asked once if that review's changes re-review as meaningful — another iteration, continue as draft, continue as ready (non-draft override), or stop. Always skipped when the loop converged cleanly.
 - A `FAIL` epic trace gate (Phase 8) — remediate & re-gate / waive / stop.
 - The end-of-pipeline merge prompt on a clean-completion PR (Phase 9) — merge commit (default) / rebase / squash / don't merge, plus a delete-branch sub-question. Opt-in via `git.offer_merge`, default on.

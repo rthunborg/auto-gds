@@ -51,26 +51,45 @@ Runs during Step 1 of the SKILL procedure (before any commit).
   - Read the preflight JSON's `git` block — `is_repo`, `tree_clean`/`dirty_files_count`, `current_branch`, `base_branch`, `mode` (`remote`|`local`) — plus the top-level `hard_stop`/`hard_stop_reasons`.
   - Not a repo, or dirty tree off the expected story branch → hard-stop.
   - On a resume, pass `--expected-branch` so in-flight dirt on the story branch is allowed.
-- **Config drift heal (orchestrator; all hosts):** reconcile the runtime `config.yaml` against the shipped assets — both the `profiles`/`phase_profiles` blocks AND the constant-default **setup-block** keys (`delegation`/`tea`/`git`/`code_review`):
+- **Config drift heal + review (orchestrator; all hosts):** reconcile the runtime `config.yaml` against the shipped assets — both the `profiles`/`phase_profiles` blocks AND the constant-default **setup-block** keys (`delegation`/`tea`/`git`/`code_review`):
   ```
   python3 {skill-root}/scripts/config_plan.py --check --config <output_folder>/auto-bmad/config.yaml
   ```
   (the shipped `assets/agents/profiles.yaml`, `assets/config-defaults.yaml`, and `assets/module.yaml` resolve relative to the script).
-  - `status: drift` (exit 1 — missing `profiles`/`phase_profiles` keys, `missing_setup` entries, `manual_review` items, and/or a `profiles_source_version` that differs from the installed `module_version`) → **auto-apply** the additive heal: re-run with `--apply`.
-    - The heal appends only the MISSING keys — never overwriting a user value — and restamps `profiles_source_version`.
-    - Run this **before** the provisioning-freshness check below, so a re-seeded profile *value* is then caught there as a stale agent file.
-  - `manual_review` items (a sub-key missing from a profile that already exists) are **surfaced in the report**, not auto-written.
-  - **Disclosure echo (only when the heal added a setup key — `--apply`'s `added_setup` is non-empty):** show a brief, **non-blocking** block in the preflight echo (and the final report), then continue.
-    - The heal is behaviour-neutral, so there is nothing to approve.
-    - **Never** open an `AskUserQuestion`/halt here.
-    - Read the lists straight from the `--apply` JSON — don't recompute or read code.
-    - Render, in this shape:
-      - a **lead line** naming what happened — `config.yaml updated to match v<module_version>`;
+  - **`status: fresh`** (exit 0) → nothing to do; continue.
+  - **`status: drift`** (exit 1) splits by the **pause predicate** — did an update ship **new config the heal will ADD**: any of `missing_profiles`, `missing_phase_profiles`, or `missing_setup` is non-empty.
+    - **Reviewable drift** (predicate true — a new profile, phase mapping, or setting) → **pre-run pause** (below), UNLESS `skip config-pause` is in effect for this run (`overrides.md`). *Epic mode handles this once at E0 — `epic-pipeline.md`; the per-story rule here is for a single-story run.*
+    - **No reviewable drift** (predicate false — only an older `profiles_source_version` and/or `manual_review` items) → **auto-apply** (`--apply`) to restamp; surface any `manual_review` in the report; continue. No pause.
+    - **Why `manual_review` is NOT in the predicate:** the heal never auto-writes it, so it would never self-clear — pausing on it would re-fire on **every** run (a nag). It rides in the report + the drift report instead, and the user fixes it via `reset-defaults`.
+  - **Pre-run pause** — the ONE deliberate exception to "Phase 0 doesn't halt", and only on reviewable drift:
+    - Open an `AskUserQuestion` showing the **drift report** (rendering below), read straight from the `--check` JSON — **never read code**.
+    - Options: **Apply defaults & continue** / **Stop — let me edit `config.yaml` first**.
+      - **Apply & continue** → re-run with `--apply`; print one line — `Applied — config.yaml now matches v<module_version>; continuing.` — and proceed.
+      - **Stop** → print the config path + the exact re-invoke command, note that the heal is **append-only so your edits survive** (set a value / add a profile block by hand and the heal will not overwrite it), then **stop**. Phase 0 writes no state (the Phase 0 exception), so this is a clean pre-run stop — not a resumable halt; the user edits and re-invokes.
+        - **Caveat for *profile* (model/effort) edits on `custom-subagents` hosts:** a *setting* edit takes effect on the next run, but a *profile* edit re-renders the agent file, which isn't invokable until a full tool restart (`delegation-runtime.md` → "Newly-rendered agents need a process restart"). Say so, so the user restarts before re-invoking — otherwise the run silently uses the old model.
+  - **The additive heal** (`--apply`, on whichever path reaches it) appends only the MISSING keys — never overwriting a user value — and restamps `profiles_source_version`. Run it **before** the provisioning-freshness check below, so a re-seeded profile *value* is then caught there as a stale agent file.
+  - `manual_review` items (a sub-key missing from a profile that already exists) are auto-written by neither path — **surfaced at preflight** (in the pause's drift report, or the live echo below); the one-shot fix is `reset-defaults`.
+  - **Surfacing is preflight-only** — the report's section template has no config-heal heading (and its report `--json` rejects unknown keys), so the heal's effect is shown **at preflight**, not persisted as a report field: the **paused** path already showed the full drift report in the `AskUserQuestion`; the **auto-apply** paths get the non-blocking **live echo** below.
+  - **Non-blocking live echo** — on the **auto-apply** paths only (version/`manual_review`-only drift, or `skip config-pause` bypass), where the user did NOT see the pause: when `--apply`'s `added_setup` is non-empty, show a brief, non-blocking block in the preflight echo, then continue.
+    - The heal is behaviour-neutral, so there is nothing to approve; **never** open an `AskUserQuestion` on these paths.
+    - Read the lists straight from the `--apply` JSON — don't recompute or read code. Render:
+      - a **lead line** — `config.yaml updated to match v<module_version>`;
       - *Added N new setting(s) (defaults; behaviour unchanged)* — one `path = value` per `added_setup` entry;
       - *Kept your M customisation(s)* — one `path = value  (default <default>)` per `kept_setup` entry (omit this list entirely when `kept_setup` is empty);
-      - a **closer line** that signals it did not block — `→ continuing pipeline…`.
-    - If `added_setup` is empty, show nothing.
-    - `reseeded_*` profile/phase_profile reseeds and the `manual_review` note stay in the report.
+      - a **closer line** — `→ continuing pipeline…`.
+    - If `added_setup` is empty, show nothing. (`reseeded_*` reseeds and `manual_review` are in the `--apply` JSON for the orchestrator; they are not persisted to the report.)
+- **Drift report rendering** (shared by the pre-run pause above and the `config-check` command — `state-and-resume.md`). Read straight from the `config_plan.py --check` JSON; render the two sides, omitting any sub-list that's empty and any side with nothing:
+  - **New since v<config> (would be added):**
+    - *New profiles* — one `name — <summary>` per `missing_profiles` (summary from `missing_profile_summaries`).
+    - *New phase mappings* — one `phase → profile` per `missing_phase_profiles`.
+    - *New settings* — one `path = value` per `added_setup`.
+    - *Profile sub-keys you could set* — one `profile.key` per `manual_review` (not auto-written).
+  - **Your customisations (preserved by the append-only heal):**
+    - *Profile retunes* — one `profile.key = value  (default <default>)` per `customized_profiles` (model/effort tiers; persona strings are excluded).
+    - *Custom profiles* — one `name` per `custom_profiles`.
+    - *Remapped phases* — one `phase = profile  (default <default>)` per `customized_phase_profiles`.
+    - *Settings* — one `path = value  (default <default>)` per `kept_setup`.
+  - Every value here is short (model/effort tiers, setting scalars, profile/phase names) — render inline; persona strings are excluded from `customized_profiles`, so there is nothing long to truncate.
 - **Provisioning freshness (custom-subagents hosts):** run `render-agents.py --check`. See `delegation-runtime.md` → "Resolving host & mode".
   - Delegate agents missing or stale (module updated / profiles edited) → auto-reprovision and note it in the preflight echo + final report.
   - Not a human stop.

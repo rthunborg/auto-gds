@@ -14,7 +14,7 @@ Epic mode drives a **whole epic** — every actionable story — in one run, the
 - An unconverged review **ships a draft** — and a Critical/High auto-decision also forces the draft.
 - Both the auto-resolutions and the draft are surfaced in the final report.
 
-**The only human touchpoints left** are the **E0 preflight safety asks** (adopt / base-readiness) and the **E_final merge prompt**.
+**The only human touchpoints left** are the **E0 preflight safety asks** (config-drift review, adopt, base-readiness) and the **E_final merge prompt**. The config-drift review fires only when an update shipped new config, pauses **once** before E1, and self-clears — it never recurs mid-epic.
 
 **This file is the epic analog of `pipeline.md`.** It does **not** restate per-story phase internals:
 - Each E-step names the per-story phase it reuses; read `pipeline.md` for that phase's mechanics.
@@ -60,6 +60,7 @@ Runs during the SKILL procedure before any commit. Same probe discipline as Phas
 1. **Preflight (reuse Phase 0 verbatim):** run `preflight.py` for git state/mode, project-context, CI presence, required skills, and the config-drift heal (`config_plan.py`) + provisioning freshness.
    - Obey its `git` block + `hard_stop`.
    - The required-skills list is the same as a per-story run: core + TEA if enabled + epic-end skills — because this run always reaches the epic end.
+   - **The config-drift review pause fires here — once.** Run Phase 0's config-drift step exactly (`pipeline.md`): on **reviewable drift** (the pause predicate — a new profile / phase mapping / setting the heal will add) open the same pre-run pause **before E1's `init`**, consistent with E0's other front-loaded asks (adopt / base-readiness). After **Apply & continue** restamps `profiles_source_version`, every later E5 story's Phase 0 check reads `fresh`, so the pause **cannot recur mid-epic** — the run stays unattended. `skip config-pause` bypasses it; version-only drift auto-applies without pausing (as per story).
 2. **Enumerate the epic:** `python3 {skill-root}/scripts/story_plan.py --epic {e} --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>`.
    - Parse `epic_stories` (ordered).
    - `hard_stop` true (unknown/empty epic, or epic already `done`) ⇒ surface and stop.

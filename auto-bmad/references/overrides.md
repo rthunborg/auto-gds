@@ -23,7 +23,7 @@ Parse the invocation text into the **normalized override set** below, **echo the
 
 - `start_phase: <0–9>` — begin here; treat earlier phases as skipped. **Validate prerequisites** (below) and hard-stop if they're missing.
 - `stop_before: <phase>` / `stop_after: <phase>` — end the run at that boundary, then go straight to the report (Step 3).
-- `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `tea`, `code-review`, `retrospective`, `branch`, `merge-prompt`, `project-context-bootstrap`, `trace-advisory`, `uat`.
+- `skip: [...]` — any of: a phase number/name, or the features `git-commits`, `pr`, `tea`, `code-review`, `retrospective`, `branch`, `merge-prompt`, `project-context-bootstrap`, `trace-advisory`, `uat`, `config-pause`.
 - `max_review_iterations: <int>` — override `code_review.max_iterations` for this run.
 - `git_mode: local` — force local mode (no push/PR), regardless of detection.
 - `no_pr_draft: true` — open a normal (non-draft) PR even if blockers were recorded. (Also set mid-run by the Phase 7 re-ask's **Continue (ship as ready)** option — see `pipeline.md`.)
@@ -56,6 +56,10 @@ Parse the invocation text into the **normalized override set** below, **echo the
 - **skip uat:** suppress the manual UAT checklist step (Phase 9 head per story; epic E5 per story + the E_final consolidation).
   - The report's **UAT** section then renders `(none)`.
   - Nothing else is affected — it is a read-only hand-off artifact, not a gate.
+- **skip config-pause:** suppress the Phase 0 (epic: E0) config-drift **review pause** for this run.
+  - When an update shipped new config/profiles, auto-apply the additive heal + show the non-blocking echo (the pre-pause behaviour) instead of pausing to review.
+  - For unattended runs that don't want to stop on the first post-update invocation.
+  - The heal still runs — only the pause is skipped; nothing is reset and no customisation is touched (it stays append-only).
 - **skip branch:** stay on the current branch (do not create `story/...`).
   - Only sensible with a clean intent like a dry run, or when the user is already on the right branch.
   - Warn otherwise.
@@ -79,6 +83,7 @@ Overrides that **compose** with epic mode (echo + apply the same way):
 - `max_review_iterations` — caps the **E_review** loop.
 - `no_pr_draft` — the epic PR opens non-draft; the epic still stays caveated.
 - `skip git-commits`.
+- `skip config-pause` — suppresses the **E0** config-drift review pause (auto-apply + echo instead); the rest of the epic is unattended regardless.
 - `skip uat` — suppresses the per-story UAT step AND the E_final consolidation.
 - `skip code-review`:
   - Skips the **Tier-B** epic integration review (equivalent to `code_review.epic_review: false`).

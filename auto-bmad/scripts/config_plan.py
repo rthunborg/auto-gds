@@ -383,7 +383,18 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
     constant-default setup-block keys (delegation/tea/git/code_review): the dotted paths the config
     is MISSING go in ``missing_setup`` (these heal append-only via ``apply()``), and the two
     human-facing lists for the Phase 0 echo go in ``added_setup`` (``[{path, value}]``) and
-    ``kept_setup`` (``[{path, value, default}]`` — the user's preserved customisations).
+    ``kept_setup`` (``[{path, value, default}]`` — the user's preserved setup customisations).
+
+    The "what you've customised vs shipped defaults" axis for the PROFILE surface (read-only, for
+    the ``config-check`` preview — the heal never touches it) goes in three lists:
+    ``customized_profiles`` (``[{profile, key, value, default}]`` — a profile **model/effort** leaf
+    retuned away from the asset default; persona ``meta:`` keys are excluded, since the heal never
+    overwrites them and a stale older-version seed would otherwise read as a false customisation),
+    ``custom_profiles`` (``[name]`` — whole ``ab-*`` profiles the user
+    ADDED that the asset doesn't ship), and ``customized_phase_profiles``
+    (``[{key, value, default}]`` — a phase remapped to a non-default profile). ``missing_profiles``
+    additionally carries ``missing_profile_summaries`` (``{name: "claude: …/…, …"}``) so a
+    not-yet-present new profile can show the defaults it would ship with.
     """
     cfg_lines = config_text.splitlines(keepends=True)
     asset_lines = asset_text.splitlines(keepends=True)
@@ -403,6 +414,8 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
     cfg_prof = parse_profiles_blocks(cfg_lines, find_block(cfg_lines, "profiles"))
     asset_prof = parse_profiles_blocks(asset_lines, find_block(asset_lines, "profiles"))
     missing_profiles = [name for name in asset_prof if name not in cfg_prof]
+    missing_profile_summaries = {name: _profile_summary(asset_lines, asset_prof[name])
+                                 for name in missing_profiles}
     manual_review: list[dict] = []
     for name, ainfo in asset_prof.items():
         if name in cfg_prof:
@@ -419,6 +432,30 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
                     continue
                 manual_review.append({"profile": name, "missing_key": key})
 
+    # --- The "what you've customised vs shipped defaults" axis (read-only; for the config-check
+    # preview). Mirrors kept_setup (which covers the delegation/tea/git/code_review setup leaves)
+    # for the asset-sourced PROFILE surface. A present-but-different value is a customisation; a
+    # MISSING key is NOT (that is manual_review's job — never double-report it here). ---
+    customized_profiles: list[dict] = []
+    for name, ainfo in asset_prof.items():
+        if name not in cfg_prof:
+            continue
+        a_vals = _profile_leaf_values(asset_lines, ainfo["start"], ainfo["end"])
+        c_vals = _profile_leaf_values(cfg_lines, cfg_prof[name]["start"], cfg_prof[name]["end"])
+        for key, dv in a_vals.items():
+            # Persona meta keys (description/role_blurb/status_example) are EXCLUDED: the heal never
+            # overwrites them, so an older-version seed whose persona text has since evolved in the
+            # asset would read as a "customisation" the user never made. "Customised a profile" means
+            # a model/effort retune — so mirror missing_profile_summaries and report only the tool tiers.
+            if key.startswith("meta:"):
+                continue
+            cv = c_vals.get(key)
+            if cv is not None and cv != dv:
+                customized_profiles.append({"profile": name, "key": key, "value": cv, "default": dv})
+    custom_profiles = [name for name in cfg_prof if name not in asset_prof]
+    customized_phase_profiles = [{"key": k, "value": cfg_pp[k], "default": asset_pp[k]}
+                                 for k in asset_pp if k in cfg_pp and cfg_pp[k] != asset_pp[k]]
+
     cver = _ver_tuple(config_version)
     mver = _ver_tuple(module_version)
     version_drift = bool(module_version) and config_version != module_version
@@ -428,9 +465,13 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
     return {
         "missing_phase_profiles": missing_pp,
         "missing_profiles": missing_profiles,
+        "missing_profile_summaries": missing_profile_summaries,
         "missing_setup": missing_setup,
         "added_setup": added_setup,
         "kept_setup": kept_setup,
+        "customized_profiles": customized_profiles,
+        "custom_profiles": custom_profiles,
+        "customized_phase_profiles": customized_phase_profiles,
         "manual_review": manual_review,
         "version": {
             "config": config_version,
@@ -597,6 +638,27 @@ def _profile_leaf_values(lines: Sequence[str], start: int, end: int) -> dict:
             key, _, val = stripped.partition(":")
             out[f"{cur_tool}:{key.strip()}"] = _strip_value(val)
     return out
+
+
+def _profile_summary(lines: Sequence[str], info: dict) -> str:
+    """A compact per-tool ``model/effort`` summary for one profile block.
+
+    Used only for the drift PREVIEW/pause echo — so a NEW (still-missing) profile surfaces the
+    defaults it would ship with, not just its name, letting the user decide whether to retune
+    before the heal applies it. A tool with no model AND no effort (opencode's blank default ⇒
+    inherit) is omitted; a blank model with an effort renders ``(inherit)/<effort>``.
+    """
+    vals = _profile_leaf_values(lines, info["start"], info["end"])
+    parts: list[str] = []
+    for tool in ("claude", "codex", "opencode"):
+        model = vals.get(f"{tool}:model", "")
+        effort = (vals.get(f"{tool}:effort") or vals.get(f"{tool}:reasoning_effort")
+                  or vals.get(f"{tool}:variant") or "")
+        if not model and not effort:
+            continue
+        label = model or "(inherit)"
+        parts.append(f"{tool}: {label}/{effort}" if effort else f"{tool}: {label}")
+    return " · ".join(parts)
 
 
 def reset(config_text: str, asset_text: str, config_version: str | None,
@@ -892,6 +954,19 @@ def _run_self_test() -> int:
     assert pub["missing_phase_profiles"]["tea_triage"] == "ab-alt-standard", pub
     # ab-alt-deep / ab-alt-standard / ab-security absent from the stale config => flagged as whole missing profiles.
     assert set(pub["missing_profiles"]) == {"ab-alt-deep", "ab-alt-standard", "ab-security"}, pub["missing_profiles"]
+    # missing_profile_summaries: every missing profile shows the model/effort defaults it would ship with.
+    assert set(pub["missing_profile_summaries"]) == set(pub["missing_profiles"]), pub["missing_profile_summaries"]
+    assert all("claude:" in s for s in pub["missing_profile_summaries"].values()), pub["missing_profile_summaries"]
+    # customised-vs-default (PROFILE axis): ab-deep's claude.model retune (haiku, default opus) is surfaced.
+    assert any(c == {"profile": "ab-deep", "key": "claude:model", "value": "haiku", "default": "opus"}
+               for c in pub["customized_profiles"]), pub["customized_profiles"]
+    # Persona meta keys are EXCLUDED even though stale_cfg's ab-deep has stub description/role_blurb/
+    # status_example differing from the asset — those are false positives (the heal never heals them).
+    assert not any(c["key"].startswith("meta:") for c in pub["customized_profiles"]), \
+        f"persona meta keys must be excluded from customised_profiles: {pub['customized_profiles']}"
+    # A missing key is manual_review, never a "customisation" (no double-report).
+    assert not any(c["profile"] == "ab-alt-deep" for c in pub["customized_profiles"]), pub["customized_profiles"]
+    assert pub["custom_profiles"] == [] and pub["customized_phase_profiles"] == [], pub
     assert pub["needs_reseed"] is True, pub
     assert pub["version"]["drift"] is True and pub["version"]["config_older"] is True, pub
 
@@ -947,6 +1022,11 @@ def _run_self_test() -> int:
     info_cust = analyze(cfg_custom, asset_text, "0.9.0", "0.9.0")
     assert not info_cust["needs_reseed"], _public(info_cust)
     assert not info_cust["manual_review"], f"a custom profile must never be flagged: {info_cust['manual_review']}"
+    # config-check's "what you've customised" axis: the added profile + the remapped phase surface,
+    # while the (default-valued) shipped profiles report no leaf retune.
+    assert info_cust["custom_profiles"] == ["ab-ultradeep"], info_cust["custom_profiles"]
+    assert {"key": "dev_story", "value": "ab-ultradeep", "default": "ab-deep"} in info_cust["customized_phase_profiles"], info_cust["customized_phase_profiles"]
+    assert info_cust["customized_profiles"] == [], info_cust["customized_profiles"]
     res_cust = apply(cfg_custom, asset_text, "0.9.0", "0.9.0")
     assert "ab-ultradeep" in res_cust["new_text"], "heal dropped the custom profile"
     assert "dev_story: ab-ultradeep" in res_cust["new_text"], "heal reverted the custom phase mapping"

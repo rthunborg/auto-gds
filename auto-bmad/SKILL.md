@@ -46,8 +46,8 @@ Before the procedure, handle module registration and delegate provisioning.
 **If invoked with `reset-defaults [scope]`:** run the **restore-shipped-defaults** flow in `references/state-and-resume.md` → "reset-defaults".
 - It is **config-only**: report what changed, then **stop** — never start a pipeline.
 
-**If invoked with `config-check`:** run the **read-only config preview** in `references/state-and-resume.md` → "config-check".
-- It applies/renders **nothing** — it reports what an update would add and what you've customised vs the shipped defaults, then **stops**. Never starts a pipeline.
+**If invoked with `config-check`:** run the **config preview** in `references/state-and-resume.md` → "config-check".
+- It reports what an update would add, everything you've changed vs the shipped defaults (including the heal-immune setup answers), then **offers to apply** the update. **Read-only until you confirm** — it writes/renders only on the explicit "Update" choice. Either way it **stops** — never starts a pipeline.
 
 **Requires a BMAD project** — if `_bmad/` is absent, the Step 0.1 hard-stop applies.
 

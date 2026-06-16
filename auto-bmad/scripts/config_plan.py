@@ -356,6 +356,35 @@ def setup_detail(cfg_lines: Sequence[str], setup_lines: Sequence[str], missing_p
     return added, kept
 
 
+# Heal-immune behavioural setup answers: interviewed / hand-edited fields that ``config-defaults.yaml``
+# DELIBERATELY OMITS (no universal-constant default — see that asset's header), so they can never appear
+# in ``added_setup``/``kept_setup`` (those only diff asset-sourced leaves). ``cli_phases`` ships ``{}`` in
+# the asset but a hand-set MAP can't be diffed against the scalar default either; ``git.mode`` is the
+# forced detect|remote|local toggle (a forced ``local``/``remote`` is a deliberate behavioural choice).
+# config-check surfaces their CURRENT values separately so the user sees every deliberate deviation —
+# with the note that the heal never touches them. PURELY-detected env facts (delegation.host/mode,
+# target_tools, git.base_branch) are excluded on purpose: they are environment state re-derived each run,
+# not a chosen "deviation". Allowlist, not a rule, so the surface stays small + stable; lockstep with the
+# note in references/state-and-resume.md (config-check).
+SETUP_ANSWER_PATHS = ("delegation.cli_phases", "tea.enabled", "tea.framework_ci", "git.mode")
+
+
+def collect_setup_answers(cfg_lines: Sequence[str]) -> list:
+    """Current ``[{path, value}]`` for each ``SETUP_ANSWER_PATHS`` field present in the config.
+
+    Read-only and asset-independent (the allowlist IS the contract). Absent fields are skipped — a
+    setup answer the config never wrote (e.g. ``cli_phases`` omitted entirely) is nothing to surface.
+    A map value (a populated ``cli_phases``) is summarised ``{k: v, ...}`` like the other echoes.
+    """
+    cfg_nodes = parse_tree(cfg_lines, 0, len(cfg_lines), 0)
+    out: list = []
+    for path in SETUP_ANSWER_PATHS:
+        node = _resolve_node(cfg_nodes, path)
+        if node is not None:
+            out.append({"path": path, "value": _node_value_summary(cfg_lines, node)})
+    return out
+
+
 def _read_version(text: str, key: str) -> str | None:
     for line in text.splitlines():
         if _indent(line) == 0:
@@ -385,6 +414,10 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
     human-facing lists for the Phase 0 echo go in ``added_setup`` (``[{path, value}]``) and
     ``kept_setup`` (``[{path, value, default}]`` — the user's preserved setup customisations).
 
+    ``setup_answers`` (``[{path, value}]``, always computed — asset-independent) carries the CURRENT
+    values of the heal-immune behavioural answers (``SETUP_ANSWER_PATHS``) the asset omits, so
+    config-check can show every deviation the two diff-lists structurally can't (see that constant).
+
     The "what you've customised vs shipped defaults" axis for the PROFILE surface (read-only, for
     the ``config-check`` preview — the heal never touches it) goes in three lists:
     ``customized_profiles`` (``[{profile, key, value, default}]`` — a profile **model/effort** leaf
@@ -398,6 +431,8 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
     """
     cfg_lines = config_text.splitlines(keepends=True)
     asset_lines = asset_text.splitlines(keepends=True)
+
+    setup_answers = collect_setup_answers(cfg_lines)
 
     missing_setup: list = []
     added_setup: list = []
@@ -469,6 +504,7 @@ def analyze(config_text: str, asset_text: str, config_version: str | None,
         "missing_setup": missing_setup,
         "added_setup": added_setup,
         "kept_setup": kept_setup,
+        "setup_answers": setup_answers,
         "customized_profiles": customized_profiles,
         "custom_profiles": custom_profiles,
         "customized_phase_profiles": customized_phase_profiles,
@@ -1391,6 +1427,24 @@ def _run_self_test() -> int:
     kept7 = {x["path"]: (x["value"], x["default"]) for x in analyze(c7, asset_text, "0.9.0", "0.9.0", setup_text)["kept_setup"]}
     assert kept7.get("tea.story_trace_advisory.min_epic_stories") == ("8", "6"), kept7
     assert "tea.gate_max_iterations" not in kept7, "a leaf equal to default must not be reported as 'kept'"
+
+    # setup_answers — the heal-immune behavioural answers (cli_phases/tea.enabled/framework_ci/git.mode)
+    # the asset omits, so they never surface in added_setup/kept_setup. config-check shows them so the
+    # user sees EVERY deviation; absent fields are skipped; a populated cli_phases is summarised as a map.
+    sa_cfg = (base + 'delegation:\n  host: auto\n  cli_phases:\n    code_review_review_secondary: opencode\n'
+              'tea:\n  enabled: false\n  framework_ci: skip\n'
+              'git:\n  mode: local\n  base_branch: main\n')
+    sa = {x["path"]: x["value"] for x in analyze(sa_cfg, asset_text, "0.9.0", "0.9.0", setup_text)["setup_answers"]}
+    assert sa.get("delegation.cli_phases") == "{code_review_review_secondary: opencode}", sa
+    assert sa.get("tea.enabled") == "false" and sa.get("tea.framework_ci") == "skip", sa
+    assert sa.get("git.mode") == "local", sa                          # a forced git mode is a deviation
+    assert "git.base_branch" not in sa, "a purely-detected env fact must not surface as a setup answer"
+    # An empty cli_phases surfaces as `{}`; a config that omits an answer entirely surfaces nothing.
+    sa_empty = {x["path"]: x["value"] for x in analyze(base + 'delegation:\n  cli_phases: {}\n', asset_text, "0.9.0", "0.9.0", setup_text)["setup_answers"]}
+    assert sa_empty == {"delegation.cli_phases": "{}"}, sa_empty   # tea.* absent => not surfaced
+    assert collect_setup_answers(base.splitlines(keepends=True)) == [], "no setup answers => empty list"
+    # setup_answers is asset-independent (computed even with no config-defaults asset) and rides --check.
+    assert analyze(sa_cfg, asset_text, "0.9.0", "0.9.0", None)["setup_answers"], "setup_answers must not depend on setup_text"
 
     # Cross-axis collision — a missing phase_profiles key AND a missing whole top-level setup block
     # (code_review), with phase_profiles as the file's LAST block, so BOTH inserts anchor on the same

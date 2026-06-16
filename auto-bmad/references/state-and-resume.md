@@ -142,10 +142,10 @@ This is the single interactive episode in normal operation.
    - When agents were rendered, surface the **process-restart caveat** (`delegation-runtime.md` → "Newly-rendered agents need a process restart").
 6. Report scope, what was reset, the backup path, restamp, and whether a relaunch is needed. Stop.
 
-## config-check — preview pending config/profile updates
-`/auto-bmad config-check` is a **read-only** preview: it reports how `config.yaml` differs from the shipped defaults — what an update would **add**, and what **you've customised** — without applying, restamping, or rendering anything.
-- Run it before a story/epic to see the new profiles/settings an update shipped and decide whether to retune *before* they take effect. The same data drives the automatic Phase 0 / E0 **pre-run pause** (`pipeline.md`) — this command is the on-demand pull; the pause is the automatic push.
-- **Config-only:** report, then stop — never start a pipeline.
+## config-check — preview pending config/profile updates (and optionally apply them)
+`/auto-bmad config-check` reports how `config.yaml` differs from the shipped defaults — what an update would **add**, **everything you've changed**, and the heal-immune setup answers — then offers to bring the config up to date. **Read-only until you confirm.**
+- Run it before a story/epic to see the new profiles/settings an update shipped and decide whether to retune *before* they take effect, or to update the config on demand. The same drift data drives the automatic Phase 0 / E0 **pre-run pause** (`pipeline.md`) — this command is the on-demand pull; the pause is the automatic push.
+- **Config-only:** report (and, if you confirm, apply), then stop — never start a pipeline.
 
 **Flow:**
 1. Require `config.yaml` to exist. Absent → "auto-bmad isn't set up here yet — run `/auto-bmad setup`." and stop.
@@ -155,11 +155,25 @@ This is the single interactive episode in normal operation.
    ```
 3. Render the **drift report** exactly as `pipeline.md` → "Drift report rendering" specifies — the two sides (*New since v<config>* + *Your customisations*), preceded by a version line (`config v<config> → module v<module>`), read straight from the `--check` JSON — **never read code**.
    - `status: fresh` ⇒ the *New* side is empty (say "nothing new since v<module>"), but still render *Your customisations* so the user sees their retunes.
-4. Tell the user how to act, then stop:
-   - **Customise before applying** — edit the named keys in `config.yaml` (the heal is **append-only**, so a value you set / a profile block you add is preserved), then run the story/epic; Phase 0 applies the rest.
-   - **Accept the new defaults** — just run the story/epic (it auto-applies at the pre-run pause, or with `skip config-pause`).
-   - **Discard retunes** back to shipped values — `reset-defaults`.
-- Applies/renders **nothing**: never writes `config.yaml`, never restamps, never re-renders agents. Those land only at the Phase 0 / E0 heal, `reset-defaults`, or `reprovision`.
+4. **Setup answers (config-check only — NOT the Phase 0 pause).** After the two sides, render the `--check` JSON's `setup_answers` so the user sees *every* deviation — including the heal-immune answers the two diff-sides structurally cannot compare (they have no shipped default):
+   - Heading *Setup answers (no shipped default — untouched by any heal)* — one `path = value` per `setup_answers` entry (e.g. `delegation.cli_phases`, `tea.enabled`, `tea.framework_ci`, a forced `git.mode`).
+   - Then the note: *Note: your hand-edited `delegation.cli_phases` and `tea.framework_ci` are setup answers, not drift — they have no shipped default to compare against, so they're never flagged as customisations and never touched by any heal (`reset-defaults` leaves them too; redo them via `setup`).*
+   - **Omit this whole block — heading and note — when `setup_answers` is empty** (nothing heal-immune to surface).
+5. **Offer to apply** — the on-demand equivalent of the Phase 0 pre-run pause's "Apply defaults & continue":
+   - **Pending predicate** — would `--apply` write anything: any of `missing_profiles` / `missing_phase_profiles` / `missing_setup` is non-empty, **OR** `version.drift` is true. (`manual_review` is NOT in it — the heal never auto-writes it; its fix is `reset-defaults`.)
+   - **Predicate false** → nothing to apply; show the **How to act** guidance below and stop.
+   - **Predicate true** → open an `AskUserQuestion` (the sole interactive moment):
+     - **Update config to v<module> now** *(recommended)* — append the new keys/profiles/mappings and restamp `profiles_source_version`; **append-only, so every value you've set and every profile you've added is preserved**.
+     - **Leave it — just previewing** — write nothing.
+   - **Update** → re-run with `--apply`; confirm concisely from the `--apply` JSON — settings (`added_setup`) and preserved customisations (`kept_setup`) render exactly as the Phase 0 "Non-blocking live echo", plus the config-check-only adds the user already saw in step 3: added profiles/mappings (`reseeded_profiles` / `reseeded_phase_profiles`) and the `version_restamped` from→to. Then run the **same post-heal provisioning-freshness step Phase 0 uses** (`render-agents.py --check`, `pipeline.md`) — auto-reprovision any missing/stale `ab-*` agent (a no-op off `custom-subagents` and when nothing's stale), and on a re-render surface the **process-restart caveat** (`delegation-runtime.md` → "Newly-rendered agents need a process restart"). Stop.
+   - **Leave it** → show the **How to act** guidance below and stop.
+
+**How to act** (shown whenever you don't apply):
+- **Customise before applying** — edit the named keys in `config.yaml` (the heal is **append-only**, so a value you set / a profile block you add is preserved), then re-run `config-check` (or just run the story/epic; Phase 0 applies the rest).
+- **Accept the new defaults** — apply now (step 5), or just run the story/epic (it auto-applies at the pre-run pause, or with `skip config-pause`).
+- **Discard retunes** back to shipped values — `reset-defaults`.
+
+- **Read-only until you confirm:** writes `config.yaml` (append-only) and re-renders agents **only** on the explicit "Update" choice in step 5; the preview path restamps and renders nothing. Never starts a pipeline.
 
 ## state/{key}.yaml
 The state file is a **machine-readable contract**, not a prose log — the source of truth for resume.

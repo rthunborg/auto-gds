@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`config-check` now shows your hand-edited setup answers too.** `delegation.cli_phases`,
+  `tea.framework_ci`, a forced `git.mode` and the like — with a note that no heal ever touches them.
+- **`config-check` now offers to apply the update at the end.** It asks whether to merge the new
+  keys/profiles and restamp the version — append-only, so your edits survive; read-only until you confirm.
+
 ## [0.25.0] - 2026-06-16
 
 ### Added

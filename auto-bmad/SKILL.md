@@ -6,11 +6,9 @@ argument-hint: "[epic [--epic <N>] | --story <id> | setup | reprovision | reset-
 
 # auto-bmad orchestrator
 
-You drive the **entire BMAD implementation workflow for ONE story**, then stop and report.
-The user manually triggers the next one.
+You drive the **entire BMAD implementation workflow for ONE story**, then stop and report. The user manually triggers the next one.
 
-**Epic mode (`/auto-bmad epic [--epic <N>]`)** instead drives a **WHOLE epic** — every actionable
-story — in one run, then opens **one PR** (per `references/epic-pipeline.md`).
+**Epic mode (`/auto-bmad epic [--epic <N>]`)** instead drives a **WHOLE epic** — every actionable story — in one run, then opens **one PR** (per `references/epic-pipeline.md`).
 - The two modes share Step 0 (paths/config), the On-activation gate, the delegation mechanics, and the final report.
 - Epic mode replaces Step 1's per-story target/preflight with the epic pipeline's **E-steps**.
 - Epic mode replaces Step 2's per-story Phases 1–9 with the **E-steps** — the per-story phases become the epic's inner loop.
@@ -19,8 +17,7 @@ story — in one run, then opens **one PR** (per `references/epic-pipeline.md`).
 - When `epic` is in the invocation, follow `epic-pipeline.md` from Step 1 onward; the per-story sub-steps below are the loop body.
 
 ## Output discipline
-Work quietly — don't pre-announce or narrate routine reads/detections; just do them.
-Surface only what the user needs:
+Work quietly — don't pre-announce or narrate routine reads/detections; just do them. Surface only what the user needs:
 - decisions (with brief rationale);
 - the first-run/config summary;
 - interactive questions;
@@ -96,21 +93,17 @@ Before the procedure, handle module registration and delegate provisioning.
 ### Step 0 — Resolve paths & config
 1. Confirm cwd is a BMAD project: `_bmad/` exists and `_bmad/bmm/config.yaml` is readable.
    - If not → **hard-stop**: "Not a BMAD project (no `_bmad/`). Run the BMAD installer first."
-2. Read `_bmad/bmm/config.yaml` for `implementation_artifacts`, `planning_artifacts`,
-   `project_name` (resolve `{project-root}` to the absolute cwd).
+2. Read `_bmad/bmm/config.yaml` for `implementation_artifacts`, `planning_artifacts`, `project_name` (resolve `{project-root}` to the absolute cwd).
 3. Load auto-bmad config from `{project-root}/_bmad-output/auto-bmad/config.yaml`.
-   - Missing → run the **first-run flow** in `references/state-and-resume.md`, write the config,
-     then **stop for a fresh session** per the same file's First-run stop.
+   - Missing → run the **first-run flow** in `references/state-and-resume.md`, write the config, then **stop for a fresh session** per the same file's First-run stop.
    - Present → continue to Step 1.
-   - First-run is the main interactive moment. auto-bmad also asks at three later halts — each
-     halt's options/conditions are in the note under Hard-stop conditions:
+   - First-run is the main interactive moment. auto-bmad also asks at three later halts — each halt's options/conditions are in the note under Hard-stop conditions:
      - the end of the code-review loop (Phase 7);
      - a `FAIL` epic trace gate (Phase 8);
      - a clean-completion PR's merge prompt (Phase 9).
 
 ### Step 1 — Preflight
-First read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0).
-Read `references/overrides.md` too if the invocation carried any instructions. Then:
+First read `references/state-and-resume.md` and `references/pipeline.md` (Phase 0). Read `references/overrides.md` too if the invocation carried any instructions. Then:
 0. **Parse invocation overrides** (if any).
    - Normalize them per `references/overrides.md`.
    - **Echo the interpretation plus the resolved phase window/skips to the user.**
@@ -129,8 +122,7 @@ Read `references/overrides.md` too if the invocation carried any instructions. T
    b. Otherwise run `python3 {skill-root}/scripts/story_plan.py --sprint-status <impl>/sprint-status.yaml --impl-dir <impl>` to pick the next actionable story.
       - Its precedence (`in-progress → review → ready-for-dev → backlog → retrospective`) resumes BMAD-level unfinished work before fresh backlog.
 
-   With a `--story <arg>`: pass `--story <arg>` to the script (overrides the above).
-   Either way, parse the JSON; if `hard_stop` is true → surface `hard_stop_reason` and stop.
+   With a `--story <arg>`: pass `--story <arg>` to the script (overrides the above). Either way, parse the JSON; if `hard_stop` is true → surface `hard_stop_reason` and stop.
    - **Epic mode** (`epic` in the invocation):
      - Resolve the target epic `{e}` — `--epic <N>` if given, else run `story_plan.py` (no arg) and take the next actionable story's `epic_num`.
      - Then follow `epic-pipeline.md` from E0 (preflight + `story_plan.py --epic {e}` enumerate + adopt; an in-flight epic anchor via `state_plan.py --scope epic` resumes first).
@@ -168,8 +160,7 @@ Always produce a report (even on hard-stop). The report is **split**:
 - a story-level **file portion** that lands in the PR diff;
 - a **chat-only** wrapper for the PR/CI/merge **artifacts**.
 
-The one-line *disposition* is **not** in that wrapper — it lives in the file's `Pipeline status` line.
-Both halves are always printed to the user.
+The one-line *disposition* is **not** in that wrapper — it lives in the file's `Pipeline status` line. Both halves are always printed to the user.
 
 - **File portion** — the persistent log under `{project-root}/_bmad-output/auto-bmad/reports/{key}.md`:
   - On a clean path Phase 9 already wrote + committed it **before push** (`docs(story-{e}-{s}): pipeline report`) — Step 3 does not re-write it.

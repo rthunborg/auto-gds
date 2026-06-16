@@ -27,8 +27,7 @@ Score the signals from the story's epic entry, acceptance criteria, and describe
 - adds an internal endpoint/service method or stateful UI flow
 - touches multiple modules
 
-**Low (trivial)** — copy/docs, config/constants, styling-only, comments, dependency bumps with
-no behavior change, or pure scaffolding with no logic.
+**Low (trivial)** — copy/docs, config/constants, styling-only, comments, dependency bumps with no behavior change, or pure scaffolding with no logic.
 
 ### Selection matrix
 | Risk | atdd (pre-dev) | automate (post-dev) |
@@ -45,29 +44,22 @@ Record in state:
 Keep `tea_risk` explicit; don't re-derive it from `tea_selected` — the §3 advisory gates on it.
 
 ## 3. Long-epic trace advisory — per-story, NON-BLOCKING (opt-out)
-A story-scope `bmad-testarch-trace` pass at the **tail of Phase 7** — after the code-review loop
-converges.
+A story-scope `bmad-testarch-trace` pass at the **tail of Phase 7** — after the code-review loop converges.
 - Surfaces this story's uncovered acceptance criteria while the dev context is fresh.
 - **Advisory only**: it records gaps. It never halts, remediates, asks, or forces a draft PR.
 - The blocking gate stays at epic end (§1).
 
 Select `trace-advisory` (add it to `tea_selected`) at Phase-0 triage **iff all** of these hold:
 - `tea.enabled` is true **and** `tea.story_trace_advisory.enabled` (default true).
-- `tea_risk == high` — because only high-risk stories make an uncovered AC costly enough for the
-  extra pass.
-- `stories_after_in_epic >= tea.story_trace_advisory.skip_last_stories` (default 3) — because an
-  advisory on the epic's last few stories near-duplicates their imminent epic-end gate.
-  - `stories_after_in_epic` = how many stories in this epic come after this one: 0 for the last, 1
-    for second-to-last, and so on.
+- `tea_risk == high` — because only high-risk stories make an uncovered AC costly enough for the extra pass.
+- `stories_after_in_epic >= tea.story_trace_advisory.skip_last_stories` (default 3) — because an advisory on the epic's last few stories near-duplicates their imminent epic-end gate.
+  - `stories_after_in_epic` = how many stories in this epic come after this one: 0 for the last, 1 for second-to-last, and so on.
   - So `>= 3` skips the last three stories.
-- `epic_story_count >= tea.story_trace_advisory.min_epic_stories` (default 6) — the **long-epic
-  gate**: dormant on short epics (their epic-end gate is already near), self-activating on long ones.
+- `epic_story_count >= tea.story_trace_advisory.min_epic_stories` (default 6) — the **long-epic gate**: dormant on short epics (their epic-end gate is already near), self-activating on long ones.
 
-`epic_story_count` and `stories_after_in_epic` come from the same `story_plan.py` read that sets
-`is_first_in_epic`/`is_last_in_epic`. Record both in state alongside `tea_risk`.
+`epic_story_count` and `stories_after_in_epic` come from the same `story_plan.py` read that sets `is_first_in_epic`/`is_last_in_epic`. Record both in state alongside `tea_risk`.
 
 ### Notes
 - Low risk ⇒ `tea_selected = []` and Phases 4 & 6 are skipped — the story still gets full code review.
-- `framework` / `ci` are one-time project setup — handled (or skipped) by the first-run flow
-  (`state-and-resume.md`), never per story.
+- `framework` / `ci` are one-time project setup — handled (or skipped) by the first-run flow (`state-and-resume.md`), never per story.
 - When in doubt between two tiers, pick the higher one.

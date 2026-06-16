@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **External-CLI delegates now wait on real process exit, not a fragile poll loop.** A new
   `cli_delegate.py --wait`/`--once` keys completion on an exit-code sentinel, so a routed step can run
   for hours without a wall-clock kill and stale watch loops no longer spin forever.
+- **Runtime grep no longer misses instruction phrases split across a line wrap.** The orchestrator's
+  nine AI-read instruction files are now one physical line per paragraph/list item, so no matched
+  phrase straddles a hard wrap. Whitespace-only — not a word changed.
 
 ## [0.23.0] - 2026-06-14
 

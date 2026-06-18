@@ -182,6 +182,12 @@ TEA-gated phases; a new review layer might strengthen Phase 7. Recommend only
 where there's a real fit; say "nothing actionable" when there isn't. Don't
 invent uses.
 
+Also re-read **`docs/upstream-capability-backlog.md`** (deferred-but-noted
+capabilities): for each open entry, if *this* run's diff touches its **Revisit
+when** trigger, re-surface it in the report rather than letting it age out. When a
+check concludes "real capability, no fit today", add it there (don't lose it in
+chat).
+
 ## Report structure
 
 Produce this exact template in chat. The body is **per package** — repeat the

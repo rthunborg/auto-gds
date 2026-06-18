@@ -160,13 +160,11 @@ Use overrides (below) if you want to add your own stops — e.g. `stop before co
 
 Steer a single run by adding instructions to the invocation (natural language or flags) — e.g. `stop before code-review`, `start at phase 5`, `skip git commits`, `skip TEA`, `skip merge-prompt`, `max 5 review iterations`, `git mode local`, `dry run`. The orchestrator echoes how it interpreted them and which phases will run before executing. See `references/overrides.md`.
 
-## Split a story across Claude Code and Codex
+## Split a story across tools
 
-The running tool is auto-detected every run and the pipeline is resumable, so you can hand a single story off between tools mid-pipeline — e.g. **implement in Claude Code, review in Codex** (or the reverse) — by stopping at a phase boundary in one tool and resuming in the other (shown below). For **automatic per-phase routing within a single run**, see `delegation.cli_phases` under [Configuration](#configuration): it delegates chosen phases to another tool's CLI (`claude -p` / `codex exec` / `opencode run`) — with that phase's model + effort — so a single `/auto-bmad` run can mix tools (e.g. review on a different vendor's model for diversity) with no manual hand-off.
+The cleanest way to mix tools is **`delegation.cli_phases`** (see [Configuration](#configuration)): it routes chosen phases to another tool's CLI (`claude -p` / `codex exec` / `opencode run`) — at that phase's model + effort — so a **single, autonomous `/auto-bmad` run** mixes tools with no hand-off. Set it once and every run honours it — e.g. `cli_phases: { code_review_review_secondary: opencode }` to implement in your host tool but run the second-opinion review on a different vendor's model for diversity. The orchestrator builds the command and parses the result; the routed tool just needs its `auto-bmad`/`bmm` skills installed and (when it isn't the host) to be authenticated — the preflight hard-stops if not.
 
-**Prerequisites:** install the `auto-bmad` skill in **both** tools and provision delegates for both — `delegation.target_tools` must list `claude-code` *and* `codex` (confirm at `/auto-bmad setup`). Keep git commits **on** (the default): the per-phase checkpoint commits and the shared `_bmad-output/auto-bmad/state/` file are exactly what let the other tool pick up where the first left off.
-
-Implement in Claude Code, review in Codex:
+You can also hand a story off **by hand**, mid-pipeline — handy when you'd rather drive each tool interactively, or haven't set the other tool up as a headless CLI. The running tool is auto-detected every run and the pipeline is resumable, so stopping at a phase boundary in one tool and resuming in another just works — e.g. **implement in Claude Code, review in Codex**:
 
 ```text
 # In Claude Code — runs phases 0–6 (create-story → dev-story), committing each phase
@@ -176,17 +174,9 @@ Implement in Claude Code, review in Codex:
 /auto-bmad
 ```
 
-Implement in Codex, review in Claude Code — same idea, tools swapped:
+Swap the tools for the reverse (implement in Codex, review in Claude Code). A plain no-arg `/auto-bmad` resumes the interrupted pipeline at the next unfinished phase; `start at phase 7` is the explicit equivalent (it first validates the story is implemented). The same pattern works at any phase boundary — e.g. `stop after phase 5`, then resume — so you can route any slice of the pipeline to whichever tool you prefer for it.
 
-```text
-# In Codex
-/auto-bmad stop before code-review
-
-# In Claude Code
-/auto-bmad                 # or, explicitly: /auto-bmad start at phase 7
-```
-
-A plain no-arg `/auto-bmad` resumes the interrupted pipeline at the next unfinished phase; `start at phase 7` is the explicit equivalent (it first validates the story is implemented). The same pattern works at any phase boundary — e.g. `stop after phase 5`, then resume — so you can route any slice of the pipeline to whichever tool you prefer for it.
+**Prerequisites for the manual hand-off:** install the `auto-bmad` skill in **both** tools and provision delegates for both — `delegation.target_tools` must list `claude-code` *and* `codex` (confirm at `/auto-bmad setup`). Keep git commits **on** (the default): the per-phase checkpoint commits and the shared `_bmad-output/auto-bmad/state/` file are exactly what let the other tool pick up where the first left off.
 
 ## Configuration
 

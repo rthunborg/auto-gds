@@ -33,3 +33,8 @@ one once it ships (with a CHANGELOG note) or is judged a permanent non-fit.
   epic-mode prep (`delegation.md` retro feed, `epic-pipeline.md`) for other reasons
   — at which point consuming the structured field becomes nearly free.
 - **First noted:** 2026-06-18 compat check (BMAD `6.8.1-next.14`).
+- **Re-confirmed:** 2026-06-21 compat check (BMAD `6.8.1-next.17`, PR #2465) — the
+  revisit trigger fired (the `action_items` write/transition rules were hardened and
+  three skills now coordinate on the field: `bmad-retrospective` writes,
+  `bmad-sprint-planning` carries over, `bmad-sprint-status` surfaces). The field
+  *shape* (`epic`/`action`/`owner`/`status`) is unchanged, so the deferral stands.

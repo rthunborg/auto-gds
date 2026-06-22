@@ -38,3 +38,24 @@ one once it ships (with a CHANGELOG note) or is judged a permanent non-fit.
   three skills now coordinate on the field: `bmad-retrospective` writes,
   `bmad-sprint-planning` carries over, `bmad-sprint-status` surfaces). The field
   *shape* (`epic`/`action`/`owner`/`status`) is unchanged, so the deferral stands.
+
+### BMAD v7 standardizes Python on `uv run` (watch, not a capability)
+
+- **What it is:** `bmad-method` 6.9.0 (PR #2495) flags an **upcoming v7 breaking
+  change** — every skill that runs a Python script will invoke `uv run` instead of
+  calling `python3` directly. In 6.9.0 it's warning-only: the installer checks for
+  `uv` and points you to setup if it's missing, but a missing `uv` never blocks.
+- **Why it matters to us:** auto-bmad delegates by *invoking* BMAD skills, so the
+  environment those skills shell out from is BMAD's concern, not a contract we
+  parse — no impact today. But if v7 makes `uv` a hard prerequisite for the
+  delegated skills (create-story/dev-story/code-review/…), users provisioning
+  auto-bmad would need `uv` present, which the README "Install/Updating" guidance
+  may need to mention. auto-bmad's *own* scripts stay stdlib-only `python3` and are
+  unaffected either way (and must not gain a `uv` dependency — see CLAUDE.md).
+- **Why no action now:** 6.x only warns; nothing auto-bmad runs or delegates
+  changes behavior. Acting now would document a requirement that doesn't yet exist.
+- **Revisit when:** BMAD v7 ships (or a `next` prerelease flips a delegated skill
+  from `python3` to a required `uv run`), **or** any installer/`tools/` change that
+  makes `uv` a hard install gate — at which point weigh a README "Install/Updating"
+  note. Cross-check CLAUDE.md "Known platform facts" (BMAD install/update channels).
+- **First noted:** 2026-06-22 compat check (BMAD `6.9.0`, PR #2495).

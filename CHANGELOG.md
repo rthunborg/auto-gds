@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Verified against BMAD-METHOD 6.9.0.** The new minor ships no change to any skill auto-bmad
+  delegates to or any contract it parses; compat markers advanced from 6.8.x.
+
 ## [0.25.1] - 2026-06-16
 
 ### Changed

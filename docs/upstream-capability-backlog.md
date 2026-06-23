@@ -13,6 +13,31 @@ one once it ships (with a CHANGELOG note) or is judged a permanent non-fit.
 
 ## Open
 
+### `bmad-dev-auto` native unattended dev loop (parallel approach, not a building block)
+
+- **What it is:** `bmad-method` 6.9.1-next.1 (PR #2500) adds `bmad-dev-auto` — a
+  single skill that runs *"one iteration of an unattended development loop"*:
+  clarify+route → plan (spec) → implement → 2-lens review (Blind + Edge Case
+  Hunter), fully autonomous, no human interaction. It's built on the **quick-dev /
+  spec lane** (`spec-template.md`, `<intent-contract>`, structured
+  `deferred-work.md`), HALTs with a `status` verdict, and is meant to be looped
+  externally.
+- **Why nice:** it's BMAD's own native autonomous loop — conceptually the same
+  problem auto-bmad solves, now with first-party support.
+- **Why deferred:** it overlaps auto-bmad's *entire* orchestration role at lower
+  fidelity, not a single phase. It rides the thin quick-dev/spec lane (no
+  create-story/dev-story, no TEA gate, no code-review fan-out + security lens, no
+  retro, no git branch/PR, no epic mode, no per-phase model+effort tuning) — so it
+  doesn't slot into a phase; adopting it would *replace* Phases 2–7 with one
+  delegate and discard auto-bmad's differentiators. Off auto-bmad's delegated
+  surface (`low`), so **not** a compatibility risk.
+- **Revisit when:** `bmad-dev-auto` graduates to stable **and** gains story-workflow
+  / TEA / git-PR integration (i.e. becomes a richer loop that genuinely overlaps the
+  full BMM story pipeline auto-bmad drives), **or** if auto-bmad ever adds a
+  lightweight/freeform non-story lane — at which point delegating to it could be a
+  real fit instead of a wholesale replacement.
+- **First noted:** 2026-06-23 compat check (BMAD `6.9.1-next.1`, PR #2500).
+
 ### Consume upstream `action_items` (sprint-status.yaml)
 
 - **What it is:** `bmad-retrospective` (since `bmad-method` 6.8.1-next.x, PR #2465)

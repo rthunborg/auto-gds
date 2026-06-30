@@ -350,7 +350,7 @@ def check(
     for out_path, content in outputs:
         if not out_path.exists():
             missing.append(str(out_path))
-        elif out_path.read_text(encoding="utf-8") != content:
+        elif out_path.read_bytes() != content.encode("utf-8"):
             stale.append(str(out_path))
         else:
             ok.append(str(out_path))
@@ -554,6 +554,14 @@ def _run_self_test() -> int:
         chk = check(profiles, ["claude-code", "codex", "opencode"], templates_dir, root)
         assert chk["status"] == "fresh" and not chk["needs_reprovision"], chk
         assert len(chk["ok"]) == 15 and not chk["stale"] and not chk["missing"], chk
+        # A pre-fix CRLF render must be flagged stale so upgraders auto-heal:
+        # read_text() would normalise \r\n and hide it, so compare bytes.
+        crlf_path = root / ".claude/agents/ab-deep.md"
+        crlf_path.write_bytes(crlf_path.read_bytes().replace(b"\n", b"\r\n"))
+        chk_crlf = check(profiles, ["claude-code", "codex", "opencode"], templates_dir, root)
+        assert chk_crlf["needs_reprovision"], "CRLF agent file must trigger reprovision"
+        assert any(p.endswith("ab-deep.md") for p in chk_crlf["stale"]), chk_crlf
+        render(profiles, ["claude-code", "codex", "opencode"], templates_dir, root)  # restore LF
 
         # Editing a profile makes that agent's rendered output differ -> stale.
         bumped = json.loads(json.dumps(profiles))  # deep copy

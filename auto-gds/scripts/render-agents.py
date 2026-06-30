@@ -253,7 +253,12 @@ def render(
     for out_path, content in outputs:
         if not dry_run:
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(content, encoding="utf-8")
+            # Write LF on every platform. Path.write_text() uses text mode, which on
+            # Windows translates "\n" to "\r\n"; Claude Code's subagent frontmatter parser
+            # does not recognise a CRLF ("---\r") fence, so CRLF-rendered agent files
+            # silently fail to load on Windows. write_bytes performs no newline translation
+            # (and avoids the Python 3.10+-only write_text(newline=...) argument).
+            out_path.write_bytes(content.encode("utf-8"))
         files_written.append(str(out_path))
 
     return {
@@ -425,6 +430,11 @@ def _run_self_test() -> int:
         for name in PROFILE_NAMES:
             c = (root / f".claude/agents/{name}.md").read_text(encoding="utf-8")
             x = (root / f".codex/agents/{name}.toml").read_text(encoding="utf-8")
+            # Rendered agent files must use LF: a CRLF ("---\r") frontmatter fence is not
+            # recognised by Claude Code's subagent parser, so CRLF agents silently fail to
+            # load on Windows. Regression guard for the write_bytes fix in render().
+            assert b"\r" not in (root / f".claude/agents/{name}.md").read_bytes(), f"{name}.md must be LF, not CRLF"
+            assert b"\r" not in (root / f".codex/agents/{name}.toml").read_bytes(), f"{name}.toml must be LF, not CRLF"
             for meta in ("role_blurb", "status_example"):
                 val = profiles[name][meta]
                 assert val in c, f"{name}.{meta} missing from Claude output: {val!r}"
